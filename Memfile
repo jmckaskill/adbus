@@ -1,0 +1,7 @@
+# vim: filetype=python tabstop=4 shiftwidth=4 softtabstop=4 expandtab
+import mem
+
+def build():
+    mem.subdir("DBusClient").build()
+    mem.subdir("DBusCpp").build()
+
