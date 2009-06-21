@@ -41,9 +41,7 @@ struct DBusParser* DBusCreateParser();
 void DBusFreeParser(struct DBusParser* parser);
 
 // Returns an error code or 0 on none
-// if sizeUsed < size then the remaining data needs to
-// be re-parsed after more data is available
-int  DBusParse(struct DBusParser* parser, uint8_t* data, size_t size, size_t* used);
+int  DBusParse(struct DBusParser* parser, uint8_t* data, size_t size);
 
 typedef void (*DBusParserCallback)(void* /*userData*/, struct DBusMessage*);
 

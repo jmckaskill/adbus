@@ -188,6 +188,7 @@ enum DBusParseError
   DBusInternalError = -1,
   DBusSuccess = 0,
   DBusNeedMoreData,
+  DBusIgnoredData,
   DBusInvalidData,
   DBusInvalidVersion,
   DBusInvalidAlignment,

@@ -160,23 +160,7 @@ void Connection::setSendCallback(DBusSendCallback callback, void* callbackData)
 
 int Connection::appendInputData(uint8_t* data, size_t size)
 {
-  size_t used = 0;
-  int err = 0;
-
-  m_InputBuffer.insert(m_InputBuffer.end(), data, data + size);
-
-  while (!m_InputBuffer.empty())
-  {
-    err = DBusParse(m_Parser, &m_InputBuffer[0], m_InputBuffer.size(), &used);
-    if (err)
-      break;
-    m_InputBuffer.erase(m_InputBuffer.begin(), m_InputBuffer.begin() + used);
-  }
-
-  if (err == DBusNeedMoreData)
-    err = DBusSuccess;
-
-  return err;
+  return DBusParse(m_Parser, data, size);
 }
 
 //-----------------------------------------------------------------------------

@@ -28,6 +28,7 @@
 #include "Misc_p.h"
 
 #include <assert.h>
+#include <string.h>
 
 
 static const char kHeaderType[] = "a(yv)";
@@ -41,6 +42,9 @@ struct DBusParser
   struct DBusMessage  message;
   DBusParserCallback  callback;
   void*               callbackData;
+  uint8_t*            buffer;
+  size_t              bufferSize;
+  size_t              bufferAlloc;
 };
 
 // ----------------------------------------------------------------------------
@@ -55,6 +59,7 @@ struct DBusParser* DBusCreateParser()
 
 void DBusFreeParser(struct DBusParser* p)
 {
+  free(p->buffer);
   free(p);
 }
 
@@ -62,17 +67,29 @@ void DBusFreeParser(struct DBusParser* p)
 
 static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed);
 
-int DBusParse(struct DBusParser* p, uint8_t* data, size_t dataSize, size_t* dataUsed)
+int DBusParse(struct DBusParser* p, uint8_t* data, size_t dataSize)
 {
-  *dataUsed = 0;
+  size_t insertOffset = p->bufferSize;
+  ALLOC_GROW(uint8_t, p->buffer, insertOffset + dataSize, p->bufferAlloc);
+  p->bufferSize += dataSize;
 
-  int err = processData(&p->message, data + *dataUsed, dataSize, dataUsed);
-  if (err)
-    return err;
+  memcpy(&p->buffer[insertOffset], data, dataSize);
 
-  p->callback(p->callbackData, &p->message);
+  int err = 0;
+  while(!err && p->bufferSize > 0)
+  {
+    size_t dataUsed = 0;
+    int err = processData(&p->message, p->buffer, p->bufferSize, &dataUsed);
+    if (!err)
+      p->callback(p->callbackData, &p->message);
+    if (err == DBusIgnoredData)
+      err = DBusSuccess;
+    assert(p->bufferSize >= dataUsed);
+    memmove(p->buffer, p->buffer + dataUsed, p->bufferSize - dataUsed);
+    p->bufferSize -= dataUsed;
+  }
 
-  return 0;
+  return err;
 }
 
 // ----------------------------------------------------------------------------
@@ -148,7 +165,7 @@ static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, si
   *dataUsed  += messageSize;
 
   if (header->type > DBusMessageTypeMax)
-    return DBusSuccess;
+    return DBusIgnoredData;
 
   m->data    = data;
   m->dataEnd = data + messageSize;
