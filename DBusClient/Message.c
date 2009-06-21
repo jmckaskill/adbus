@@ -1,179 +1,199 @@
+// vim: ts=2 sw=2 sts=2 et
+//
+// Copyright (c) 2009 James R. McKaskill
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+//
+// ----------------------------------------------------------------------------
+
 #include "Message.h"
 #include "Message_p.h"
 #include "Misc_p.h"
 
+#include <assert.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Helper Functions
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static bool isStackEmpty(Message* m)
+static unsigned int isStackEmpty(struct DBusMessage* m)
 {
   return m->stackSize == 0;
 }
 
-static int stackSize(Message* m)
+static size_t stackSize(struct DBusMessage* m)
 {
   return m->stackSize;
 }
 
-static struct StackEntry* stackTop(Message* m)
+static struct _DBusMessageStackEntry* stackTop(struct DBusMessage* m)
 {
   return &m->stack[m->stackSize-1];
 }
 
-static struct StackEntry* pushStackEntry(Message* m)
+static struct _DBusMessageStackEntry* pushStackEntry(struct DBusMessage* m)
 {
-  ALLOC_GROW(m->stack, m->stackSize+1, m->stackAlloc);
-  memset(&m->stack[m->stackSize], 0, sizeof(struct StackEntry));
+  ALLOC_GROW(struct _DBusMessageStackEntry, m->stack, m->stackSize+1, m->stackAlloc);
+  memset(&m->stack[m->stackSize], 0, sizeof(struct _DBusMessageStackEntry));
   m->stackSize++;
   return stackTop(m);
 }
 
-void _DBusPopStackEntry(Message* m)
+void popStackEntry(struct DBusMessage* m)
 {
   m->stackSize--;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static size_t dataRemaining(Message* m)
+static size_t dataRemaining(struct DBusMessage* m)
 {
   return m->dataEnd - m->data;
 }
 
-static uint8_t* getData(Message* m, size_t size)
+static uint8_t* getData(struct DBusMessage* m, size_t size)
 {
-  ASSERT(size > dataRemaining(m));
+  assert(dataRemaining(m) >= size);
   uint8_t* ret = m->data;
   m->data += size;
   return ret;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-// where b0 _DBusIs lowest byte
-#define MAKE16(b1,b0) \
-  ((uint16_t((b1)) << 8) | (b0))
-#define MAKE32(b3,b2,b1,b0) \
-  ((uint32_t(MAKE16((b3),(b2))) << 16) | MAKE16((b1),(b0)))
-#define MAKE64(b7,b6,b5,b4,b3,b2,b1,b0)  \
-  ((uint64_t(MAKE32((b7),(b6),(b5),(b4))) << 32) | MAKE32((b3),(b2),(b1),(b0)))
 
-#define ENDIAN_CONVERT16(val) MAKE16( (val)        & 0xFF, ((val) >> 8)  & 0xFF)
-
-#define ENDIAN_CONVERT32(val) MAKE32( (val)        & 0xFF, ((val) >> 8)  & 0xFF,\
-                                     ((val) >> 16) & 0xFF, ((val) >> 24) & 0xFF)
-
-#define ENDIAN_CONVERT64(val) MAKE64( (val)        & 0xFF, ((val) >> 8)  & 0xFF,\
-                                     ((val) >> 16) & 0xFF, ((val) >> 24) & 0xFF,\
-                                     ((val) >> 32) & 0xFF, ((val) >> 40) & 0xFF,\
-                                     ((val) >> 48) & 0xFF, ((val) >> 56) & 0xFF)
-
-static uint8_t get8BitData(Message* m)
+static uint8_t get8BitData(struct DBusMessage* m)
 {
   return *getData(m, sizeof(uint8_t));
 }
 
-static uint16_t get16BitData(Message* m)
+static uint16_t get16BitData(struct DBusMessage* m)
 {
-  uint8_t* data = getData(m, sizeof(uint16_t));
+  uint16_t* data = (uint16_t*)getData(m, sizeof(uint16_t));
   if (!m->nativeEndian)
-    *reinterpret_cast<uint16_t*>(data) = ENDIAN_CONVERT16(*reinterpret_cast<uint16_t*>(data));
-  return *reinterpret_cast<uint16_t*>(data);
+    *data = ENDIAN_CONVERT16(*data);
+
+  return *data;
 }
 
-static uint32_t get32BitData(Message* m)
+static uint32_t get32BitData(struct DBusMessage* m)
 {
-  uint8_t* data = getData(m, sizeof(uint32_t));
+  uint32_t* data = (uint32_t*)getData(m, sizeof(uint32_t));
   if (!m->nativeEndian)
-    *reinterpret_cast<uint32_t*>(data) = ENDIAN_CONVERT32(*reinterpret_cast<uint32_t*>(data));
-  return *reinterpret_cast<uint32_t*>(data);
+    *data = ENDIAN_CONVERT32(*data);
+
+  return *data;
 }
 
-static uint64_t get64BitData(Message* m)
+static uint64_t get64BitData(struct DBusMessage* m)
 {
-  uint8_t* data = getData(m, sizeof(uint64_t));
+  uint64_t* data = (uint64_t*)getData(m, sizeof(uint64_t));
   if (m->nativeEndian)
-    *reinterpret_cast<uint64_t*>(data) = ENDIAN_CONVERT64(*reinterpret_cast<uint64_t*>(data));
-  return *reinterpret_cast<uint64_t*>(data);
+    *data = ENDIAN_CONVERT64(*data);
+
+  return *data;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static bool isAligned(Message* m)
+static unsigned int isAligned(struct DBusMessage* m)
 {
-  return uintptr_t(m->data) % requiredAlignment(FieldType(*m->signature)) == 0;
+  return (((uintptr_t)(m->data)) % _DBusRequiredAlignment(*m->signature)) == 0;
 }
 
-static void processAlignment(Message* m)
+static void processAlignment(struct DBusMessage* m)
 {
-  m->data += uintptr_t(m->data) % requiredAlignment(FieldType(*m->signature));
+  uintptr_t data = (uintptr_t) m->data;
+  size_t alignment = _DBusRequiredAlignment(*m->signature);
+  if (alignment == 0)
+    return;
+  data = _DBUS_ALIGN_VALUE(data, alignment);
+  m->data = (uint8_t*) data;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 
 
 
 
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 // Private API
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessField(Message* m, Field* f)
+int _DBusProcessField(struct DBusMessage* m, struct DBusField* f)
 {
+  f->type = DBusInvalidField;
   switch(*m->signature)
   {
-  case UInt8Field:
+  case DBusUInt8Field:
     return _DBusProcess8Bit(m,f,(uint8_t*)&f->data.u8);
-  case BooleanField:
+  case DBusBooleanField:
     return _DBusProcessBoolean(m,f);
-  case Int16Field:
+  case DBusInt16Field:
     return _DBusProcess16Bit(m,f,(uint16_t*)&f->data.i16);
-  case UInt16Field:
+  case DBusUInt16Field:
     return _DBusProcess16Bit(m,f,(uint16_t*)&f->data.u16);
-  case Int32Field:
+  case DBusInt32Field:
     return _DBusProcess32Bit(m,f,(uint32_t*)&f->data.i32);
-  case UInt32Field:
+  case DBusUInt32Field:
     return _DBusProcess32Bit(m,f,(uint32_t*)&f->data.u32);
-  case Int64Field:
+  case DBusInt64Field:
     return _DBusProcess64Bit(m,f,(uint64_t*)&f->data.i64);
-  case UInt64Field:
+  case DBusUInt64Field:
     return _DBusProcess64Bit(m,f,(uint64_t*)&f->data.u64);
-  case DoubleField:
+  case DBusDoubleField:
     return _DBusProcess64Bit(m,f,(uint64_t*)&f->data.d);
-  case StringField:
+  case DBusStringField:
     return _DBusProcessString(m,f);
-  case ObjectPathField:
+  case DBusObjectPathField:
     return _DBusProcessObjectPath(m,f);
-  case SignatureField:
+  case DBusSignatureField:
     return _DBusProcessSignature(m,f);
-  case ArrayBeginField:
+  case DBusArrayBeginField:
     return _DBusProcessArray(m,f);
-  case StructBeginField:
+  case DBusStructBeginField:
     return _DBusProcessStruct(m,f);
-  case VariantBeginField:
+  case DBusVariantBeginField:
     return _DBusProcessVariant(m,f);
-  case DictEntryBeginField:
+  case DBusDictEntryBeginField:
     return _DBusProcessDictEntry(m,f);
   default:
     return DBusInvalidData;
   }
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcess8Bit(Message* m, Field* f, uint8_t* fieldData)
+int _DBusProcess8Bit(struct DBusMessage* m, struct DBusField* f, uint8_t* fieldData)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
 
   if (dataRemaining(m) < 1)
     return DBusInvalidData;
 
-  f->type = FieldType(*m->signature);
+  f->type = (enum DBusFieldType)(*m->signature);
   *fieldData = get8BitData(m);
 
   m->signature += 1;
@@ -181,16 +201,16 @@ int _DBusProcess8Bit(Message* m, Field* f, uint8_t* fieldData)
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcess16Bit(Message* m, Field* f, uint16_t* fieldData)
+int _DBusProcess16Bit(struct DBusMessage* m, struct DBusField* f, uint16_t* fieldData)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
 
   if (dataRemaining(m) < 2)
     return DBusInvalidData;
 
-  f->type = FieldType(*m->signature);
+  f->type = (enum DBusFieldType)(*m->signature);
   *fieldData = get16BitData(m);
 
   m->signature += 1;
@@ -198,16 +218,16 @@ int _DBusProcess16Bit(Message* m, Field* f, uint16_t* fieldData)
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcess32Bit(Message* m, Field* f, uint32_t* fieldData)
+int _DBusProcess32Bit(struct DBusMessage* m, struct DBusField* f, uint32_t* fieldData)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
 
   if (dataRemaining(m) < 4)
     return DBusInvalidData;
 
-  f->type = FieldType(*m->signature);
+  f->type = (enum DBusFieldType)(*m->signature);
   *fieldData = get32BitData(m);
 
   m->signature += 1;
@@ -215,16 +235,16 @@ int _DBusProcess32Bit(Message* m, Field* f, uint32_t* fieldData)
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcess64Bit(Message* m, Field* f, uint64_t* fieldData)
+int _DBusProcess64Bit(struct DBusMessage* m, struct DBusField* f, uint64_t* fieldData)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
 
   if (dataRemaining(m) < 8)
     return DBusInvalidData;
 
-  f->type = FieldType(*m->signature);
+  f->type = (enum DBusFieldType)(*m->signature);
   *fieldData = get64BitData(m);
 
   m->signature += 1;
@@ -232,35 +252,36 @@ int _DBusProcess64Bit(Message* m, Field* f, uint64_t* fieldData)
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessBoolean(Message* m, Field* f)
+int _DBusProcessBoolean(struct DBusMessage* m, struct DBusField* f)
 {
   int err = _DBusProcess32Bit(m, f, &f->data.b);
   if (err)
     return err;
 
-  if (f->data > 1)
+  if (f->data.b > 1)
     return DBusInvalidData;
 
+  f->type = DBusBooleanField;
   f->data.b = f->data.b ? 1 : 0;
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessStringData(Message* m, Field* f)
+int _DBusProcessStringData(struct DBusMessage* m, struct DBusField* f)
 {
   size_t size = f->data.string.size;
   if (dataRemaining(m) < size + 1)
     return DBusInvalidData;
 
   const char* str = (const char*) getData(m, size + 1);
-  if (hasNullByte(str, size))
+  if (_DBusHasNullByte(str, size))
     return DBusInvalidData;
 
-  if (str + size != '\0')
+  if (*(str + size) != '\0')
     return DBusInvalidData;
 
   if (!_DBusIsValidUtf8(str, size))
@@ -273,16 +294,16 @@ int _DBusProcessStringData(Message* m, Field* f)
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessObjectPath(Message* m, Field* f)
+int _DBusProcessObjectPath(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
-  ASSERT(&f->data.objectPath == &f->data.string);
+  assert(isAligned(m));
+  assert(&f->data.objectPath == &f->data.string);
   if (dataRemaining(m) < 4)
     return DBusInvalidData;
 
-  f->type = ObjectPathField;
+  f->type = DBusObjectPathField;
   f->data.objectPath.size = get32BitData(m);
 
   int err = _DBusProcessStringData(m,f);
@@ -295,40 +316,40 @@ int _DBusProcessObjectPath(Message* m, Field* f)
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessString(Message* m, Field* f)
+int _DBusProcessString(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
   if (dataRemaining(m) < 4)
     return DBusInvalidData;
 
-  f->type = StringField;
+  f->type = DBusStringField;
   f->data.string.size = get32BitData(m);
 
   return _DBusProcessStringData(m,f);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessSignature(Message* m, Field* f)
+int _DBusProcessSignature(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
-  ASSERT(&f->data.signature == &f->data.string);
+  assert(isAligned(m));
+  assert(&f->data.signature == &f->data.string);
   if (dataRemaining(m) < 1)
     return DBusInvalidData;
 
-  f->type = SignatureField;
+  f->type = DBusSignatureField;
   f->data.signature.size = get8BitData(m);
 
   return _DBusProcessStringData(m,f);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusNextField(Message* m, Field* f)
+int _DBusNextField(struct DBusMessage* m, struct DBusField* f)
 {
-  if (_DBusIsStackEmpty(m))
+  if (isStackEmpty(m))
   {
     return _DBusNextRootField(m,f);
   }
@@ -336,59 +357,63 @@ int _DBusNextField(Message* m, Field* f)
   {
     switch(stackTop(m)->type)
     {
-    case VariantStackEntry:
+    case _DBusVariantMessageStack:
       return _DBusNextVariantField(m,f);
-    case DictEntryStackEntry:
+    case _DBusDictEntryMessageStack:
       return _DBusNextDictEntryField(m,f);
-    case ArrayStackEntry:
+    case _DBusArrayMessageStack:
       return _DBusNextArrayField(m,f);
-    case StructStackEntry:
+    case _DBusStructMessageStack:
       return _DBusNextStructField(m,f);
     default:
-      ASSERT(false);
-      return InternalError;
+      assert(0);
+      return DBusInternalError;
     }
   }
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusNextRootField(Message* m, Field* f)
+int _DBusNextRootField(struct DBusMessage* m, struct DBusField* f)
 {
-  if (*m->signature == MessageEndField)
+  if (*m->signature == DBusMessageEndField)
     return 0;
 
   processAlignment(m);
   return _DBusProcessField(m,f);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-bool _DBusIsRootAtEnd(Message* m)
+unsigned int _DBusIsRootAtEnd(struct DBusMessage* m)
 {
-  return *m->signature == MessageEndField;
+  return *m->signature == DBusMessageEndField;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessStruct(Message* m, Field* f)
+int _DBusProcessStruct(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
 
   if (dataRemaining(m) == 0)
     return DBusInvalidData;
 
-  StackEntry* e = pushStackEntry(m);
-  e->type = StructStackEntry;
+  struct _DBusMessageStackEntry* e = pushStackEntry(m);
+  e->type = _DBusStructMessageStack;
 
   m->signature += 1; // skip over '('
+
+  f->type = DBusStructBeginField;
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusNextStructField(Message* m, Field* f)
+int _DBusNextStructField(struct DBusMessage* m, struct DBusField* f)
 {
   if (*m->signature != ')')
   {
@@ -396,43 +421,45 @@ int _DBusNextStructField(Message* m, Field* f)
     return _DBusProcessField(m,f);
   }
 
-  f->type = StructEndField;
   popStackEntry(m);
 
   m->signature += 1; // skip over ')'
 
+  f->type = DBusStructEndField;
+
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-bool _DBusIsStructAtEnd(Message* m)
+unsigned int _DBusIsStructAtEnd(struct DBusMessage* m)
 {
   return *m->signature == ')';
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessDictEntry(Message* m, Field* f)
+int _DBusProcessDictEntry(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
 
-  StackEntry* e = pushStackEntry(m);
-  e->type = DictEntryStackEntry;
+  struct _DBusMessageStackEntry* e = pushStackEntry(m);
+  e->type = _DBusDictEntryMessageStack;
   e->data.dictEntryFields = 0;
 
-  f->type = DictEntryBeginField;
-
   m->signature += 1; // skip over '{'
+
+  f->type = DBusDictEntryBeginField;
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusNextDictEntryField(Message* m, Field* f)
+int _DBusNextDictEntryField(struct DBusMessage* m, struct DBusField* f)
 {
-  StackEntry* e = stackTop(m);
+  struct _DBusMessageStackEntry* e = stackTop(m);
   if (*m->signature != '}')
   {
     processAlignment(m);
@@ -442,53 +469,55 @@ int _DBusNextDictEntryField(Message* m, Field* f)
       return _DBusProcessField(m,f);
   }
 
-  f->type = DictEntryEndField;
   popStackEntry(m);
 
   m->signature += 1; // skip over '}'
 
+  f->type = DBusDictEntryEndField;
+
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-bool _DBusIsDictEntryAtEnd(Message* m)
+unsigned int _DBusIsDictEntryAtEnd(struct DBusMessage* m)
 {
   return *m->signature == '}';
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessArray(Message* m, Field* f)
+int _DBusProcessArray(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
+  assert(isAligned(m));
   if (dataRemaining(m) < 4)
     return DBusInvalidData;
   size_t size = get32BitData(m);
 
-  if (size > MaximumArrayLength || size > dataRemaining(m))
+  if (size > DBusMaximumArrayLength || size > dataRemaining(m))
     return DBusInvalidData;
 
   m->signature += 1; // skip over 'a'
-  
+
   processAlignment(m);
 
-  StackEntry* e = pushStackEntry(m);
-  e->type = ArrayStackEntry;
+  struct _DBusMessageStackEntry* e = pushStackEntry(m);
+  e->type = _DBusArrayMessageStack;
   e->data.array.dataEnd = m->data + size;
   e->data.array.typeBegin = m->signature;
 
-  f->type = ArrayBeginField;
+  f->type = DBusArrayBeginField;
   f->data.arrayDataSize = size;
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusNextArrayField(Message* m, Field* f)
+int _DBusNextArrayField(struct DBusMessage* m, struct DBusField* f)
 {
-  StackEntry* e = stackTop(m);
+  struct _DBusMessageStackEntry* e = stackTop(m);
   if (m->data > e->data.array.dataEnd)
   {
     return DBusInvalidData;
@@ -500,48 +529,53 @@ int _DBusNextArrayField(Message* m, Field* f)
     return _DBusProcessField(m,f);
   }
 
-  f->type = ArrayEndField;
+  f->type = DBusArrayEndField;
   popStackEntry(m);
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-bool _DBusIsArrayAtEnd(Message* m)
+unsigned int _DBusIsArrayAtEnd(struct DBusMessage* m)
 {
-  StackEntry* e = stackTop(m);
+  struct _DBusMessageStackEntry* e = stackTop(m);
   return m->data >= e->data.array.dataEnd;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusProcessVariant(Message* m, Field* f)
+int _DBusProcessVariant(struct DBusMessage* m, struct DBusField* f)
 {
-  ASSERT(isAligned(m));
-  ASSERT(&f->data.variantType == &f->data.signature);
+  assert(isAligned(m));
+  assert(&f->data.variantType == &f->data.signature);
   int err = _DBusProcessSignature(m,f);
   if (err)
     return err;
 
-  StackEntry* e = pushStackEntry(m);
-  e->type = VariantStackEntry;
-  e->data.variantOldType = m->signature + 1;
+  // _DBusProcessSignature has alread filled out f->data.variantType
+  // and has consumed the field in m->signature
 
-  f->type = VariantBeginField;
-  // f->data.variantType has already been filled out by _DBusProcessSignature
+  struct _DBusMessageStackEntry* e = pushStackEntry(m);
+  e->type = _DBusVariantMessageStack;
+  e->data.variant.oldSignature = m->signature;
+  e->data.variant.seenFirst = 0;
+
+  f->type = DBusVariantBeginField;
 
   m->signature = f->data.variantType.str;
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int _DBusNextVariantField(Message* m, Field* f)
+int _DBusNextVariantField(struct DBusMessage* m, struct DBusField* f)
 {
-  StackEntry* e = stackTop(m);
-  if (m->signature == e->data.variantOldType)
+  struct _DBusMessageStackEntry* e = stackTop(m);
+  if (!e->data.variant.seenFirst)
   {
+    e->data.variant.seenFirst = 1;
     processAlignment(m);
     return _DBusProcessField(m,f);
   }
@@ -550,189 +584,260 @@ int _DBusNextVariantField(Message* m, Field* f)
     return DBusInvalidData; // there's more than one root type in the variant type
   }
 
-  m->signature = e->data.variantOldType;
-  
+  m->signature = e->data.variant.oldSignature;
+
+  popStackEntry(m);
+
+  f->type = DBusVariantEndField;
+
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-bool _DBusIsVariantAtEnd(Message* m)
+unsigned int _DBusIsVariantAtEnd(struct DBusMessage* m)
 {
   return *m->signature == '\0';
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 
 
 
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 //  Public API
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-const char* DBusMessageSignature(Message* m)
+enum DBusMessageType DBusGetMessageType(struct DBusMessage* m)
+{
+  return m->messageType;
+}
+
+// ----------------------------------------------------------------------------
+
+const char* DBusGetPath(struct DBusMessage* m, int* len)
+{
+  if (len)
+    *len = m->pathSize;
+  return m->path;
+}
+
+// ----------------------------------------------------------------------------
+
+const char* DBusGetInterface(struct DBusMessage* m, int* len)
+{
+  if (len)
+    *len = m->interfaceSize;
+  return m->interface;
+}
+
+// ----------------------------------------------------------------------------
+
+const char* DBusGetSender(struct DBusMessage* m, int* len)
+{
+  if (len)
+    *len = m->senderSize;
+  return m->sender;
+}
+
+// ----------------------------------------------------------------------------
+
+const char* DBusGetDestination(struct DBusMessage* m, int* len)
+{
+  if (len)
+    *len = m->destinationSize;
+  return m->destination;
+}
+
+// ----------------------------------------------------------------------------
+
+const char* DBusGetMember(struct DBusMessage* m, int* len)
+{
+  if (len)
+    *len = m->memberSize;
+  return m->member;
+}
+
+// ----------------------------------------------------------------------------
+
+uint32_t DBusGetSerial(struct DBusMessage* m)
+{
+  return m->serial;
+}
+
+// ----------------------------------------------------------------------------
+
+uint32_t DBusGetReplySerial(struct DBusMessage* m)
+{
+  return m->replySerial;
+}
+
+// ----------------------------------------------------------------------------
+
+const char* DBusGetSignature(struct DBusMessage* m)
 {
   return m->signature;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-bool DBusIsScopeAtEnd(Message* m, int scope)
+unsigned int DBusIsScopeAtEnd(struct DBusMessage* m, unsigned int scope)
 {
   if (stackSize(m) < scope)
   {
-    ASSERT(false);
-    return true;
+    assert(0);
+    return 1;
   }
 
   if (stackSize(m) > scope)
-    return false;
+    return 0;
 
-  if (_DBusIsStackEmpty(m))
+  if (isStackEmpty(m))
     return _DBusIsRootAtEnd(m);
 
   switch(stackTop(m)->type)
   {
-  case VariantStackEntry:
+  case _DBusVariantMessageStack:
     return _DBusIsVariantAtEnd(m);
-  case DictEntryStackEntry:
+  case _DBusDictEntryMessageStack:
     return _DBusIsDictEntryAtEnd(m);
-  case ArrayStackEntry:
+  case _DBusArrayMessageStack:
     return _DBusIsArrayAtEnd(m);
-  case StructStackEntry:
+  case _DBusStructMessageStack:
     return _DBusIsStructAtEnd(m);
   default:
-    ASSERT(false);
-    return true;
+    assert(0);
+    return 1;
   }
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeField(Message* m, Field* f)
+int DBusTakeField(struct DBusMessage* m, struct DBusField* f)
 {
-  return ::_DBusNextField(m,f);
+  return _DBusNextField(m,f);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static int takeSpecificField(Message* m, Field* f, char type)
+static int takeSpecificField(struct DBusMessage* m, struct DBusField* f, char type)
 {
-  int err = ::_DBusNextField(m, f);
+  int err = _DBusNextField(m, f);
   if (err)
     return err;
 
   if (f->type != type)
-    return InvalidArgument;
+    return DBusInvalidArgument;
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeMessageEnd(Message* m)
+int DBusTakeMessageEnd(struct DBusMessage* m)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, MessageEndField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusMessageEndField);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeUInt8(Message* m, uint8_t* data)
+int DBusTakeUInt8(struct DBusMessage* m, uint8_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, UInt8Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusUInt8Field);
   if (data)
     *data = f.data.u8;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeInt16(Message* m, int16_t* data)
+int DBusTakeInt16(struct DBusMessage* m, int16_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, Int16Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusInt16Field);
   if (data)
     *data = f.data.i16;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeUInt16(Message* m, uint16_t* data)
+int DBusTakeUInt16(struct DBusMessage* m, uint16_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, UInt16Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusUInt16Field);
   if (data)
     *data = f.data.u16;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeInt32(Message* m, int32_t* data)
+int DBusTakeInt32(struct DBusMessage* m, int32_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, Int32Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusInt32Field);
   if (data)
     *data = f.data.i32;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeUInt32(Message* m, uint32_t* data)
+int DBusTakeUInt32(struct DBusMessage* m, uint32_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, UInt32Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusUInt32Field);
   if (data)
     *data = f.data.u32;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeInt64(Message* m, int64_t* data)
+int DBusTakeInt64(struct DBusMessage* m, int64_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, Int64Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusInt64Field);
   if (data)
     *data = f.data.i64;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeUInt64(Message* m, uint64_t* data)
+int DBusTakeUInt64(struct DBusMessage* m, uint64_t* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, UInt64Field);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusUInt64Field);
   if (data)
     *data = f.data.u64;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeDouble(Message* m, double* data)
+int DBusTakeDouble(struct DBusMessage* m, double* data)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, DoubleField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusDoubleField);
   if (data)
     *data = f.data.d;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeString(Message* m, const char** str, size_t* size)
+int DBusTakeString(struct DBusMessage* m, const char** str, int* size)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, StringField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusStringField);
   if (str)
     *str = f.data.string.str;
   if (size)
@@ -740,12 +845,12 @@ int DBusTakeString(Message* m, const char** str, size_t* size)
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeObjectPath(Message* m, const char** str, size_t* size)
+int DBusTakeObjectPath(struct DBusMessage* m, const char** str, int* size)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, ObjectPathField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusObjectPathField);
   if (str)
     *str = f.data.objectPath.str;
   if (size)
@@ -753,12 +858,12 @@ int DBusTakeObjectPath(Message* m, const char** str, size_t* size)
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeSignature(Message* m, const char** str, size_t* size)
+int DBusTakeSignature(struct DBusMessage* m, const char** str, int* size)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, SignatureField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusSignatureField);
   if (str)
     *str = f.data.signature.str;
   if (size)
@@ -766,79 +871,79 @@ int DBusTakeSignature(Message* m, const char** str, size_t* size)
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeArrayBegin(Message* m, int* scope, size_t* arrayDataSize)
+int DBusTakeArrayBegin(struct DBusMessage* m, unsigned int* scope, int* arrayDataSize)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, ArrayBeginField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusArrayBeginField);
   if (scope)
-    *scope = stackSize(m);
+    *scope = (unsigned int)stackSize(m);
   if (arrayDataSize)
     *arrayDataSize = f.data.arrayDataSize;
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeArrayEnd(Message* m)
+int DBusTakeArrayEnd(struct DBusMessage* m)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, ArrayEndField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusArrayEndField);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeStructBegin(Message* m, int* scope)
+int DBusTakeStructBegin(struct DBusMessage* m, unsigned int* scope)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, StructBeginField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusStructBeginField);
   if (scope)
-    *scope = stackSize(m);
+    *scope = (unsigned int)stackSize(m);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeStructEnd(Message* m)
+int DBusTakeStructEnd(struct DBusMessage* m)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, StructEndField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusStructEndField);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeDictEntryBegin(Message* m, int* scope)
+int DBusTakeDictEntryBegin(struct DBusMessage* m, unsigned int* scope)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, DictEntryBeginField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusDictEntryBeginField);
   if (scope)
-    *scope = stackSize(m);
+    *scope = (unsigned int)stackSize(m);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeDictEntryEnd(Message* m)
+int DBusTakeDictEntryEnd(struct DBusMessage* m)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, DictEntryEndField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusDictEntryEndField);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeVariantBegin(Message* m,
-    int* scope,
+int DBusTakeVariantBegin(struct DBusMessage* m,
+    unsigned int* scope,
     const char** variantType,
-    size_t* variantTypeSize)
+    int* variantTypeSize)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, VariantBeginField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusVariantBeginField);
   if (scope)
-    *scope = stackSize(m);
+    *scope = (unsigned int)stackSize(m);
   if (variantType)
     *variantType = f.data.variantType.str;
   if (variantTypeSize)
@@ -846,14 +951,14 @@ int DBusTakeVariantBegin(Message* m,
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-int DBusTakeVariantEnd(Message* m)
+int DBusTakeVariantEnd(struct DBusMessage* m)
 {
-  Field f;
-  int err = takeSpecificField(m, &f, VariantEndField);
+  struct DBusField f;
+  int err = takeSpecificField(m, &f, DBusVariantEndField);
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 

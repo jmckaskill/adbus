@@ -1,130 +1,164 @@
+// vim: ts=2 sw=2 sts=2 et
+//
+// Copyright (c) 2009 James R. McKaskill
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+//
+// ----------------------------------------------------------------------------
+
 #include "Parser.h"
 
+#include "Message_p.h"
 #include "Misc_p.h"
+
+#include <assert.h>
 
 
 static const char kHeaderType[] = "a(yv)";
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-struct DBusParser_
+struct DBusParser
 {
-  DBusMessage         message;
+  struct DBusMessage  message;
   DBusParserCallback  callback;
   void*               callbackData;
 };
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-DBusParser* DBusCreateParser()
+struct DBusParser* DBusCreateParser()
 {
-  DBusParser* p = calloc(1, sizeof(DBusParser));
+  struct DBusParser* p = (struct DBusParser*)calloc(1, sizeof(struct DBusParser));
+  return p;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusFreeParser(DBusParser* p)
+void DBusFreeParser(struct DBusParser* p)
 {
   free(p);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static int processData(Message* m, uint8_t* data, size_t dataSize, size_t* dataUsed);
+static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed);
 
-int DBusParse(DBusParser* p, uint8_t* data, size_t dataSize, size_t* dataUsed)
+int DBusParse(struct DBusParser* p, uint8_t* data, size_t dataSize, size_t* dataUsed)
 {
-  int err = 0;
   *dataUsed = 0;
-  while(*dataUsed < dataSize)
-  {
-    err = processData(m, data + *dataUsed, dataSize, dataUsed);
-    if (err)
-      return err;
-    
-    p->callback(p->callbackData, &p->message);
-  }
+
+  int err = processData(&p->message, data + *dataUsed, dataSize, dataUsed);
+  if (err)
+    return err;
+
+  p->callback(p->callbackData, &p->message);
+
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetParserCallback(DBusParser* p, DBusParserCallback callback, void* data)
+void DBusSetParserCallback(struct DBusParser* p, DBusParserCallback callback, void* data)
 {
   p->callback     = callback;
   p->callbackData = data;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static int processHeaderFields(Message* m);
+static int processHeaderFields(struct DBusMessage* m);
 
-static int processData(Message* m, uint8_t* data, size_t dataSize, size_t* dataUsed)
+static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed)
 {
-  ASSERT(m && data && dataUsed);
+  assert(m && data && dataUsed);
 
-  if ((uintptr_t(data) % 8) != 0)
+  // Check that we have enough correct data to decode the header
+  if (((uintptr_t)data % 8) != 0)
     return DBusInvalidAlignment;
 
-  if (dataSize < sizeof(MessageHeader))
+  if (dataSize < sizeof(struct _DBusMessageExtendedHeader))
     return DBusNeedMoreData;
 
-  MessageHeader* header = reinterpret_cast<MessageHeader*>(data);
+  struct _DBusMessageHeader* header = (struct _DBusMessageHeader*)(data);
 
+  struct _DBusMessageExtendedHeader* extended =
+    (struct _DBusMessageExtendedHeader*)(data);
+
+  // Check the single byte header fields
   if (header->version != 1)
     return DBusInvalidVersion;
 
-  if (header->type == InvalidType)
+  if (header->type == DBusInvalidMessage)
     return DBusInvalidData;
 
   if (!(header->endianness == 'B' || header->endianness == 'l'))
     return DBusInvalidData;
 
-  m->nativeEndian = (header->endianness == kNativeEndianness);
+  m->messageType  = header->type;
+  m->nativeEndian = (header->endianness == _DBusNativeEndianness);
 
   // Get the non single byte fields out of the header
-  size_t length = m->nativeEndian 
-    ? header->length 
+  size_t length = m->nativeEndian
+    ? header->length
     : ENDIAN_CONVERT32(header->length);
 
-  size_t headerFieldLength = m->nativeEndian 
-    ? header->headerFieldLength 
-    : ENDIAN_CONVERT32(header->headerFieldLength);
+  size_t headerFieldLength = m->nativeEndian
+    ? extended->headerFieldLength
+    : ENDIAN_CONVERT32(extended->headerFieldLength);
 
   m->serial = m->nativeEndian
     ? header->serial
     : ENDIAN_CONVERT32(header->serial);
 
-  if (length > MaximumMessageLength)
+  if (length > DBusMaximumMessageLength)
     return DBusInvalidData;
-  if (headerFieldLength > MaximumArrayLength)
+  if (headerFieldLength > DBusMaximumArrayLength)
     return DBusInvalidData;
 
-  size_t headerSize = sizeof(MessageHeader)
+  // Figure out the amount of data being used
+  size_t headerSize = sizeof(struct _DBusMessageExtendedHeader)
                     + headerFieldLength;
 
-  headerSize += headerSize % 8;
+  headerSize = _DBUS_ALIGN_VALUE(headerSize, 8);
 
   size_t messageSize = headerSize + length;
-  size_t fullMessageSize = messageSize + messageSize % 8;
-  
-  if (dataSize < fullMessageSize)
+
+  if (dataSize < messageSize)
     return DBusNeedMoreData;
 
-  *dataUsed  += fullMessageSize;
+  *dataUsed  += messageSize;
 
-  if (header->type > MessageTypeMax)
-    return IgnoredData;
+  if (header->type > DBusMessageTypeMax)
+    return DBusSuccess;
 
   m->data    = data;
   m->dataEnd = data + messageSize;
 
+  // Process header fields
   int err = 0;
   if ((err = processHeaderFields(m)))
     return err;
 
+  // Fixups for non native endian
   if (!m->nativeEndian)
   {
     const char* oldSignature = m->signature;
@@ -132,31 +166,34 @@ static int processData(Message* m, uint8_t* data, size_t dataSize, size_t* dataU
     uint8_t* oldData = m->data;
     uint8_t* oldDataEnd = m->dataEnd;
 
-    Field f;
-    while (!err && f.type != MessageEndField)
+    struct DBusField f;
+    f.type = DBusInvalidField;
+    while (!err && f.type != DBusMessageEndField)
     {
       err = DBusTakeField(m, &f);
     }
     // Parsing through the data changes the buffer as we go through
     // we want to do this so that the user can then cast say "ai" to uint32_t[]
-    // Even though this means we parse through the data twice, it's not all 
+    // Even though this means we parse through the data twice, it's not all
     // that big a deal since if the endianness is different from ours, then
     // a different machine produced the data (and this should be minimal compared
     // to network overhead)
-    m->nativeEndian = true;
+    m->nativeEndian = 1;
 
     m->signature = oldSignature;
     m->data      = oldData;
     m->dataEnd   = oldDataEnd;
   }
+
   return err;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static int processHeaderFields(Message* m)
+static int processHeaderFields(struct DBusMessage* m)
 {
-  m->data += sizeof(MessageInitialHeader);
+  size_t offset = sizeof(struct _DBusMessageHeader);
+  m->data += offset;
 
   m->signature = "a(yv)";
   m->path = NULL;
@@ -173,112 +210,120 @@ static int processHeaderFields(Message* m)
   m->senderSize = 0;
 
   m->replySerial = 0;
-  m->haveReplySerial = false;
+  m->haveReplySerial = 0;
 
   int err = 0;
 
-  int arrayScope;
-  err = takeArrayBegin(m, &arrayScope);
+  // We can't store the signature in m->signature
+  // since that is being used to parse the fields themselves
+  const char* argumentSignature = NULL;
+
+  unsigned int arrayScope;
+  err = DBusTakeArrayBegin(m, &arrayScope, NULL);
 
   while (!err && !DBusIsScopeAtEnd(m, arrayScope))
   {
-    uint8_t fieldCode = InvalidFieldCode;
-    int variantScope;
+    uint8_t fieldCode = DBusInvalidCode;
+    unsigned int variantScope;
 
-    err = err || takeUInt8(m, &fieldCode);
-    err = err || takeVariantBegin(m, &variantScope);
+    err = err || DBusTakeStructBegin(m, NULL);
+    err = err || DBusTakeUInt8(m, &fieldCode);
+    err = err || DBusTakeVariantBegin(m, &variantScope, NULL, NULL);
 
     switch(fieldCode)
     {
 
-    case ReplySerialFieldCode:
-      err = err || takeUInt32(m, &m->replySerial);
-      m->haveReplySerial = true;
+    case DBusReplySerialCode:
+      err = err || DBusTakeUInt32(m, &m->replySerial);
+      if (!err)
+        m->haveReplySerial = 1;
       break;
 
-    case InterfaceFieldCode:
-      err = err || takeString(m, &m->interface, &m->interfaceSize);
-      if (!_DBusIsValidInterfaceName(m->interface, m->interfaceSize))
+    case DBusInterfaceCode:
+      err = err || DBusTakeString(m, &m->interface, &m->interfaceSize);
+      if (!err && !_DBusIsValidInterfaceName(m->interface, m->interfaceSize))
         err = DBusInvalidData;
       break;
-    case MemberFieldCode:
-      err = err || takeString(m, &m->member, &m->memberSize);
-      if (!_DBusIsValidMemberName(m->member, m->memberSize))
+    case DBusMemberCode:
+      err = err || DBusTakeString(m, &m->member, &m->memberSize);
+      if (!err && !_DBusIsValidMemberName(m->member, m->memberSize))
         err = DBusInvalidData;
       break;
-    case DestinationFieldCode:
-      err = err || takeString(m, &m->destination, &m->destinationSize);
-      if (!_DBusIsValidBusName(m->destination, m->destinationSize))
+    case DBusDestinationCode:
+      err = err || DBusTakeString(m, &m->destination, &m->destinationSize);
+      if (!err && !_DBusIsValidBusName(m->destination, m->destinationSize))
         err = DBusInvalidData;
       break;
-    case SenderFieldCode:
-      err = err || takeString(m, &m->sender, &m->senderSize);
-      if (!_DBusIsValidBusName(m->sender, m->senderSize))
+    case DBusSenderCode:
+      err = err || DBusTakeString(m, &m->sender, &m->senderSize);
+      if (!err && !_DBusIsValidBusName(m->sender, m->senderSize))
         err = DBusInvalidData;
       break;
 
-    case PathFieldCode:
-      err = err || takeObjectPath(m, &m->path, &m->pathSize);
+    case DBusPathCode:
+      err = err || DBusTakeObjectPath(m, &m->path, &m->pathSize);
       break;
-    case ErrorNameFieldCode:
-      err = err || takeString(m, &m->errorName, &m->errorNameSize);
+    case DBusErrorNameCode:
+      err = err || DBusTakeString(m, &m->errorName, &m->errorNameSize);
       break;
-    case SignatureFieldCode:
-      err = err || takeString(m, &m->signature);
+    case DBusSignatureCode:
+      err = err || DBusTakeSignature(m, &argumentSignature, NULL);
       break;
 
-    case InvalidFieldCode:
+    case DBusInvalidCode:
       err = DBusInvalidData;
       break;
 
     default:
       while (!err && !DBusIsScopeAtEnd(m, variantScope))
-        err = DBusTakeField(m);
+        err = DBusTakeField(m, NULL);
       break;
     }
 
-    err = err || takeVariantEnd(m);
+    err = err || DBusTakeVariantEnd(m);
+    err = err || DBusTakeStructEnd(m);
   }
 
-  err = err || takeArrayEnd(m);
+  err = err || DBusTakeArrayEnd(m);
 
   if (err)
     return err;
 
   switch(m->messageType)
   {
-  case MethodCallType:
+  case DBusMethodCallMessage:
     if (!m->path || !m->member)
       return DBusInvalidData;
     break;
 
-  case MethodReturnType:
+  case DBusMethodReturnMessage:
     if (!m->haveReplySerial)
       return DBusInvalidData;
     break;
 
-  case ErrorType:
+  case DBusErrorMessage:
     if (!m->haveReplySerial || !m->errorName)
       return DBusInvalidData;
     break;
 
-  case SignalType:
+  case DBusSignalMessage:
     if (!m->path || !m->interface || !m->member)
       return DBusInvalidData;
     break;
 
   default:
     // message type should've already been checked
-    ASSERT(false);
+    assert(0);
     return DBusInvalidData;
   }
 
+  m->signature = argumentSignature;
   if (!m->signature)
     m->signature = "";
 
   return 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 

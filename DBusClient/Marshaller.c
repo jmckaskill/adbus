@@ -1,14 +1,42 @@
+// vim: ts=2 sw=2 sts=2 et
+//
+// Copyright (c) 2009 James R. McKaskill
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+//
+// ----------------------------------------------------------------------------
+
 #include "Marshaller.h"
 
 #include "Misc_p.h"
 
+#include <assert.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
 
 
 
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
 enum StackEntryType
 {
@@ -33,7 +61,7 @@ struct VariantStackData
 
 struct StackEntry
 {
-  StackEntryType type;
+  enum StackEntryType type;
 
   union
   {
@@ -42,11 +70,11 @@ struct StackEntry
   }d;
 };
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-struct DBusMarshaller_
+struct DBusMarshaller
 {
   uint8_t*            h;
   size_t              hsize;
@@ -65,71 +93,71 @@ struct DBusMarshaller_
 
 
 #define GROW_HEADER(marshaller, newsize)  \
-  ALLOC_GROW(m->h, newsize, m->halloc); \
+  ALLOC_GROW(uint8_t, m->h, newsize, m->halloc); \
   memset(&m->h[m->hsize], 0, newsize - m->hsize); \
   m->hsize = newsize
 
 #define GROW_ARGUMENTS(m, newsize)  \
-  ALLOC_GROW(m->a, newsize, mr->aalloc); \
+  ALLOC_GROW(uint8_t, m->a, newsize, m->aalloc); \
   memset(&m->a[m->asize], 0, newsize - m->asize); \
   m->asize = newsize
 
-#define HEADER(marshaller) ((struct MessageHeader*)((marshaller)->h))
+#define HEADER(marshaller) ((struct _DBusMessageHeader*)((marshaller)->h))
+#define EXHEADER(marshaller) ((struct _DBusMessageExtendedHeader*)((marshaller)->h))
 
-static StackEntry* stackTop(DBusMarshaller* m)
+static struct StackEntry* stackTop(struct DBusMarshaller* m)
 {
   return &m->stack[m->stackSize - 1];
 }
 
-static StackEntry* stackPush(DBusMarshaller* m)
+static struct StackEntry* stackPush(struct DBusMarshaller* m)
 {
-  ALLOC_GROW(m->stack, m->stackSize + 1, m->stackAlloc);
+  ALLOC_GROW(struct StackEntry, m->stack, m->stackSize + 1, m->stackAlloc);
   memset(&m->stack[m->stackSize], 0, sizeof(struct StackEntry));
   m->stackSize++;
   return stackTop(m);
 }
 
-static void stackPop(DBusMarshaller* m)
+static void stackPop(struct DBusMarshaller* m)
 {
   m->stackSize--;
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-DBusMarshaller* DBusCreateMarshaller()
+struct DBusMarshaller* DBusCreateMarshaller()
 {
-  DBusMarshaller* ret = new Marshaller;
-  memset(ret, 0, sizeof(Marshaller));
-  clearMarshaller(ret);
+  struct DBusMarshaller* ret = (struct DBusMarshaller*)calloc(1, sizeof(struct DBusMarshaller));
+  DBusClearMarshaller(ret);
   return ret;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusClearMarshaller(DBusMarshaller* m)
+void DBusClearMarshaller(struct DBusMarshaller* m)
 {
-  GROW_HEADER(m, sizeof(struct MessageHeader));
-  HEADER(m)->endianness = kNativeEndianness;
-  HEADER(m)->type = InvalidType;
+  m->asize = 0;
+  m->hsize = 0;
+  m->stackSize = 0;
+
+  m->typeSizeOffset = 0;
+  m->type = NULL;
+
+  GROW_HEADER(m, sizeof(struct _DBusMessageExtendedHeader));
+  HEADER(m)->endianness = _DBusNativeEndianness;
+  HEADER(m)->type = DBusInvalidMessage;
   HEADER(m)->flags = 0;
   HEADER(m)->version = 1;
   HEADER(m)->length = 0;
   HEADER(m)->serial = 0;
-  HEADER(m)->headerFieldLength = 0;
-
-  m->asize = 0;
-  m->hsize = 0;
-  m->stack.size = 0;
-
-  m->typeSizeOffset = 0;
-  m->type = NULL;
+  EXHEADER(m)->headerFieldLength = 0;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusFreeMarshaller(DBusMarshaller* m)
+void DBusFreeMarshaller(struct DBusMarshaller* m)
 {
   free(m->a);
   free(m->h);
@@ -137,62 +165,90 @@ void DBusFreeMarshaller(DBusMarshaller* m)
   free(m);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetCallback(DBusMarshaller* m, DBusSendCallback callback, void* userData)
+void DBusSetSendCallback(struct DBusMarshaller* m, DBusSendCallback callback, void* userData)
 {
   m->callback = callback;
   m->callbackData = userData;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSendMessage(DBusMarshaller* m)
+void DBusSendMessage(struct DBusMarshaller* m)
 {
   if (!m->callback)
     return;
-  
-  ASSERT_RETURN(*m->type == '\0');
-  if (*m->type != '\0')
-    return;
 
-  ASSERT_RETURN(m->stack.size == 0);
-  if (m->stack.size > 0)
-    return;
+  ASSERT_RETURN(m->type == NULL || *m->type == '\0');
+  ASSERT_RETURN(m->stackSize == 0);
 
+
+  // Fill out header field size field
+  size_t headerFieldBegin = sizeof(struct _DBusMessageExtendedHeader);
+  headerFieldBegin = _DBUS_ALIGN_VALUE(headerFieldBegin, 8);
+  size_t headerFieldEnd = m->hsize;
+
+  size_t headerFieldSize = 0;
+  // begin can be greater than end if there are no fields since begin would
+  // then be aligned but end is not
+  if (headerFieldEnd > headerFieldBegin)
+    headerFieldSize = headerFieldEnd - headerFieldBegin;
+
+  EXHEADER(m)->headerFieldLength = headerFieldSize;
+
+
+  // Copy over arguments and fill out arg length
   size_t headerEnd = m->hsize;
-  GROW_HEADER(m, m->hsize + m->asize);
+  headerEnd = _DBUS_ALIGN_VALUE(headerEnd, 8);
+
+  GROW_HEADER(m, headerEnd + m->asize);
 
   memcpy(&m->h[headerEnd], m->a, m->asize);
+  HEADER(m)->length = (uint32_t)m->asize;
 
-  HEADER(m)->length = m->asize;
 
+  // Send data off
   m->callback(m->callbackData, m->h, m->hsize);
 
-  clearMarshaller(m);
+  DBusClearMarshaller(m);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetMessageType(DBusMarshaller* m, MessageType type)
+void DBusSetMessageType(struct DBusMarshaller* m, enum DBusMessageType type)
 {
   HEADER(m)->type = type;
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void setUInt32HeaderField(DBusMarshaller* m, HeaderFieldCode type, uint32_t data)
+void DBusSetSerial(struct DBusMarshaller* m, uint32_t serial)
+{
+  HEADER(m)->serial = serial;
+}
+
+// ----------------------------------------------------------------------------
+
+void DBusSetFlags(struct DBusMarshaller* m, int flags)
+{
+  HEADER(m)->flags = (uint8_t) flags;
+}
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+static void setUInt32HeaderField(struct DBusMarshaller* m, enum DBusHeaderFieldCode type, uint32_t data)
 {
   size_t typei, datai;
 
   size_t needed = m->hsize;
-  needed += needed % 8;   // pad to structure
-  typei = needed;     
+  needed  = _DBUS_ALIGN_VALUE(needed, 8);   // pad to structure
+  typei = needed;
   needed += 1;            // field type
   needed += 3;            // field variant type
-  needed += needed % 4;   // pad to data
+  needed  = _DBUS_ALIGN_VALUE(needed, 4);   // pad to data
   datai = needed;
   needed += 4;
 
@@ -203,15 +259,17 @@ static void setUInt32HeaderField(DBusMarshaller* m, HeaderFieldCode type, uint32
 
   typep[0] = type;
   typep[1] = 1;
-  typep[2] = UInt32Field;
+  typep[2] = DBusUInt32Field;
   typep[3] = '\0';
 
   datap[0] = data;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void setStringHeaderField(DBusMarshaller* m, HeaderFieldCode type,
+static void setStringHeaderField(struct DBusMarshaller* m, 
+                                 enum DBusHeaderFieldCode code,
+                                 enum DBusFieldType field,
                                  const char* str, size_t size)
 {
   if (size < 0)
@@ -220,11 +278,11 @@ static void setStringHeaderField(DBusMarshaller* m, HeaderFieldCode type,
   size_t typei, stringi;
 
   size_t needed = m->hsize;
-  needed += needed % 8;   // pad to structure
-  typei = needed;
+  needed  = _DBUS_ALIGN_VALUE(needed, 8);   // pad to structure
+  typei   = needed;
   needed += 1;            // field type
   needed += 3;            // field variant type
-  needed += needed % 4;   // pad to length
+  needed  = _DBUS_ALIGN_VALUE(needed, 4);   // pad to length
   stringi = needed;
   needed += 4 + size + 1; // string len + string + null
 
@@ -234,88 +292,88 @@ static void setStringHeaderField(DBusMarshaller* m, HeaderFieldCode type,
   uint32_t* sizep = (uint32_t*)&m->h[stringi];
   uint8_t* stringp = (uint8_t*)&m->h[stringi + 4];
 
-  typep[0] = type;
+  typep[0] = code;
   typep[1] = 1;
-  typep[2] = 's';
+  typep[2] = field;
   typep[3] = '\0';
 
-  sizep[0] = size;
+  sizep[0] = (uint32_t)size;
 
   memcpy(stringp, str, size);
   stringp[size] = '\0';
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetReplySerial(DBusMarshaller* m, uint32_t reply)
+void DBusSetReplySerial(struct DBusMarshaller* m, uint32_t reply)
 {
   ASSERT_RETURN(!m->type);
-  setUInt32HeaderField(m, ReplySerialFieldCode, reply);
+  setUInt32HeaderField(m, DBusReplySerialCode, reply);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetPath(DBusMarshaller* m, const char* path, int size)
+void DBusSetPath(struct DBusMarshaller* m, const char* path, int size)
 {
   ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, PathFieldCode, path, size);
+  setStringHeaderField(m, DBusPathCode, DBusObjectPathField, path, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetInterface(DBusMarshaller* m, const char* interface, int size)
+void DBusSetInterface(struct DBusMarshaller* m, const char* interface, int size)
 {
   ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, InterfaceFieldCode, interface, size);
+  setStringHeaderField(m, DBusInterfaceCode, DBusStringField, interface, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetMember(DBusMarshaller* m, const char* member, int size)
+void DBusSetMember(struct DBusMarshaller* m, const char* member, int size)
 {
   ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, MemberFieldCode, member, size);
+  setStringHeaderField(m, DBusMemberCode, DBusStringField, member, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetErrorName(DBusMarshaller* m, const char* errorName, int size)
+void DBusSetErrorName(struct DBusMarshaller* m, const char* errorName, int size)
 {
   ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ErrorNameFieldCode, errorName, size);
+  setStringHeaderField(m, DBusErrorNameCode, DBusStringField, errorName, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetDestination(DBusMarshaller* m, const char* destination, int size)
+void DBusSetDestination(struct DBusMarshaller* m, const char* destination, int size)
 {
   ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, DestinationFieldCode, destination, size);
+  setStringHeaderField(m, DBusDestinationCode, DBusStringField, destination, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusSetSender(DBusMarshaller* m, const char* sender, int size)
+void DBusSetSender(struct DBusMarshaller* m, const char* sender, int size)
 {
   ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, SenderFieldCode, sender, size);
+  setStringHeaderField(m, DBusSenderCode, DBusStringField, sender, size);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendField(DBusMarshaller* m);
+static void appendField(struct DBusMarshaller* m);
 
-#define APPEND_FIXED_SIZE_FIELD(m, fieldtype, data) \
+#define APPEND_FIXED_SIZE_FIELD(m, fieldtype, DataType, data) \
 { \
   ASSERT_RETURN(*m->type == fieldtype); \
   size_t index = m->asize;  \
-  index += index % sizeof(data); \
+  index = _DBUS_ALIGN_VALUE(index, sizeof(data)); \
   \
   GROW_ARGUMENTS(m, index + sizeof(data)); \
   \
-  T* pdata = (T*)&m->a[index];  \
+  DataType* pdata = (DataType*)&m->a[index];  \
   *pdata = data;  \
   \
   m->type++;  \
@@ -323,44 +381,44 @@ static void appendField(DBusMarshaller* m);
   appendField(m); \
 }
 
-void DBusAppendBoolean(DBusMarshaller* m, uint32_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, BooleanField, data ? 1 : 0); }
+void DBusAppendBoolean(struct DBusMarshaller* m, uint32_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusBooleanField, uint32_t, data ? 1 : 0); }
 
-void DBusAppendUInt8(DBusMarshaller* m, uint8_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, UInt8Field, data); }
+void DBusAppendUInt8(struct DBusMarshaller* m, uint8_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusUInt8Field, uint8_t, data); }
 
-void DBusAppendInt16(DBusMarshaller* m, int16_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, Int16Field, data); }
+void DBusAppendInt16(struct DBusMarshaller* m, int16_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusInt16Field, int16_t, data); }
 
-void DBusAppendUInt16(DBusMarshaller* m, uint16_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, UInt16Field, data); }
+void DBusAppendUInt16(struct DBusMarshaller* m, uint16_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusUInt16Field, uint16_t, data); }
 
-void DBusAppendInt32(DBusMarshaller* m, int32_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, Int32Field, data); }
+void DBusAppendInt32(struct DBusMarshaller* m, int32_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusInt32Field, int32_t, data); }
 
-void DBusAppendUInt32(DBusMarshaller* m, uint32_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, UInt32Field, data); }
+void DBusAppendUInt32(struct DBusMarshaller* m, uint32_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusUInt32Field, uint32_t, data); }
 
-void DBusAppendInt64(DBusMarshaller* m, int64_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, Int64Field, data); }
+void DBusAppendInt64(struct DBusMarshaller* m, int64_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusInt64Field, int64_t, data); }
 
-void DBusAppendUInt64(DBusMarshaller* m, uint64_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, UInt64Field, data); }
+void DBusAppendUInt64(struct DBusMarshaller* m, uint64_t data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusUInt64Field, uint64_t, data); }
 
-void DBusAppendDouble(DBusMarshaller* m, double data)
-{ APPEND_FIXED_SIZE_FIELD(m, DoubleField, data); }
+void DBusAppendDouble(struct DBusMarshaller* m, double data)
+{ APPEND_FIXED_SIZE_FIELD(m, DBusDoubleField, double, data); }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendLongString(DBusMarshaller* m, const char* str, int size)
+static void appendLongString(struct DBusMarshaller* m, const char* str, int size)
 {
   if (size < 0)
-    size = strlen(str);
+    size = (int)strlen(str);
 
   size_t index = m->asize;
-  index += index % 4;
+  index += _DBUS_ALIGN_VALUE(index, 4);
 
   GROW_ARGUMENTS(m, index + 4 + size + 1);
 
@@ -376,30 +434,30 @@ static void appendLongString(DBusMarshaller* m, const char* str, int size)
   appendField(m);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusAppendString(DBusMarshaller* m, const char* str, int size)
+void DBusAppendString(struct DBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(*m->type == StringField);
+  ASSERT_RETURN(*m->type == DBusStringField);
   appendLongString(m, str, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusAppendObjectPath(DBusMarshaller* m, const char* str, int size)
+void DBusAppendObjectPath(struct DBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(*m->type == ObjectPathField);
+  ASSERT_RETURN(*m->type == DBusObjectPathField);
   appendLongString(m, str, size);
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusAppendSignature(DBusMarshaller* m, const char* str, int size)
+void DBusAppendSignature(struct DBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(*m->type == SignatureField);
+  ASSERT_RETURN(*m->type == DBusSignatureField);
 
   if (size < 0)
-    size = strlen(str);
+    size = (int)strlen(str);
 
   ASSERT_RETURN(size <= 256);
 
@@ -418,28 +476,28 @@ void DBusAppendSignature(DBusMarshaller* m, const char* str, int size)
   appendField(m);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusBeginArgument(DBusMarshaller* m, const char* type, int typeSize)
+void DBusBeginArgument(struct DBusMarshaller* m, const char* type, int typeSize)
 {
   ASSERT_RETURN(m->type == NULL || *m->type);
-  ASSERT_RETURN(m->stack.size == 0);
+  ASSERT_RETURN(m->stackSize == 0);
 
   if (typeSize < 0)
-    typeSize = strlen(type);
+    typeSize = (int)strlen(type);
 
   if (!m->typeSizeOffset)
   {
     size_t typei, stringi;
 
     size_t needed = m->hsize;
-    needed += needed % 8;   // pad to structure
-    typei = needed;     
+    needed  = _DBUS_ALIGN_VALUE(needed, 8);   // pad to structure
+    typei = needed;
     needed += 1;            // field type
     needed += 3;            // field variant type
-    needed += needed % 4;   // pad to length
+    needed  = _DBUS_ALIGN_VALUE(needed, 4);   // pad to length
     stringi = needed;
     needed += 4 + 1;        // string len + null
 
@@ -449,7 +507,7 @@ void DBusBeginArgument(DBusMarshaller* m, const char* type, int typeSize)
     uint32_t* sizep = (uint32_t*)&m->h[stringi];
     uint8_t* stringp = (uint8_t*)&m->h[stringi + 4];
 
-    typep[0] = SignatureFieldCode;
+    typep[0] = DBusSignatureCode;
     typep[1] = 1;
     typep[2] = 's';
     typep[3] = '\0';
@@ -482,42 +540,42 @@ void DBusBeginArgument(DBusMarshaller* m, const char* type, int typeSize)
   m->type = (char*)&m->h[stringi];
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendArgumentChild(DBusMarshaller* m)
+static void appendArgumentChild(struct DBusMarshaller* m)
 {
   // Each arugment should only be one complete type
   ASSERT_RETURN(*m->type == '\0');
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusEndArgument(DBusMarshaller* m)
+void DBusEndArgument(struct DBusMarshaller* m)
 {
   ASSERT_RETURN(*m->type == '\0');
-  ASSERT_RETURN(m->stack.size == 0);
+  ASSERT_RETURN(m->stackSize == 0);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusBeginArray(DBusMarshaller* m)
+void DBusBeginArray(struct DBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == ArrayBeginField);
+  ASSERT_RETURN(*m->type == DBusArrayBeginField);
 
   m->type++;
 
   size_t dataIndex;
   size_t needed = m->asize;
-  needed += needed % 4;
+  needed  = _DBUS_ALIGN_VALUE(needed, 4);
   dataIndex = needed;
   needed += 4;
-  needed += needed % requiredAlignment(FieldType(*m->type));
+  needed  = _DBUS_ALIGN_VALUE(needed, _DBusRequiredAlignment(*m->type));
 
   GROW_ARGUMENTS(m, needed);
 
-  StackEntry* s = stackPush(m);
+  struct StackEntry* s = stackPush(m);
   s->type = ArrayStackEntry;
   s->d.array.dataIndex = dataIndex;
   s->d.array.dataBegin = needed;
@@ -525,58 +583,58 @@ void DBusBeginArray(DBusMarshaller* m)
 
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendArrayChild(DBusMarshaller* m)
+static void appendArrayChild(struct DBusMarshaller* m)
 {
-  StackEntry* s = stackTop(m);
+  struct StackEntry* s = stackTop(m);
   m->type = s->d.array.typeBegin;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusEndArray(DBusMarshaller* m)
+void DBusEndArray(struct DBusMarshaller* m)
 {
-  StackEntry* s = stackTop(m);
+  struct StackEntry* s = stackTop(m);
   uint32_t* psize = (uint32_t*)&m->a[s->d.array.dataIndex];
-  *psize = m->asize - s->d.array.dataBegin;
-  ASSERT_RETURN(*psize < MaximumArrayLength);
+  *psize = (uint32_t)(m->asize - s->d.array.dataBegin);
+  ASSERT_RETURN(*psize < DBusMaximumArrayLength);
 
   stackPop(m);
 
   appendField(m);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusBeginStruct(DBusMarshaller* m)
+void DBusBeginStruct(struct DBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == StructBeginField);
+  ASSERT_RETURN(*m->type == DBusStructBeginField);
 
   m->type++;
 
   size_t needed = m->asize;
-  needed += needed % 8;
+  needed = _DBUS_ALIGN_VALUE(needed, 8);
   GROW_ARGUMENTS(m, needed);
 
-  StackEntry* s = stackPush(m);
+  struct StackEntry* s = stackPush(m);
   s->type = StructStackEntry;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendStructChild(DBusMarshaller* m)
+static void appendStructChild(struct DBusMarshaller* m)
 {
   // Nothing to do
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusEndStruct(DBusMarshaller* m)
+void DBusEndStruct(struct DBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == StructEndField);
+  ASSERT_RETURN(*m->type == DBusStructEndField);
 
   m->type++;
 
@@ -585,36 +643,36 @@ void DBusEndStruct(DBusMarshaller* m)
   appendField(m);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusBeginDictEntry(DBusMarshaller* m)
+void DBusBeginDictEntry(struct DBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == DictEntryBeginField);
+  ASSERT_RETURN(*m->type == DBusDictEntryBeginField);
 
   m->type++;
 
   size_t needed = m->asize;
-  needed += needed % 8;
+  needed = _DBUS_ALIGN_VALUE(needed, 8);
   GROW_ARGUMENTS(m, needed);
 
-  StackEntry* s = stackPush(m);
+  struct StackEntry* s = stackPush(m);
   s->type = DictEntryStackEntry;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendDictEntryChild(DBusMarshaller* m)
+static void appendDictEntryChild(struct DBusMarshaller* m)
 {
   // Nothing to do
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusEndDictEntry(DBusMarshaller* m)
+void DBusEndDictEntry(struct DBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == DictEntryEndField);
+  ASSERT_RETURN(*m->type == DBusDictEntryEndField);
 
   m->type++;
 
@@ -623,13 +681,13 @@ void DBusEndDictEntry(DBusMarshaller* m)
   appendField(m);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusBeginVariant(DBusMarshaller* m, const char* type)
+void DBusBeginVariant(struct DBusMarshaller* m, const char* type)
 {
-  ASSERT_RETURN(*m->type == VariantBeginField);
+  ASSERT_RETURN(*m->type == DBusVariantBeginField);
 
   size_t typeSize = strlen(type);
 
@@ -646,31 +704,31 @@ void DBusBeginVariant(DBusMarshaller* m, const char* type)
   uint8_t* psize = &m->a[index];
   char* pstr = (char*)(psize + 1);
 
-  *psize = typeSize;
+  *psize = (uint8_t)typeSize;
   memcpy(pstr, type, typeSize);
   pstr[typeSize] = '\0';
 
   // Setup stack entry
-  StackEntry* s = stackPush(m);
+  struct StackEntry* s = stackPush(m);
   s->type = VariantStackEntry;
   s->d.variant.oldType = m->type;
 
   m->type = type;
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendVariantChild(DBusMarshaller* m)
+static void appendVariantChild(struct DBusMarshaller* m)
 {
   // Nothing to do
 }
 
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void DBusEndVariant(DBusMarshaller* m)
+void DBusEndVariant(struct DBusMarshaller* m)
 {
   ASSERT_RETURN(*m->type == '\0');
-  StackEntry* s = stackTop(m);
+  struct StackEntry* s = stackTop(m);
   m->type = s->d.variant.oldType;
 
   stackPop(m);
@@ -678,15 +736,15 @@ void DBusEndVariant(DBusMarshaller* m)
   appendField(m);
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static void appendField(DBusMarshaller* m)
+static void appendField(struct DBusMarshaller* m)
 {
-  if (m->stack.size == 0)
+  if (m->stackSize == 0)
     return appendArgumentChild(m);
-  
+
   switch(stackTop(m)->type)
   {
   case ArrayStackEntry:
@@ -700,6 +758,6 @@ static void appendField(DBusMarshaller* m)
   }
 }
 
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
