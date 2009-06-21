@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="DBusClient"
+	Name="adbus"
 	ProjectGUID="{1EA4434B-331C-4917-A28A-D445C3649BE1}"
-	RootNamespace="DBusClient"
+	RootNamespace="adbus"
 	>
 	<Platforms>
 		<Platform

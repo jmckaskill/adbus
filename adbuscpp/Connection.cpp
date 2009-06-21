@@ -29,17 +29,17 @@
 
 #include <assert.h>
 
-using namespace DBus;
+using namespace adbus;
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 
-class InvalidPathError : public DBus::Error
+class InvalidPathError : public adbus::Error
 {
 public:
   virtual const char* errorName()const
-  { return "nz.co.foobar.DBus.InvalidPath"; }
+  { return "nz.co.foobar.ADBus.InvalidPath"; }
   virtual const char* errorMessage()const
   { return "Path not found"; }
 };
@@ -53,15 +53,15 @@ Connection::Connection()
     m_NextSerial(1),
     m_Connected(false)
 {
-  m_Parser = DBusCreateParser();
-  DBusSetParserCallback(m_Parser, &Connection::parserCallback, (void*)this);
+  m_Parser = ADBusCreateParser();
+  ADBusSetParserCallback(m_Parser, &Connection::parserCallback, (void*)this);
 
   m_BusFactory.setConnection(this);
-  m_BusFactory.setService("org.freedesktop.DBus");
-  m_BusFactory.setPath("/org/freedesktop/DBus");
-  m_BusFactory.setInterface("org.freedesktop.DBus");
+  m_BusFactory.setService("org.freedesktop.adbus");
+  m_BusFactory.setPath("/org/freedesktop/adbus");
+  m_BusFactory.setInterface("org.freedesktop.adbus");
 
-  m_ErrorMarshaller = DBusCreateMarshaller();
+  m_ErrorMarshaller = ADBusCreateMarshaller();
 }
 
 //-----------------------------------------------------------------------------
@@ -71,8 +71,8 @@ Connection::~Connection()
   Objects::iterator oi;
   for (oi = m_Objects.begin(); oi != m_Objects.end(); ++oi)
     delete oi->second;
-  DBusFreeParser(m_Parser);
-  DBusFreeMarshaller(m_ErrorMarshaller);
+  ADBusFreeParser(m_Parser);
+  ADBusFreeMarshaller(m_ErrorMarshaller);
 }
 
 //-----------------------------------------------------------------------------
@@ -87,7 +87,7 @@ Object* Connection::addObject(const char* name, int size)
   o->setName(name, size);
   m_Objects[o->name()] = o;
 
-  ObjectInterface* introspect = o->addInterface("org.freedesktop.DBus.Introspectable");
+  ObjectInterface* introspect = o->addInterface("org.freedesktop.adbus.Introspectable");
   introspect->addMethod("Introspect", &Object::introspect, o)
             ->addReturn("data", "s");
 
@@ -150,7 +150,7 @@ std::string Connection::introspectObject(const std::string& objectName)const
 
 //-----------------------------------------------------------------------------
 
-void Connection::setSendCallback(DBusSendCallback callback, void* callbackData)
+void Connection::setSendCallback(ADBusSendCallback callback, void* callbackData)
 {
   m_Callback = callback;
   m_CallbackData = callbackData;
@@ -160,18 +160,18 @@ void Connection::setSendCallback(DBusSendCallback callback, void* callbackData)
 
 int Connection::appendInputData(uint8_t* data, size_t size)
 {
-  return DBusParse(m_Parser, data, size);
+  return ADBusParse(m_Parser, data, size);
 }
 
 //-----------------------------------------------------------------------------
 
-void Connection::dispatchSignal(DBusMessage* message)
+void Connection::dispatchSignal(ADBusMessage* message)
 {
-  DBusMessageType type  = DBusGetMessageType(message);
-  const char* sender    = DBusGetSender(message, NULL);
-  const char* path      = DBusGetPath(message, NULL);
-  const char* interface = DBusGetInterface(message, NULL);
-  const char* member    = DBusGetMember(message, NULL);
+  ADBusMessageType type  = ADBusGetMessageType(message);
+  const char* sender    = ADBusGetSender(message, NULL);
+  const char* path      = ADBusGetPath(message, NULL);
+  const char* interface = ADBusGetInterface(message, NULL);
+  const char* member    = ADBusGetMember(message, NULL);
 
   Registrations::iterator ii;
   for (ii = m_Signals.begin(); ii != m_Signals.end(); ++ii)
@@ -195,12 +195,12 @@ void Connection::dispatchSignal(DBusMessage* message)
 
 //-----------------------------------------------------------------------------
 
-void Connection::dispatchMethodCall(DBusMessage* message)
+void Connection::dispatchMethodCall(ADBusMessage* message)
 {
   try
   {
     int pathLen;
-    const char* path = DBusGetPath(message, &pathLen);
+    const char* path = ADBusGetPath(message, &pathLen);
     if (!path)
       throw InvalidPathError();
 
@@ -211,39 +211,39 @@ void Connection::dispatchMethodCall(DBusMessage* message)
 
     oi->second->callMethod(message);
   }
-  catch(DBus::Error& e)
+  catch(adbus::Error& e)
   {
-    DBusMarshaller* m = m_ErrorMarshaller;
-    DBusClearMarshaller(m);
+    ADBusMarshaller* m = m_ErrorMarshaller;
+    ADBusClearMarshaller(m);
     setupMarshaller(m);
-    DBusSetMessageType(m, DBusErrorMessage);
-    DBusSetErrorName(m, e.errorName(), -1);
-    DBusSetReplySerial(m, DBusGetSerial(message));
+    ADBusSetMessageType(m, ADBusErrorMessage);
+    ADBusSetErrorName(m, e.errorName(), -1);
+    ADBusSetReplySerial(m, ADBusGetSerial(message));
     const char* msg = e.errorMessage();
     if (msg && *msg != '\0')
-      DBusAppendString(m, msg, -1);
-    DBusSendMessage(m);
+      ADBusAppendString(m, msg, -1);
+    ADBusSendMessage(m);
   }
 }
 
 //-----------------------------------------------------------------------------
 
-void Connection::dispatchMethodReturn(DBusMessage* message)
+void Connection::dispatchMethodReturn(ADBusMessage* message)
 {
-  uint32_t serial = DBusGetReplySerial(message);
+  uint32_t serial = ADBusGetReplySerial(message);
   Registrations::iterator ii = m_Returns.find(serial);
 
   // MethodReturn and Error messages can not be responded to, so any errors we
   // should just ignore
-  if (ii == m_Returns.end() || ii->second.type != DBusMethodReturnMessage)
+  if (ii == m_Returns.end() || ii->second.type != ADBusMethodReturnMessage)
     return;
 
-  DBusMessageType type = DBusGetMessageType(message);
-  if (type == DBusMethodReturnMessage && ii->second.slot)
+  ADBusMessageType type = ADBusGetMessageType(message);
+  if (type == ADBusMethodReturnMessage && ii->second.slot)
   {
     ii->second.slot->triggered(message);
   }
-  else if (type == DBusErrorMessage && ii->second.errorSlot)
+  else if (type == ADBusErrorMessage && ii->second.errorSlot)
   {
     ii->second.errorSlot->triggered(message);
   }
@@ -256,19 +256,19 @@ void Connection::dispatchMethodReturn(DBusMessage* message)
 
 //-----------------------------------------------------------------------------
 
-void Connection::parserCallback(void* connection, DBusMessage* message)
+void Connection::parserCallback(void* connection, ADBusMessage* message)
 {
   Connection* c = reinterpret_cast<Connection*>(connection);
-  DBusMessageType type = DBusGetMessageType(message);
+  ADBusMessageType type = ADBusGetMessageType(message);
   {
     switch(type)
     {
-    case DBusMethodCallMessage:
+    case ADBusMethodCallMessage:
       return c->dispatchMethodCall(message);
-    case DBusMethodReturnMessage:
-    case DBusErrorMessage:
+    case ADBusMethodReturnMessage:
+    case ADBusErrorMessage:
       return c->dispatchMethodReturn(message);
-    case DBusSignalMessage:
+    case ADBusSignalMessage:
       return c->dispatchSignal(message);
     default:
       assert(false);
@@ -298,14 +298,14 @@ void Connection::onHello(const char* uniqueName)
 
 //-----------------------------------------------------------------------------
 
-void Connection::setupMarshaller(DBusMarshaller* marshaller, uint32_t serial, int flags)
+void Connection::setupMarshaller(ADBusMarshaller* marshaller, uint32_t serial, int flags)
 {
-  DBusClearMarshaller(marshaller);
-  DBusSetSendCallback(marshaller, m_Callback, m_CallbackData);
+  ADBusClearMarshaller(marshaller);
+  ADBusSetSendCallback(marshaller, m_Callback, m_CallbackData);
   if (serial == 0)
     serial = m_NextSerial++;
-  DBusSetSerial(marshaller, serial);
-  DBusSetFlags(marshaller, flags);
+  ADBusSetSerial(marshaller, serial);
+  ADBusSetFlags(marshaller, flags);
 }
 
 //-----------------------------------------------------------------------------
@@ -318,9 +318,9 @@ uint32_t Connection::addRegistration(MessageRegistration* registration)
   if (copy.errorSlot)
     copy.slot = copy.errorSlot->clone();
   uint32_t serial = m_NextSerial++;
-  if (copy.type == DBusMethodReturnMessage)
+  if (copy.type == ADBusMethodReturnMessage)
     m_Returns[serial] = copy;
-  else if (copy.type == DBusSignalMessage)
+  else if (copy.type == ADBusSignalMessage)
     m_Signals[serial] = copy;
   else
     assert(false);
@@ -342,7 +342,7 @@ Object::Object(Connection* c)
 Object::~Object()
 {
   if (m_Marshaller)
-    DBusFreeMarshaller(m_Marshaller);
+    ADBusFreeMarshaller(m_Marshaller);
 }
 
 //-----------------------------------------------------------------------------
@@ -398,29 +398,29 @@ void Object::introspectInterfaces(std::string& out)const
 
 //-----------------------------------------------------------------------------
 
-DBusMarshaller* Object::marshaller()
+ADBusMarshaller* Object::marshaller()
 {
   if (!m_Marshaller)
-    m_Marshaller = DBusCreateMarshaller();
+    m_Marshaller = ADBusCreateMarshaller();
   connection()->setupMarshaller(m_Marshaller);
   return m_Marshaller;
 }
 
 //-----------------------------------------------------------------------------
 
-class InvalidMethodError : public DBus::Error
+class InvalidMethodError : public adbus::Error
 {
 public:
   virtual const char* errorName()const
-  { return "nz.co.foobar.DBus.InvalidMethod"; }
+  { return "nz.co.foobar.ADBus.InvalidMethod"; }
   virtual const char* errorMessage()const
   { return "No method found"; }
 };
 
-void Object::callMethod(DBusMessage* message)
+void Object::callMethod(ADBusMessage* message)
 {
   int interfaceSize;
-  const char* interface = DBusGetInterface(message, &interfaceSize);
+  const char* interface = ADBusGetInterface(message, &interfaceSize);
   if (interface)
   {
     Interfaces::iterator ii = FindUsingKey(m_Interfaces, interface, interfaceSize);
@@ -477,26 +477,26 @@ SignalBase* ObjectInterface::addSignal(const char* name, SignalBase* signal)
 
 //-----------------------------------------------------------------------------
 
-DBusMarshaller* ObjectInterface::signalMessage(const char* name, int size)
+ADBusMarshaller* ObjectInterface::signalMessage(const char* name, int size)
 {
-  DBusMarshaller* m = m_Object->marshaller();
-  DBusSetPath(m, m_Object->name().c_str(), (int)m_Object->name().size());
-  DBusSetInterface(m, m_Name.c_str(), (int)m_Name.size());
-  DBusSetMember(m, name, size);
+  ADBusMarshaller* m = m_Object->marshaller();
+  ADBusSetPath(m, m_Object->name().c_str(), (int)m_Object->name().size());
+  ADBusSetInterface(m, m_Name.c_str(), (int)m_Name.size());
+  ADBusSetMember(m, name, size);
   return m;
 }
 
 //-----------------------------------------------------------------------------
 
-DBusMarshaller* ObjectInterface::returnMessage(DBusMessage* request)
+ADBusMarshaller* ObjectInterface::returnMessage(ADBusMessage* request)
 {
-  DBusMarshaller* m = m_Object->marshaller();
-  DBusSetMessageType(m, DBusMethodReturnMessage);
+  ADBusMarshaller* m = m_Object->marshaller();
+  ADBusSetMessageType(m, ADBusMethodReturnMessage);
   int remoteSize;
-  const char* remote = DBusGetSender(request, &remoteSize);
+  const char* remote = ADBusGetSender(request, &remoteSize);
   if (remote)
-    DBusSetDestination(m, remote, remoteSize);
-  DBusSetReplySerial(m, DBusGetSerial(request));
+    ADBusSetDestination(m, remote, remoteSize);
+  ADBusSetReplySerial(m, ADBusGetSerial(request));
   return m;
 }
 
@@ -535,10 +535,10 @@ void ObjectInterface::setName(const char* name, int size)
 
 //-----------------------------------------------------------------------------
 
-bool ObjectInterface::callMethod(DBusMessage* message)
+bool ObjectInterface::callMethod(ADBusMessage* message)
 {
   int memberSize;
-  const char* member = DBusGetMember(message, &memberSize);
+  const char* member = ADBusGetMember(message, &memberSize);
   Methods::iterator ii = FindUsingKey(m_Methods, member, memberSize);
   if (ii == m_Methods.end())
     return false;

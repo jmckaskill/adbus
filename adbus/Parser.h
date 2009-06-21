@@ -24,17 +24,33 @@
 
 #pragma once
 
-#include <string>
-#include <vector>
-
-#include <stdint.h>
-#include <stdlib.h>
-
-namespace DBus{
-
-  int  HexDecode(const char* str, int size, std::vector<uint8_t>* out);
-  void HexEncode(const uint8_t* data, size_t size, std::string* out);
+#include "Common.h"
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+
+// ----------------------------------------------------------------------------
+
+struct ADBusParser;
+struct ADBusMessage;
+
+struct ADBusParser* ADBusCreateParser();
+void ADBusFreeParser(struct ADBusParser* parser);
+
+// Returns an error code or 0 on none
+int  ADBusParse(struct ADBusParser* parser, uint8_t* data, size_t size);
+
+typedef void (*ADBusParserCallback)(void* /*userData*/, struct ADBusMessage*);
+
+void ADBusSetParserCallback(struct ADBusParser* parser,
+                           ADBusParserCallback callback, void* userData);
+
+// ----------------------------------------------------------------------------
+
+
+#ifdef __cplusplus
 }
+#endif

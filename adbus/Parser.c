@@ -37,10 +37,10 @@ static const char kHeaderType[] = "a(yv)";
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-struct DBusParser
+struct ADBusParser
 {
-  struct DBusMessage  message;
-  DBusParserCallback  callback;
+  struct ADBusMessage  message;
+  ADBusParserCallback  callback;
   void*               callbackData;
   uint8_t*            buffer;
   size_t              bufferSize;
@@ -49,15 +49,15 @@ struct DBusParser
 
 // ----------------------------------------------------------------------------
 
-struct DBusParser* DBusCreateParser()
+struct ADBusParser* ADBusCreateParser()
 {
-  struct DBusParser* p = (struct DBusParser*)calloc(1, sizeof(struct DBusParser));
+  struct ADBusParser* p = (struct ADBusParser*)calloc(1, sizeof(struct ADBusParser));
   return p;
 }
 
 // ----------------------------------------------------------------------------
 
-void DBusFreeParser(struct DBusParser* p)
+void ADBusFreeParser(struct ADBusParser* p)
 {
   free(p->buffer);
   free(p);
@@ -65,9 +65,9 @@ void DBusFreeParser(struct DBusParser* p)
 
 // ----------------------------------------------------------------------------
 
-static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed);
+static int processData(struct ADBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed);
 
-int DBusParse(struct DBusParser* p, uint8_t* data, size_t dataSize)
+int ADBusParse(struct ADBusParser* p, uint8_t* data, size_t dataSize)
 {
   size_t insertOffset = p->bufferSize;
   ALLOC_GROW(uint8_t, p->buffer, insertOffset + dataSize, p->bufferAlloc);
@@ -82,8 +82,8 @@ int DBusParse(struct DBusParser* p, uint8_t* data, size_t dataSize)
     int err = processData(&p->message, p->buffer, p->bufferSize, &dataUsed);
     if (!err)
       p->callback(p->callbackData, &p->message);
-    if (err == DBusIgnoredData)
-      err = DBusSuccess;
+    if (err == ADBusIgnoredData)
+      err = ADBusSuccess;
     assert(p->bufferSize >= dataUsed);
     memmove(p->buffer, p->buffer + dataUsed, p->bufferSize - dataUsed);
     p->bufferSize -= dataUsed;
@@ -94,7 +94,7 @@ int DBusParse(struct DBusParser* p, uint8_t* data, size_t dataSize)
 
 // ----------------------------------------------------------------------------
 
-void DBusSetParserCallback(struct DBusParser* p, DBusParserCallback callback, void* data)
+void ADBusSetParserCallback(struct ADBusParser* p, ADBusParserCallback callback, void* data)
 {
   p->callback     = callback;
   p->callbackData = data;
@@ -102,36 +102,36 @@ void DBusSetParserCallback(struct DBusParser* p, DBusParserCallback callback, vo
 
 // ----------------------------------------------------------------------------
 
-static int processHeaderFields(struct DBusMessage* m);
+static int processHeaderFields(struct ADBusMessage* m);
 
-static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed)
+static int processData(struct ADBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed)
 {
   assert(m && data && dataUsed);
 
   // Check that we have enough correct data to decode the header
   if (((uintptr_t)data % 8) != 0)
-    return DBusInvalidAlignment;
+    return ADBusInvalidAlignment;
 
-  if (dataSize < sizeof(struct _DBusMessageExtendedHeader))
-    return DBusNeedMoreData;
+  if (dataSize < sizeof(struct _ADBusMessageExtendedHeader))
+    return ADBusNeedMoreData;
 
-  struct _DBusMessageHeader* header = (struct _DBusMessageHeader*)(data);
+  struct _ADBusMessageHeader* header = (struct _ADBusMessageHeader*)(data);
 
-  struct _DBusMessageExtendedHeader* extended =
-    (struct _DBusMessageExtendedHeader*)(data);
+  struct _ADBusMessageExtendedHeader* extended =
+    (struct _ADBusMessageExtendedHeader*)(data);
 
   // Check the single byte header fields
   if (header->version != 1)
-    return DBusInvalidVersion;
+    return ADBusInvalidVersion;
 
-  if (header->type == DBusInvalidMessage)
-    return DBusInvalidData;
+  if (header->type == ADBusInvalidMessage)
+    return ADBusInvalidData;
 
   if (!(header->endianness == 'B' || header->endianness == 'l'))
-    return DBusInvalidData;
+    return ADBusInvalidData;
 
   m->messageType  = header->type;
-  m->nativeEndian = (header->endianness == _DBusNativeEndianness);
+  m->nativeEndian = (header->endianness == _ADBusNativeEndianness);
 
   // Get the non single byte fields out of the header
   size_t length = m->nativeEndian
@@ -146,26 +146,26 @@ static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, si
     ? header->serial
     : ENDIAN_CONVERT32(header->serial);
 
-  if (length > DBusMaximumMessageLength)
-    return DBusInvalidData;
-  if (headerFieldLength > DBusMaximumArrayLength)
-    return DBusInvalidData;
+  if (length > ADBusMaximumMessageLength)
+    return ADBusInvalidData;
+  if (headerFieldLength > ADBusMaximumArrayLength)
+    return ADBusInvalidData;
 
   // Figure out the amount of data being used
-  size_t headerSize = sizeof(struct _DBusMessageExtendedHeader)
+  size_t headerSize = sizeof(struct _ADBusMessageExtendedHeader)
                     + headerFieldLength;
 
-  headerSize = _DBUS_ALIGN_VALUE(headerSize, 8);
+  headerSize = _ADBUS_ALIGN_VALUE(headerSize, 8);
 
   size_t messageSize = headerSize + length;
 
   if (dataSize < messageSize)
-    return DBusNeedMoreData;
+    return ADBusNeedMoreData;
 
   *dataUsed  += messageSize;
 
-  if (header->type > DBusMessageTypeMax)
-    return DBusIgnoredData;
+  if (header->type > ADBusMessageTypeMax)
+    return ADBusIgnoredData;
 
   m->data    = data;
   m->dataEnd = data + messageSize;
@@ -183,11 +183,11 @@ static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, si
     uint8_t* oldData = m->data;
     uint8_t* oldDataEnd = m->dataEnd;
 
-    struct DBusField f;
-    f.type = DBusInvalidField;
-    while (!err && f.type != DBusMessageEndField)
+    struct ADBusField f;
+    f.type = ADBusInvalidField;
+    while (!err && f.type != ADBusMessageEndField)
     {
-      err = DBusTakeField(m, &f);
+      err = ADBusTakeField(m, &f);
     }
     // Parsing through the data changes the buffer as we go through
     // we want to do this so that the user can then cast say "ai" to uint32_t[]
@@ -207,9 +207,9 @@ static int processData(struct DBusMessage* m, uint8_t* data, size_t dataSize, si
 
 // ----------------------------------------------------------------------------
 
-static int processHeaderFields(struct DBusMessage* m)
+static int processHeaderFields(struct ADBusMessage* m)
 {
-  size_t offset = sizeof(struct _DBusMessageHeader);
+  size_t offset = sizeof(struct _ADBusMessageHeader);
   m->data += offset;
 
   m->signature = "a(yv)";
@@ -236,102 +236,102 @@ static int processHeaderFields(struct DBusMessage* m)
   const char* argumentSignature = NULL;
 
   unsigned int arrayScope;
-  err = DBusTakeArrayBegin(m, &arrayScope, NULL);
+  err = ADBusTakeArrayBegin(m, &arrayScope, NULL);
 
-  while (!err && !DBusIsScopeAtEnd(m, arrayScope))
+  while (!err && !ADBusIsScopeAtEnd(m, arrayScope))
   {
-    uint8_t fieldCode = DBusInvalidCode;
+    uint8_t fieldCode = ADBusInvalidCode;
     unsigned int variantScope;
 
-    err = err || DBusTakeStructBegin(m, NULL);
-    err = err || DBusTakeUInt8(m, &fieldCode);
-    err = err || DBusTakeVariantBegin(m, &variantScope, NULL, NULL);
+    err = err || ADBusTakeStructBegin(m, NULL);
+    err = err || ADBusTakeUInt8(m, &fieldCode);
+    err = err || ADBusTakeVariantBegin(m, &variantScope, NULL, NULL);
 
     switch(fieldCode)
     {
 
-    case DBusReplySerialCode:
-      err = err || DBusTakeUInt32(m, &m->replySerial);
+    case ADBusReplySerialCode:
+      err = err || ADBusTakeUInt32(m, &m->replySerial);
       if (!err)
         m->haveReplySerial = 1;
       break;
 
-    case DBusInterfaceCode:
-      err = err || DBusTakeString(m, &m->interface, &m->interfaceSize);
-      if (!err && !_DBusIsValidInterfaceName(m->interface, m->interfaceSize))
-        err = DBusInvalidData;
+    case ADBusInterfaceCode:
+      err = err || ADBusTakeString(m, &m->interface, &m->interfaceSize);
+      if (!err && !_ADBusIsValidInterfaceName(m->interface, m->interfaceSize))
+        err = ADBusInvalidData;
       break;
-    case DBusMemberCode:
-      err = err || DBusTakeString(m, &m->member, &m->memberSize);
-      if (!err && !_DBusIsValidMemberName(m->member, m->memberSize))
-        err = DBusInvalidData;
+    case ADBusMemberCode:
+      err = err || ADBusTakeString(m, &m->member, &m->memberSize);
+      if (!err && !_ADBusIsValidMemberName(m->member, m->memberSize))
+        err = ADBusInvalidData;
       break;
-    case DBusDestinationCode:
-      err = err || DBusTakeString(m, &m->destination, &m->destinationSize);
-      if (!err && !_DBusIsValidBusName(m->destination, m->destinationSize))
-        err = DBusInvalidData;
+    case ADBusDestinationCode:
+      err = err || ADBusTakeString(m, &m->destination, &m->destinationSize);
+      if (!err && !_ADBusIsValidBusName(m->destination, m->destinationSize))
+        err = ADBusInvalidData;
       break;
-    case DBusSenderCode:
-      err = err || DBusTakeString(m, &m->sender, &m->senderSize);
-      if (!err && !_DBusIsValidBusName(m->sender, m->senderSize))
-        err = DBusInvalidData;
-      break;
-
-    case DBusPathCode:
-      err = err || DBusTakeObjectPath(m, &m->path, &m->pathSize);
-      break;
-    case DBusErrorNameCode:
-      err = err || DBusTakeString(m, &m->errorName, &m->errorNameSize);
-      break;
-    case DBusSignatureCode:
-      err = err || DBusTakeSignature(m, &argumentSignature, NULL);
+    case ADBusSenderCode:
+      err = err || ADBusTakeString(m, &m->sender, &m->senderSize);
+      if (!err && !_ADBusIsValidBusName(m->sender, m->senderSize))
+        err = ADBusInvalidData;
       break;
 
-    case DBusInvalidCode:
-      err = DBusInvalidData;
+    case ADBusPathCode:
+      err = err || ADBusTakeObjectPath(m, &m->path, &m->pathSize);
+      break;
+    case ADBusErrorNameCode:
+      err = err || ADBusTakeString(m, &m->errorName, &m->errorNameSize);
+      break;
+    case ADBusSignatureCode:
+      err = err || ADBusTakeSignature(m, &argumentSignature, NULL);
+      break;
+
+    case ADBusInvalidCode:
+      err = ADBusInvalidData;
       break;
 
     default:
-      while (!err && !DBusIsScopeAtEnd(m, variantScope))
-        err = DBusTakeField(m, NULL);
+      while (!err && !ADBusIsScopeAtEnd(m, variantScope))
+        err = ADBusTakeField(m, NULL);
       break;
     }
 
-    err = err || DBusTakeVariantEnd(m);
-    err = err || DBusTakeStructEnd(m);
+    err = err || ADBusTakeVariantEnd(m);
+    err = err || ADBusTakeStructEnd(m);
   }
 
-  err = err || DBusTakeArrayEnd(m);
+  err = err || ADBusTakeArrayEnd(m);
 
   if (err)
     return err;
 
   switch(m->messageType)
   {
-  case DBusMethodCallMessage:
+  case ADBusMethodCallMessage:
     if (!m->path || !m->member)
-      return DBusInvalidData;
+      return ADBusInvalidData;
     break;
 
-  case DBusMethodReturnMessage:
+  case ADBusMethodReturnMessage:
     if (!m->haveReplySerial)
-      return DBusInvalidData;
+      return ADBusInvalidData;
     break;
 
-  case DBusErrorMessage:
+  case ADBusErrorMessage:
     if (!m->haveReplySerial || !m->errorName)
-      return DBusInvalidData;
+      return ADBusInvalidData;
     break;
 
-  case DBusSignalMessage:
+  case ADBusSignalMessage:
     if (!m->path || !m->interface || !m->member)
-      return DBusInvalidData;
+      return ADBusInvalidData;
     break;
 
   default:
     // message type should've already been checked
     assert(0);
-    return DBusInvalidData;
+    return ADBusInvalidData;
   }
 
   m->signature = argumentSignature;

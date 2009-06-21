@@ -29,7 +29,7 @@
 
 #include <assert.h>
 
-namespace DBus{
+namespace adbus{
 
   //-----------------------------------------------------------------------------
   //-----------------------------------------------------------------------------
@@ -69,16 +69,16 @@ namespace DBus{
   //-----------------------------------------------------------------------------
 
 #define MARSHALL_STATEMENT(x) a ## x >> *sig;
-#define MARSHALL_STATEMENTS DBUSCPP_REPEAT(MARSHALL_STATEMENT, DBUSCPP_BLANK)
+#define MARSHALL_STATEMENTS ADBUSCPP_REPEAT(MARSHALL_STATEMENT, ADBUSCPP_BLANK)
 
-  template<DBUSCPP_DECLARE_TYPES>
-  void Signal<DBUSCPP_TYPES>::trigger(DBUSCPP_CRARGS)
+  template<ADBUSCPP_DECLARE_TYPES>
+  void Signal<ADBUSCPP_TYPES>::trigger(ADBUSCPP_CRARGS)
   {
-    DBusMarshaller* sig = interface()->signalMessage(m_Name.c_str(), m_Name.size());
+    ADBusMarshaller* sig = interface()->signalMessage(m_Name.c_str(), m_Name.size());
 
     MARSHALL_STATEMENTS;
 
-    DBusSendMessage(sig);
+    ADBusSendMessage(sig);
   }
 
 #undef MARSHALL_STATEMENT
@@ -86,11 +86,11 @@ namespace DBus{
 
   //-----------------------------------------------------------------------------
 
-#define TYPE_STRING_CASE(x) case x: { return DBusTypeString<A ## x>(); }
-#define TYPE_STRING_CASES   DBUSCPP_REPEAT(TYPE_STRING_CASE, DBUSCPP_BLANK)
+#define TYPE_STRING_CASE(x) case x: { return ADBusTypeString<A ## x>(); }
+#define TYPE_STRING_CASES   ADBUSCPP_REPEAT(TYPE_STRING_CASE, ADBUSCPP_BLANK)
 
-  template<DBUSCPP_DECLARE_TYPES>
-  const char* Signal<DBUSCPP_TYPES>::argumentTypeString(int i)const
+  template<ADBUSCPP_DECLARE_TYPES>
+  const char* Signal<ADBUSCPP_TYPES>::argumentTypeString(int i)const
   {
     switch(i)
     {
@@ -110,30 +110,30 @@ namespace DBus{
   template<class T>
   void Property<T>::introspect(std::string& out)const
   {
-    introspectProperty(out, DBusTypeString<T>());
+    introspectProperty(out, ADBusTypeString<T>());
   }
 
   //-----------------------------------------------------------------------------
 
   template<class T>
-  void Property<T>::get(DBusMessage* m)
+  void Property<T>::get(ADBusMessage* m)
   {
     T data = m_Getter();
-    DBusMarshaller* ret = interface()->returnMessage(m);
+    ADBusMarshaller* ret = interface()->returnMessage(m);
     data >> *ret;
-    DBusSendMessage(ret);
+    ADBusSendMessage(ret);
   }
 
   //-----------------------------------------------------------------------------
 
   template<class T>
-  void Property<T>::set(DBusMessage* m)
+  void Property<T>::set(ADBusMessage* m)
   {
     T data;
     data << *m;
     m_Setter(data);
-    DBusMarshaller* ret = interface()->returnMessage(m);
-    DBusSendMessage(ret);
+    ADBusMarshaller* ret = interface()->returnMessage(m);
+    ADBusSendMessage(ret);
   }
 
   //-----------------------------------------------------------------------------

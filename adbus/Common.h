@@ -114,85 +114,85 @@ extern "C" {
 
 enum
 {
-  DBusMaximumArrayLength   = 67108864,
-  DBusMaximumMessageLength = 134217728,
+  ADBusMaximumArrayLength   = 67108864,
+  ADBusMaximumMessageLength = 134217728,
 };
 
 // ----------------------------------------------------------------------------
 
-enum DBusMessageType
+enum ADBusMessageType
 {
-  DBusInvalidMessage       = 0,
-  DBusMethodCallMessage    = 1,
-  DBusMethodReturnMessage  = 2,
-  DBusErrorMessage         = 3,
-  DBusSignalMessage        = 4,
-  DBusMessageTypeMax       = 4,
+  ADBusInvalidMessage       = 0,
+  ADBusMethodCallMessage    = 1,
+  ADBusMethodReturnMessage  = 2,
+  ADBusErrorMessage         = 3,
+  ADBusSignalMessage        = 4,
+  ADBusMessageTypeMax       = 4,
 };
 
 // ----------------------------------------------------------------------------
 
 enum
 {
-  DBusNoReplyExpectedFlag   = 1,
-  DBusNoAutoStartFlag       = 2,
+  ADBusNoReplyExpectedFlag   = 1,
+  ADBusNoAutoStartFlag       = 2,
 };
 
 // ----------------------------------------------------------------------------
 
-enum DBusHeaderFieldCode
+enum ADBusHeaderFieldCode
 {
-  DBusInvalidCode      = 0,
-  DBusPathCode         = 1,
-  DBusInterfaceCode    = 2,
-  DBusMemberCode       = 3,
-  DBusErrorNameCode    = 4,
-  DBusReplySerialCode  = 5,
-  DBusDestinationCode  = 6,
-  DBusSenderCode       = 7,
-  DBusSignatureCode    = 8,
+  ADBusInvalidCode      = 0,
+  ADBusPathCode         = 1,
+  ADBusInterfaceCode    = 2,
+  ADBusMemberCode       = 3,
+  ADBusErrorNameCode    = 4,
+  ADBusReplySerialCode  = 5,
+  ADBusDestinationCode  = 6,
+  ADBusSenderCode       = 7,
+  ADBusSignatureCode    = 8,
 };
 
 // ----------------------------------------------------------------------------
 
-enum DBusFieldType
+enum ADBusFieldType
 {
-  DBusInvalidField          = 0,
-  DBusMessageEndField       = 1,
-  DBusUInt8Field            = 'y',
-  DBusBooleanField          = 'b',
-  DBusInt16Field            = 'n',
-  DBusUInt16Field           = 'q',
-  DBusInt32Field            = 'i',
-  DBusUInt32Field           = 'u',
-  DBusInt64Field            = 'x',
-  DBusUInt64Field           = 't',
-  DBusDoubleField           = 'd',
-  DBusStringField           = 's',
-  DBusObjectPathField       = 'o',
-  DBusSignatureField        = 'g',
-  DBusArrayBeginField       = 'a',
-  DBusArrayEndField         = 2,
-  DBusStructBeginField      = '(',
-  DBusStructEndField        = ')',
-  DBusDictEntryBeginField   = '{',
-  DBusDictEntryEndField     = '}',
-  DBusVariantBeginField     = 'v',
-  DBusVariantEndField       = 3,
+  ADBusInvalidField          = 0,
+  ADBusMessageEndField       = 1,
+  ADBusUInt8Field            = 'y',
+  ADBusBooleanField          = 'b',
+  ADBusInt16Field            = 'n',
+  ADBusUInt16Field           = 'q',
+  ADBusInt32Field            = 'i',
+  ADBusUInt32Field           = 'u',
+  ADBusInt64Field            = 'x',
+  ADBusUInt64Field           = 't',
+  ADBusDoubleField           = 'd',
+  ADBusStringField           = 's',
+  ADBusObjectPathField       = 'o',
+  ADBusSignatureField        = 'g',
+  ADBusArrayBeginField       = 'a',
+  ADBusArrayEndField         = 2,
+  ADBusStructBeginField      = '(',
+  ADBusStructEndField        = ')',
+  ADBusDictEntryBeginField   = '{',
+  ADBusDictEntryEndField     = '}',
+  ADBusVariantBeginField     = 'v',
+  ADBusVariantEndField       = 3,
 };
 
 // ----------------------------------------------------------------------------
 
-enum DBusParseError
+enum ADBusParseError
 {
-  DBusInternalError = -1,
-  DBusSuccess = 0,
-  DBusNeedMoreData,
-  DBusIgnoredData,
-  DBusInvalidData,
-  DBusInvalidVersion,
-  DBusInvalidAlignment,
-  DBusInvalidArgument,
+  ADBusInternalError = -1,
+  ADBusSuccess = 0,
+  ADBusNeedMoreData,
+  ADBusIgnoredData,
+  ADBusInvalidData,
+  ADBusInvalidVersion,
+  ADBusInvalidAlignment,
+  ADBusInvalidArgument,
 };
 
 // ----------------------------------------------------------------------------

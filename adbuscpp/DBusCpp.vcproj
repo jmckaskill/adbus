@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="DBusCpp"
+	Name="ADBusCpp"
 	ProjectGUID="{F22743C1-5DAD-4089-9CCE-9862808EC790}"
-	RootNamespace="DBusCpp"
+	RootNamespace="ADBusCpp"
 	>
 	<Platforms>
 		<Platform

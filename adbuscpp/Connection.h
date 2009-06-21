@@ -28,9 +28,9 @@
 #include "Marshall.h"
 #include "MessageFactory.h"
 
-#include "DBusClient/Marshaller.h"
-#include "DBusClient/Message.h"
-#include "DBusClient/Parser.h"
+#include "adbus/Marshaller.h"
+#include "adbus/Message.h"
+#include "adbus/Parser.h"
 
 #include <boost/function.hpp>
 
@@ -39,10 +39,10 @@
 #include <string>
 #include <vector>
 
-struct DBusMarshaller;
-struct DBusMessage;
+struct ADBusMarshaller;
+struct ADBusMessage;
 
-namespace DBus{
+namespace adbus{
 
   class InterfaceComponent;
   class MethodBase;
@@ -72,12 +72,12 @@ namespace DBus{
 
   class Connection
   {
-    DBUSCPP_NON_COPYABLE(Connection);
+    ADBUSCPP_NON_COPYABLE(Connection);
   public:
     Connection();
     ~Connection();
 
-    void setSendCallback(DBusSendCallback callback, void* callbackData);
+    void setSendCallback(ADBusSendCallback callback, void* callbackData);
     int  appendInputData(uint8_t* data, size_t size);
 
     void connectToBus();
@@ -87,8 +87,8 @@ namespace DBus{
     const std::string& uniqueName()const{return m_UniqueName;}
     bool isConnected()const{return m_Connected;}
 
-    void setupMarshaller(DBusMarshaller* marshaller, uint32_t serial = 0, int flags = 0);
-    DBusMarshaller* returnMessage(DBusMessage* request);
+    void setupMarshaller(ADBusMarshaller* marshaller, uint32_t serial = 0, int flags = 0);
+    ADBusMarshaller* returnMessage(ADBusMessage* request);
 
     uint32_t addRegistration(MessageRegistration* registration);
 
@@ -102,21 +102,21 @@ namespace DBus{
     typedef std::map<uint32_t, MessageRegistration> Registrations;
     typedef std::map<std::string, Object*>   Objects;
 
-    static void parserCallback(void* connection, DBusMessage* message);
-    void dispatchSignal(DBusMessage* message);
-    void dispatchMethodCall(DBusMessage* message);
-    void dispatchMethodReturn(DBusMessage* message);
+    static void parserCallback(void* connection, ADBusMessage* message);
+    void dispatchSignal(ADBusMessage* message);
+    void dispatchMethodCall(ADBusMessage* message);
+    void dispatchMethodReturn(ADBusMessage* message);
     void onHello(const char* uniqueName);
 
-    DBusSendCallback      m_Callback;
+    ADBusSendCallback      m_Callback;
     void*                 m_CallbackData;
-    DBusParser*           m_Parser;
+    ADBusParser*           m_Parser;
     std::vector<uint8_t>  m_InputBuffer;
     Registrations         m_Returns;
     Registrations         m_Signals;
     MessageFactory        m_BusFactory;
     Objects               m_Objects;
-    DBusMarshaller*       m_ErrorMarshaller;
+    ADBusMarshaller*       m_ErrorMarshaller;
     uint32_t              m_NextSerial;
     bool                  m_Connected;
     std::string           m_UniqueName;
@@ -126,7 +126,7 @@ namespace DBus{
 
   class Object
   {
-    DBUSCPP_NON_COPYABLE(Object);
+    ADBUSCPP_NON_COPYABLE(Object);
   public:
     ObjectInterface* addInterface(const char* name, int size = -1);
     void removeInterface(const char* name, int size = -1);
@@ -145,24 +145,24 @@ namespace DBus{
     Object(Connection* connection);
     ~Object();
 
-    void callMethod(DBusMessage* message);
+    void callMethod(ADBusMessage* message);
     void setName(const char* name, int size = -1);
 
-    DBusMarshaller* marshaller();
+    ADBusMarshaller* marshaller();
 
     typedef std::map<std::string, ObjectInterface*> Interfaces;
 
     std::string m_Name;
     Interfaces m_Interfaces;
     Connection* m_Connection;
-    DBusMarshaller* m_Marshaller;
+    ADBusMarshaller* m_Marshaller;
   };
 
   //-----------------------------------------------------------------------------
 
   class ObjectInterface
   {
-    DBUSCPP_NON_COPYABLE(ObjectInterface);
+    ADBUSCPP_NON_COPYABLE(ObjectInterface);
   public:
     ObjectInterface(Object* object);
     ~ObjectInterface();
@@ -176,8 +176,8 @@ namespace DBus{
     Property<T>* addProperty(const char* name);
 
 
-    DBusMarshaller* returnMessage(DBusMessage* request);
-    DBusMarshaller* signalMessage(const char* name, int size);
+    ADBusMarshaller* returnMessage(ADBusMessage* request);
+    ADBusMarshaller* signalMessage(const char* name, int size);
 
     void introspect(std::string& out)const;
 
@@ -186,7 +186,7 @@ namespace DBus{
     void setName(const char* name, int size = -1);
     const std::string& name()const{return m_Name;}
 
-    bool callMethod(DBusMessage* message);
+    bool callMethod(ADBusMessage* message);
 
   private:
     typedef std::map<std::string, MethodBase*>    Methods;
@@ -203,7 +203,7 @@ namespace DBus{
 
   class InterfaceComponent
   {
-    DBUSCPP_NON_COPYABLE(InterfaceComponent);
+    ADBUSCPP_NON_COPYABLE(InterfaceComponent);
   public:
     InterfaceComponent* addAnnotation(const char* key, const char* value);
 
@@ -252,7 +252,7 @@ namespace DBus{
   private:
     friend class ObjectInterface;
     virtual const char* argumentTypeString(int i)const=0;
-    virtual void triggered(DBusMessage* m)=0;
+    virtual void triggered(ADBusMessage* m)=0;
 
     virtual void introspect(std::string& out)const;
   };
@@ -275,11 +275,11 @@ namespace DBus{
 
   //-----------------------------------------------------------------------------
 
-  template<DBUSCPP_DECLARE_TYPES_DEF>
+  template<ADBUSCPP_DECLARE_TYPES_DEF>
   class Signal : public SignalBase
   {
   public:
-    void trigger(DBUSCPP_CRARGS_DEF);
+    void trigger(ADBUSCPP_CRARGS_DEF);
   private:
     virtual const char* argumentTypeString(int i)const;
   };
@@ -291,8 +291,8 @@ namespace DBus{
   protected:
     friend class ObjectInterface;
     PropertyBase(){}
-    virtual void get(DBusMessage* m)=0;
-    virtual void set(DBusMessage* m)=0;
+    virtual void get(ADBusMessage* m)=0;
+    virtual void set(ADBusMessage* m)=0;
 
     void introspectProperty(std::string& out, const char* typeString)const;
   };
@@ -309,8 +309,8 @@ namespace DBus{
   private:
     friend class ObjectInterface;
     virtual void introspect(std::string& out)const;
-    virtual void get(DBusMessage* m);
-    virtual void set(DBusMessage* m);
+    virtual void get(ADBusMessage* m);
+    virtual void set(ADBusMessage* m);
 
     boost::function1<void, T> m_Setter;
     boost::function0<T>       m_Getter;

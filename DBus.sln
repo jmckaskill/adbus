@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 9.00
 # Visual Studio 2005
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DBusClient", "DBusClient\DBusClient.vcproj", "{1EA4434B-331C-4917-A28A-D445C3649BE1}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "adbus", "adbus\adbus.vcproj", "{1EA4434B-331C-4917-A28A-D445C3649BE1}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DBusCpp", "DBusCpp\DBusCpp.vcproj", "{F22743C1-5DAD-4089-9CCE-9862808EC790}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ADBusCpp", "ADBusCpp\ADBusCpp.vcproj", "{F22743C1-5DAD-4089-9CCE-9862808EC790}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

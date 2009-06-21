@@ -22,7 +22,7 @@
 //
 // ----------------------------------------------------------------------------
 
-namespace DBus
+namespace adbus
 {
 namespace detail
 {
@@ -36,32 +36,32 @@ namespace detail
 #define ARG_LEADING_COMMA(x) , a ## x
 #define ARG(x) a ## x
 #define DEMARSHALL_STATEMENT(x) A ## x ARG(x); ARG(x) << *message;
-#define TYPE_STRING_CASE(x) case x: { return DBusTypeString<A ## x>(); }
+#define TYPE_STRING_CASE(x) case x: { return ADBusTypeString<A ## x>(); }
 
-#define ARGS_LEADING_COMMA          SLOT_REPEAT(ARG_LEADING_COMMA, DBUSCPP_BLANK)
-#define ARGS                        SLOT_REPEAT(ARG, DBUSCPP_COMMA)
-#define DEMARSHALL_STATEMENTS       SLOT_REPEAT(DEMARSHALL_STATEMENT, DBUSCPP_BLANK)
-#define TYPE_STRING_CASES           SLOT_REPEAT(TYPE_STRING_CASE, DBUSCPP_BLANK)
+#define ARGS_LEADING_COMMA          SLOT_REPEAT(ARG_LEADING_COMMA, ADBUSCPP_BLANK)
+#define ARGS                        SLOT_REPEAT(ARG, ADBUSCPP_COMMA)
+#define DEMARSHALL_STATEMENTS       SLOT_REPEAT(DEMARSHALL_STATEMENT, ADBUSCPP_BLANK)
+#define TYPE_STRING_CASES           SLOT_REPEAT(TYPE_STRING_CASE, ADBUSCPP_BLANK)
 
     //-----------------------------------------------------------------------------
     //-----------------------------------------------------------------------------
 
-    template<class U, class Fn, DBUSCPP_DECLARE_TYPES_DEF>
+    template<class U, class Fn, ADBUSCPP_DECLARE_TYPES_DEF>
     class FSlot : public Slot
     {
-      DBUSCPP_NON_COPYABLE(FSlot);
+      ADBUSCPP_NON_COPYABLE(FSlot);
     public:
       FSlot(U* object, Fn function):m_Object(object),m_Function(function){}
 
     private:
-      virtual void triggered(DBusMessage* message)
+      virtual void triggered(ADBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
         m_Function(m_Object ARGS_LEADING_COMMA );
       }
 
       virtual Slot* clone()
-      { return new FSlot<U, Fn, DBUSCPP_TYPES>(m_Object, m_Function); }
+      { return new FSlot<U, Fn, ADBUSCPP_TYPES>(m_Object, m_Function); }
 
       U* m_Object;
       Fn m_Function;
@@ -69,22 +69,22 @@ namespace detail
 
     //-----------------------------------------------------------------------------
 
-    template<class U, class Fn, DBUSCPP_DECLARE_TYPES_DEF>
+    template<class U, class Fn, ADBUSCPP_DECLARE_TYPES_DEF>
     class MFSlot : public Slot
     {
-      DBUSCPP_NON_COPYABLE(MFSlot);
+      ADBUSCPP_NON_COPYABLE(MFSlot);
     public:
       MFSlot(U* object, Fn function):m_Object(object),m_Function(function){}
 
     private:
-      virtual void triggered(DBusMessage* message)
+      virtual void triggered(ADBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
         (m_Object->*m_Function)( ARGS );
       }
 
       virtual Slot* clone()
-      { return new MFSlot<U, Fn, DBUSCPP_TYPES>(m_Object, m_Function); }
+      { return new MFSlot<U, Fn, ADBUSCPP_TYPES>(m_Object, m_Function); }
 
       U* m_Object;
       Fn m_Function;
@@ -93,10 +93,10 @@ namespace detail
     //-----------------------------------------------------------------------------
     //-----------------------------------------------------------------------------
 
-    template<class U, class Fn, class R, DBUSCPP_DECLARE_TYPES_DEF>
+    template<class U, class Fn, class R, ADBUSCPP_DECLARE_TYPES_DEF>
     class FMethod : public MethodBase
     {
-      DBUSCPP_NON_COPYABLE(FMethod);
+      ADBUSCPP_NON_COPYABLE(FMethod);
     public:
       FMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
@@ -105,7 +105,7 @@ namespace detail
         switch(i)
         {
         case -1:
-          return DBusTypeString<R>();
+          return ADBusTypeString<R>();
         TYPE_STRING_CASES
         default:
           return NULL;
@@ -113,14 +113,14 @@ namespace detail
       }
 
     private:
-      virtual void triggered(DBusMessage* message)
+      virtual void triggered(ADBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
-        DBusMarshaller* ret = interface()->returnMessage(message);
-        DBusBeginArgument(ret, DBusTypeString<R>(), -1);
+        ADBusMarshaller* ret = interface()->returnMessage(message);
+        ADBusBeginArgument(ret, ADBusTypeString<R>(), -1);
         m_Function(m_Object ARGS_LEADING_COMMA ) >> *ret;
-        DBusEndArgument(ret);
-        DBusSendMessage(ret);
+        ADBusEndArgument(ret);
+        ADBusSendMessage(ret);
       }
 
       U* m_Object;
@@ -129,10 +129,10 @@ namespace detail
 
     //-----------------------------------------------------------------------------
 
-    template<class U, class Fn, class R, DBUSCPP_DECLARE_TYPES_DEF>
+    template<class U, class Fn, class R, ADBUSCPP_DECLARE_TYPES_DEF>
     class MFMethod : public MethodBase
     {
-      DBUSCPP_NON_COPYABLE(MFMethod);
+      ADBUSCPP_NON_COPYABLE(MFMethod);
     public:
       MFMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
@@ -141,7 +141,7 @@ namespace detail
         switch(i)
         {
         case -1:
-          return DBusTypeString<R>();
+          return ADBusTypeString<R>();
         TYPE_STRING_CASES
         default:
           return NULL;
@@ -149,14 +149,14 @@ namespace detail
       }
 
     private:
-      virtual void triggered(DBusMessage* message)
+      virtual void triggered(ADBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
-        DBusMarshaller* ret = interface()->returnMessage(message);
-        DBusBeginArgument(ret, DBusTypeString<R>(), -1);
+        ADBusMarshaller* ret = interface()->returnMessage(message);
+        ADBusBeginArgument(ret, ADBusTypeString<R>(), -1);
         (m_Object->*m_Function)( ARGS ) >> *ret;
-        DBusEndArgument(ret);
-        DBusSendMessage(ret);
+        ADBusEndArgument(ret);
+        ADBusSendMessage(ret);
       }
 
       U* m_Object;
@@ -166,10 +166,10 @@ namespace detail
     //-----------------------------------------------------------------------------
     //-----------------------------------------------------------------------------
 
-    template<class U, class Fn, DBUSCPP_DECLARE_TYPES_DEF>
+    template<class U, class Fn, ADBUSCPP_DECLARE_TYPES_DEF>
     class FVoidMethod : public MethodBase
     {
-      DBUSCPP_NON_COPYABLE(FVoidMethod);
+      ADBUSCPP_NON_COPYABLE(FVoidMethod);
     public:
       FVoidMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
@@ -184,12 +184,12 @@ namespace detail
       }
 
     private:
-      virtual void triggered(DBusMessage* message)
+      virtual void triggered(ADBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
         m_Function(m_Object ARGS_LEADING_COMMA );
-        DBusMarshaller* ret = interface()->returnMessage(message);
-        DBusSendMessage(ret);
+        ADBusMarshaller* ret = interface()->returnMessage(message);
+        ADBusSendMessage(ret);
       }
 
       U* m_Object;
@@ -198,10 +198,10 @@ namespace detail
 
     //-----------------------------------------------------------------------------
 
-    template<class U, class Fn, DBUSCPP_DECLARE_TYPES_DEF>
+    template<class U, class Fn, ADBUSCPP_DECLARE_TYPES_DEF>
     class MFVoidMethod : public MethodBase
     {
-      DBUSCPP_NON_COPYABLE(MFVoidMethod);
+      ADBUSCPP_NON_COPYABLE(MFVoidMethod);
     public:
       MFVoidMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
@@ -216,12 +216,12 @@ namespace detail
       }
 
     private:
-      virtual void triggered(DBusMessage* message)
+      virtual void triggered(ADBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
         (m_Object->*m_Function)( ARGS );
-        DBusMarshaller* ret = interface()->returnMessage(message);
-        DBusSendMessage(ret);
+        ADBusMarshaller* ret = interface()->returnMessage(message);
+        ADBusSendMessage(ret);
       }
 
       U* m_Object;

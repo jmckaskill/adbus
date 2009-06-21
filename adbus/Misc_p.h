@@ -30,15 +30,15 @@
 
 // ----------------------------------------------------------------------------
 
-extern const char _DBusNativeEndianness;
+extern const char _ADBusNativeEndianness;
 
-int _DBusRequiredAlignment(char type);
+int _ADBusRequiredAlignment(char type);
 
 // ----------------------------------------------------------------------------
 
 #pragma pack(push)
 #pragma pack(1)
-struct _DBusMessageHeader
+struct _ADBusMessageHeader
 {
   // 8 byte begin padding
   uint8_t   endianness;
@@ -49,9 +49,9 @@ struct _DBusMessageHeader
   uint32_t  serial;
 };
 
-struct _DBusMessageExtendedHeader
+struct _ADBusMessageExtendedHeader
 {
-  struct _DBusMessageHeader header;
+  struct _ADBusMessageHeader header;
 
   // HeaderFields are a(yv)
   uint32_t  headerFieldLength;
@@ -100,17 +100,17 @@ struct _DBusMessageExtendedHeader
  *    ~(boundary - 1)
  */
 
-#define _DBUS_ALIGN_VALUE(this, boundary) \
+#define _ADBUS_ALIGN_VALUE(this, boundary) \
   (( ((unsigned long)(this)) + (((unsigned long)(boundary)) -1)) & (~(((unsigned long)(boundary))-1)))
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusIsValidObjectPath(const char* str, size_t len);
-unsigned int _DBusIsValidInterfaceName(const char* str, size_t len);
-unsigned int _DBusIsValidBusName(const char* str, size_t len);
-unsigned int _DBusIsValidMemberName(const char* str, size_t len);
-unsigned int _DBusHasNullByte(const char* str, size_t len);
-unsigned int _DBusIsValidUtf8(const char* str, size_t len);
+unsigned int _ADBusIsValidObjectPath(const char* str, size_t len);
+unsigned int _ADBusIsValidInterfaceName(const char* str, size_t len);
+unsigned int _ADBusIsValidBusName(const char* str, size_t len);
+unsigned int _ADBusIsValidMemberName(const char* str, size_t len);
+unsigned int _ADBusHasNullByte(const char* str, size_t len);
+unsigned int _ADBusIsValidUtf8(const char* str, size_t len);
 
 // ----------------------------------------------------------------------------
 

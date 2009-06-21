@@ -1,11 +1,11 @@
-project(DBusCpp)
+project(adbuscpp)
 
 
 include_directories(..)
 
 
 
-add_library(DBusCpp SHARED
+add_library(adbuscpp SHARED
             Arity.h
             Auth.h
             Auth.cpp
@@ -22,9 +22,9 @@ add_library(DBusCpp SHARED
             sha1.h
             sha1.cpp
             )
-target_link_libraries(DBusCpp DBusClient)
+target_link_libraries(adbuscpp adbus)
 
-add_executable(DBusCppTest Test.cpp)
-target_link_libraries(DBusCppTest DBusCpp DBusClient)
+add_executable(adbuscpptest Test.cpp)
+target_link_libraries(adbuscpptest adbuscpp adbus)
 
-install(TARGETS DBusCppTest DBusCpp LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+install(TARGETS adbuscpptest adbuscpp LIBRARY DESTINATION lib RUNTIME DESTINATION bin)

@@ -24,7 +24,7 @@
 
 #pragma once
 
-namespace DBus
+namespace adbus
 {
 namespace detail
 {

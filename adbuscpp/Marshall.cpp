@@ -22,78 +22,68 @@
 //
 // ----------------------------------------------------------------------------
 
-#include "Auth.h"
+#include "Marshall.h"
 
-#include <string.h>
+#include "Connection.h"
 
+#include <assert.h>
 
-using namespace DBus;
+using namespace adbus;
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-int DBus::HexDecode(const char* str, int size, std::vector<uint8_t>* out)
-{
-  if (size < 0)
-    size = strlen(str);
-  if (size % 2 != 0)
-    return 1;
+namespace {
 
-  if (out)
-    out->resize(size / 2);
-  for (int i = 0; i < size / 2; ++i)
+  class InvalidData : public adbus::Error
   {
-    char hi = str[2*i];
-    if ('0' <= hi && hi <= '9')
-      hi = hi - '0';
-    else if ('a' <= hi && hi <= 'f')
-      hi = hi - 'a' + 10;
-    else if ('A' <= hi && hi <= 'F')
-      hi = hi - 'A' + 10;
-    else
-      return 1;
+  public:
+    virtual const char* errorName()const
+    { return "nz.co.foobar.Error.InvalidData"; }
+    virtual const char* errorMessage()const
+    { return "The received message had invalid data"; }
+  };
 
-    char lo = str[2*i + 1];
-    if ('0' <= lo && lo <= '9')
-      lo = lo - '0';
-    else if ('a' <= lo && lo <= 'f')
-      lo = lo - 'a' + 10;
-    else if ('A' <= lo && lo <= 'F')
-      lo = lo - 'A' + 10;
-    else
-      return 1;
+  // ----------------------------------------------------------------------------
 
-    if (out)
-      (*out)[i] = (hi << 4) | lo;
-  }
-  return 0;
+  class InvalidArgument : public adbus::Error
+  {
+  public:
+    virtual const char* errorName()const
+    { return "nz.co.foobar.Error.InvalidArgument"; }
+    virtual const char* errorMessage()const
+    { return "The received message had invalid arguments"; }
+  };
+
+  // ----------------------------------------------------------------------------
+
+  class InternalError : public adbus::Error
+  {
+  public:
+    virtual const char* errorName()const
+    { return "nz.co.foobar.Error.InternalError"; }
+    virtual const char* errorMessage()const
+    { return "An internal error has occurred"; }
+  };
+
 }
 
 // ----------------------------------------------------------------------------
 
-void DBus::HexEncode(const uint8_t* data, size_t size, std::string* out)
+void adbus::CheckForError(int err)
 {
-  if (!out)
-    return;
-
-  out->resize(size * 2);
-  for (size_t i = 0; i < size; ++i)
+  switch(err)
   {
-    char hi = data[i] >> 4;
-    if (hi < 10)
-      hi += '0';
-    else
-      hi += 'a' - 10;
-
-    char lo = data[i] & 0x0F;
-    if (lo < 10)
-      lo += '0';
-    else
-      lo += 'a' - 10;
-
-    (*out)[2*i] = hi;
-    (*out)[2*i + 1] = lo;
+  case ADBusInvalidData:
+    throw InvalidData();
+  case ADBusInvalidArgument:
+    throw InvalidArgument();
+  case ADBusSuccess:
+    return;
+  default:
+    assert(false);
+    throw InternalError();
   }
 }
 

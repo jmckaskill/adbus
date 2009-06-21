@@ -27,10 +27,10 @@
 #include "Connection.h"
 #include "Marshall.h"
 
-#include "DBusClient/Marshaller.h"
-#include "DBusClient/Message.h"
+#include "adbus/Marshaller.h"
+#include "adbus/Message.h"
 
-namespace DBus
+namespace adbus
 {
 
   //-----------------------------------------------------------------------------
@@ -41,7 +41,7 @@ namespace DBus
     virtual ~Slot(){}
     virtual Slot* clone()=0;
 
-    virtual void triggered(DBusMessage* message)=0;
+    virtual void triggered(ADBusMessage* message)=0;
   };
 
   //-----------------------------------------------------------------------------
@@ -117,7 +117,7 @@ namespace DBus
 
 
 
-namespace DBus
+namespace adbus
 {
   //-----------------------------------------------------------------------------
 
@@ -132,7 +132,7 @@ namespace DBus
     template<class U, class M, class R, class A0>
     Slot* createSlot(U* object, R (M::*function)(A0))
     {
-      typedef typename DBusBaseArgumentType<A0>::type BaseA0;
+      typedef typename ADBusBaseArgumentType<A0>::type BaseA0;
       return new Target<1>::MFSlot<U, R (M::*)(A0), BaseA0>(object, function);
     }
 
@@ -140,28 +140,28 @@ namespace DBus
     template<class U, class M, class R>
     MethodBase* createMethod(U* object, R (M::*function)())
     {
-      typedef typename DBusBaseArgumentType<R>::type  BaseR;
+      typedef typename ADBusBaseArgumentType<R>::type  BaseR;
       return new Target<0>::MFMethod<U, R (M::*)(), BaseR>(object, function);
     }
     template<class U, class M, class R>
     MethodBase* createMethod(U* object, R (M::*function)()const)
     {
-      typedef typename DBusBaseArgumentType<R>::type  BaseR;
+      typedef typename ADBusBaseArgumentType<R>::type  BaseR;
       return new Target<0>::MFMethod<U, R (M::*)()const, BaseR>(object, function);
     }
 
     template<class U, class M, class R, class A0>
     MethodBase* createMethod(U* object, R (M::*function)(A0))
     {
-      typedef typename DBusBaseArgumentType<R>::type  BaseR;
-      typedef typename DBusBaseArgumentType<A0>::type BaseA0;
+      typedef typename ADBusBaseArgumentType<R>::type  BaseR;
+      typedef typename ADBusBaseArgumentType<A0>::type BaseA0;
       return new Target<1>::MFMethod<U, R (M::*)(A0), BaseR, BaseA0>(object, function);
     }
     template<class U, class M, class R, class A0>
     MethodBase* createMethod(U* object, R (M::*function)(A0)const)
     {
-      typedef typename DBusBaseArgumentType<R>::type  BaseR;
-      typedef typename DBusBaseArgumentType<A0>::type BaseA0;
+      typedef typename ADBusBaseArgumentType<R>::type  BaseR;
+      typedef typename ADBusBaseArgumentType<A0>::type BaseA0;
       return new Target<1>::MFMethod<U, R (M::*)(A0)const, BaseR, BaseA0>(object, function);
     }
 
@@ -174,7 +174,7 @@ namespace DBus
     template<class U, class M, class A0>
     MethodBase* createMethod(U* object, void (M::*function)(A0))
     {
-      typedef typename DBusBaseArgumentType<A0>::type BaseA0;
+      typedef typename ADBusBaseArgumentType<A0>::type BaseA0;
       return new Target<1>::MFVoidMethod<U, void (M::*)(A0), BaseA0>(object, function);
     }
 

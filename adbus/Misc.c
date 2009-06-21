@@ -48,7 +48,7 @@ static const char sRequiredAlignment[128] =
 };
 
 
-int _DBusRequiredAlignment(char ch)
+int _ADBusRequiredAlignment(char ch)
 {
   assert(ch < 128 && sRequiredAlignment[(int)ch] > 0);
   return sRequiredAlignment[ch & 0x7F];
@@ -56,17 +56,17 @@ int _DBusRequiredAlignment(char ch)
 
 // ----------------------------------------------------------------------------
 
-#ifdef DBUSCLIENT_LITTLE_ENDIAN
-const char _DBusNativeEndianness = 'l';
-#elif defined(DBUSCLIENT_BIG_ENDIAN)
-const char _DBusNativeEndianness = 'B';
+#ifdef ADBUS_LITTLE_ENDIAN
+const char _ADBusNativeEndianness = 'l';
+#elif defined(ADBUS_BIG_ENDIAN)
+const char _ADBusNativeEndianness = 'B';
 #else
-#error Please define DBUSCLIENT_LITTLE_ENDIAN or DBUSCLIENT_BIG_ENDIAN
+#error Please define ADBUS_LITTLE_ENDIAN or ADBUS_BIG_ENDIAN
 #endif
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusIsValidObjectPath(const char* str, size_t len)
+unsigned int _ADBusIsValidObjectPath(const char* str, size_t len)
 {
   if (!str || len == 0)
     return 0;
@@ -105,7 +105,7 @@ unsigned int _DBusIsValidObjectPath(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusIsValidInterfaceName(const char* str, size_t len)
+unsigned int _ADBusIsValidInterfaceName(const char* str, size_t len)
 {
   if (!str || len == 0 || len > 255)
     return 0;
@@ -152,7 +152,7 @@ unsigned int _DBusIsValidInterfaceName(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusIsValidBusName(const char* str, size_t len)
+unsigned int _ADBusIsValidBusName(const char* str, size_t len)
 {
   if (!str || len == 0 || len > 255)
     return 0;
@@ -202,7 +202,7 @@ unsigned int _DBusIsValidBusName(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusIsValidMemberName(const char* str, size_t len)
+unsigned int _ADBusIsValidMemberName(const char* str, size_t len)
 {
   if (!str || len == 0 || len > 255)
     return 0;
@@ -237,14 +237,14 @@ unsigned int _DBusIsValidMemberName(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusHasNullByte(const char* str, size_t len)
+unsigned int _ADBusHasNullByte(const char* str, size_t len)
 {
   return memchr(str, '\0', len) != NULL;
 }
 
 // ----------------------------------------------------------------------------
 
-unsigned int _DBusIsValidUtf8(const char* str, size_t len)
+unsigned int _ADBusIsValidUtf8(const char* str, size_t len)
 {
   if (!str)
     return 1;

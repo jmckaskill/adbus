@@ -1,15 +1,15 @@
-project(DBusClient)
+project(adbus)
 
 include(TestBigEndian)
 
 test_big_endian(big_endian)
 if (big_endian)
-  add_definitions(-DDBUSCLIENT_BIG_ENDIAN)
+  add_definitions(-DADBUS_BIG_ENDIAN)
 else (big_endian)
-  add_definitions(-DDBUSCLIENT_LITTLE_ENDIAN)
+  add_definitions(-DADBUS_LITTLE_ENDIAN)
 endif (big_endian)
 
-add_library(DBusClient SHARED
+add_library(adbus SHARED
             Common.h
             Marshaller.c
             Marshaller.h
@@ -22,4 +22,4 @@ add_library(DBusClient SHARED
             Parser.h
             )
 
-install(TARGETS DBusClient LIBRARY DESTINATION lib)
+install(TARGETS adbus LIBRARY DESTINATION lib)

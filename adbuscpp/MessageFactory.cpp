@@ -27,11 +27,11 @@
 
 #include "Connection.h"
 
-#include "DBusClient/Marshaller.h"
+#include "adbus/Marshaller.h"
 
 #include <assert.h>
 
-using namespace DBus;
+using namespace adbus;
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
@@ -41,14 +41,14 @@ MessageFactory::MessageFactory()
   : m_Connection(NULL),
     m_Serial(0)
 {
-  m_Marshaller = DBusCreateMarshaller();
+  m_Marshaller = ADBusCreateMarshaller();
 }
 
 //-----------------------------------------------------------------------------
 
 MessageFactory::~MessageFactory()
 {
-  DBusFreeMarshaller(m_Marshaller);
+  ADBusFreeMarshaller(m_Marshaller);
   delete m_Registration.slot;
   delete m_Registration.errorSlot;
 }
@@ -121,7 +121,7 @@ uint32_t MessageFactory::connectSignal()
     return 0;
   }
 
-  m_Registration.type = DBusSignalMessage;
+  m_Registration.type = ADBusSignalMessage;
   m_Registration.service = m_Service;
   m_Registration.path = m_Path;
   m_Registration.interface = m_Interface;
@@ -140,12 +140,12 @@ int MessageFactory::setupMarshallerForCall(int flags)
     return 1;
   }
 
-  bool noReply = flags & DBusNoReplyExpectedFlag;
+  bool noReply = flags & ADBusNoReplyExpectedFlag;
   m_Serial = 0;
 
   if ((m_Registration.slot || m_Registration.errorSlot) && !noReply)
   {
-    m_Registration.type       = DBusMethodReturnMessage;
+    m_Registration.type       = ADBusMethodReturnMessage;
     m_Registration.service    = m_Service;
     m_Registration.path       = m_Path;
     m_Registration.interface  = m_Interface;
@@ -157,12 +157,12 @@ int MessageFactory::setupMarshallerForCall(int flags)
 
   m_Connection->setupMarshaller(m_Marshaller, m_Serial, flags);
 
-  DBusSetMessageType(m_Marshaller, DBusMethodCallMessage);
-  DBusSetPath(m_Marshaller, m_Path.c_str(), (int)m_Path.size());
-  DBusSetDestination(m_Marshaller, m_Service.c_str(), (int)m_Service.size());
+  ADBusSetMessageType(m_Marshaller, ADBusMethodCallMessage);
+  ADBusSetPath(m_Marshaller, m_Path.c_str(), (int)m_Path.size());
+  ADBusSetDestination(m_Marshaller, m_Service.c_str(), (int)m_Service.size());
   if (!m_Interface.empty())
-    DBusSetInterface(m_Marshaller, m_Interface.c_str(), (int)m_Interface.size());
-  DBusSetMember(m_Marshaller, m_Member.c_str(), (int)m_Member.size());
+    ADBusSetInterface(m_Marshaller, m_Interface.c_str(), (int)m_Interface.size());
+  ADBusSetMember(m_Marshaller, m_Member.c_str(), (int)m_Member.size());
 
   return 0;
 }

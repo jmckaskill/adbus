@@ -27,39 +27,39 @@
 #include "Message.h"
 
 
-enum _DBusMessageStackEntryType
+enum _ADBusMessageStackEntryType
 {
-  _DBusInvalidMessageStack,
-  _DBusVariantMessageStack,
-  _DBusDictEntryMessageStack,
-  _DBusArrayMessageStack,
-  _DBusStructMessageStack,
+  _ADBusInvalidMessageStack,
+  _ADBusVariantMessageStack,
+  _ADBusDictEntryMessageStack,
+  _ADBusArrayMessageStack,
+  _ADBusStructMessageStack,
 };
 
-struct _DBusMessageArrayStackData
+struct _ADBusMessageArrayStackData
 {
   const char* typeBegin;
   uint8_t* dataEnd;
 };
 
-struct _DBusMessageVariantStackData
+struct _ADBusMessageVariantStackData
 {
   const char* oldSignature;
   unsigned int seenFirst;
 };
 
-struct _DBusMessageStackEntry
+struct _ADBusMessageStackEntry
 {
-  enum _DBusMessageStackEntryType type;
+  enum _ADBusMessageStackEntryType type;
   union
   {
-    struct _DBusMessageArrayStackData  array;
-    struct _DBusMessageVariantStackData variant;
+    struct _ADBusMessageArrayStackData  array;
+    struct _ADBusMessageVariantStackData variant;
     size_t      dictEntryFields;
   } data;
 };
 
-struct DBusMessage
+struct ADBusMessage
 {
   uint8_t*    data;
   uint8_t*    dataEnd;
@@ -67,7 +67,7 @@ struct DBusMessage
 
   // Base header
   unsigned int            nativeEndian;
-  enum DBusMessageType messageType;
+  enum ADBusMessageType messageType;
   uint32_t        serial;
 
   // Header fields
@@ -93,47 +93,47 @@ struct DBusMessage
   int         senderSize;
 
   // Stack
-  struct _DBusMessageStackEntry* stack;
+  struct _ADBusMessageStackEntry* stack;
   size_t      stackSize;
   size_t      stackAlloc;
 };
 
-int _DBusProcessField(struct DBusMessage* m, struct DBusField* f);
+int _ADBusProcessField(struct ADBusMessage* m, struct ADBusField* f);
 
-int _DBusProcess8Bit(struct DBusMessage* m, struct DBusField* f, uint8_t* fieldData);
-int _DBusProcess16Bit(struct DBusMessage* m, struct DBusField* f, uint16_t* fieldData);
-int _DBusProcess32Bit(struct DBusMessage* m, struct DBusField* f, uint32_t* fieldData);
-int _DBusProcess64Bit(struct DBusMessage* m, struct DBusField* f, uint64_t* fieldData);
-int _DBusProcessBoolean(struct DBusMessage* m, struct DBusField* f);
+int _ADBusProcess8Bit(struct ADBusMessage* m, struct ADBusField* f, uint8_t* fieldData);
+int _ADBusProcess16Bit(struct ADBusMessage* m, struct ADBusField* f, uint16_t* fieldData);
+int _ADBusProcess32Bit(struct ADBusMessage* m, struct ADBusField* f, uint32_t* fieldData);
+int _ADBusProcess64Bit(struct ADBusMessage* m, struct ADBusField* f, uint64_t* fieldData);
+int _ADBusProcessBoolean(struct ADBusMessage* m, struct ADBusField* f);
 
-int _DBusProcessStringData(struct DBusMessage* m, struct DBusField* f);
-int _DBusProcessObjectPath(struct DBusMessage* m, struct DBusField* f);
-int _DBusProcessString(struct DBusMessage* m, struct DBusField* f);
-int _DBusProcessSignature(struct DBusMessage* m, struct DBusField* f);
+int _ADBusProcessStringData(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusProcessObjectPath(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusProcessString(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusProcessSignature(struct ADBusMessage* m, struct ADBusField* f);
 
-int _DBusNextRootField(struct DBusMessage* m, struct DBusField* f);
-unsigned int _DBusIsRootAtEnd(struct DBusMessage* m);
+int _ADBusNextRootField(struct ADBusMessage* m, struct ADBusField* f);
+unsigned int _ADBusIsRootAtEnd(struct ADBusMessage* m);
 
-int _DBusProcessStruct(struct DBusMessage* m, struct DBusField* f);
-int _DBusNextStructField(struct DBusMessage* m, struct DBusField* f);
-unsigned int _DBusIsStructAtEnd(struct DBusMessage* m);
+int _ADBusProcessStruct(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusNextStructField(struct ADBusMessage* m, struct ADBusField* f);
+unsigned int _ADBusIsStructAtEnd(struct ADBusMessage* m);
 
-int _DBusProcessDictEntry(struct DBusMessage* m, struct DBusField* f);
-int _DBusNextDictEntryField(struct DBusMessage* m, struct DBusField* f);
-unsigned int _DBusIsDictEntryAtEnd(struct DBusMessage* m);
+int _ADBusProcessDictEntry(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusNextDictEntryField(struct ADBusMessage* m, struct ADBusField* f);
+unsigned int _ADBusIsDictEntryAtEnd(struct ADBusMessage* m);
 
-int _DBusProcessArray(struct DBusMessage* m, struct DBusField* f);
-int _DBusNextArrayField(struct DBusMessage* m, struct DBusField* f);
-unsigned int _DBusIsArrayAtEnd(struct DBusMessage* m);
+int _ADBusProcessArray(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusNextArrayField(struct ADBusMessage* m, struct ADBusField* f);
+unsigned int _ADBusIsArrayAtEnd(struct ADBusMessage* m);
 
-int _DBusProcessVariant(struct DBusMessage* m, struct DBusField* f);
-int _DBusNextVariantField(struct DBusMessage* m, struct DBusField* f);
-unsigned int _DBusIsVariantAtEnd(struct DBusMessage* m);
+int _ADBusProcessVariant(struct ADBusMessage* m, struct ADBusField* f);
+int _ADBusNextVariantField(struct ADBusMessage* m, struct ADBusField* f);
+unsigned int _ADBusIsVariantAtEnd(struct ADBusMessage* m);
 
-int _DBusNextField(struct DBusMessage* m, struct DBusField* f);
+int _ADBusNextField(struct ADBusMessage* m, struct ADBusField* f);
 
 
-// where b0 _DBusIs lowest byte
+// where b0 _ADBusIs lowest byte
 #define MAKE16(b1,b0) \
   (((uint16_t)(b1) << 8) | (b0))
 #define MAKE32(b3,b2,b1,b0) \

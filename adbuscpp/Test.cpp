@@ -46,7 +46,7 @@ class SomeRandomClass
 public:
 
   SomeRandomClass(){}
-  void registerInterfaces(DBus::Object* object);
+  void registerInterfaces(adbus::Object* object);
 
   void someFunc(int i)
   {
@@ -80,15 +80,15 @@ public:
   }
 
 private:
-  DBus::Signal<> m_Output;
+  adbus::Signal<> m_Output;
 };
-DBUSCPP_DECLARE_TYPE_STRING(std::vector<uint32_t>,  "au")
-DBUSCPP_DECLARE_BASE_TYPE(const std::vector<uint32_t>&, std::vector<uint32_t>)
+ADBUSCPP_DECLARE_TYPE_STRING(std::vector<uint32_t>,  "au")
+ADBUSCPP_DECLARE_BASE_TYPE(const std::vector<uint32_t>&, std::vector<uint32_t>)
 
 
-void SomeRandomClass::registerInterfaces(DBus::Object* object)
+void SomeRandomClass::registerInterfaces(adbus::Object* object)
 {
-  using namespace DBus;
+  using namespace adbus;
 
   ObjectInterface* i = object->addInterface("com.ctct.Random.Test1");
 
@@ -224,7 +224,7 @@ int  ParseServerData(const char* data,
 
   std::string hexData(hexDataBegin, hexDataEnd);
   std::vector<uint8_t> decodedData;
-  if (DBus::HexDecode(hexData.c_str(), hexData.size(), &decodedData))
+  if (adbus::HexDecode(hexData.c_str(), hexData.size(), &decodedData))
     return 1;
 
   const char* decodedDataBegin = (const char*)&decodedData[0];
@@ -255,7 +255,7 @@ void GenerateReply(const std::string& serverData, const std::string& cookie,
   for (int i = 0; i < 32; ++i)
     clientData[i] = rand() & 0xFF;
 
-  DBus::HexEncode(&clientData[0], 32, &localData);
+  adbus::HexEncode(&clientData[0], 32, &localData);
 
   std::string data = serverData
                    + ':'
@@ -266,7 +266,7 @@ void GenerateReply(const std::string& serverData, const std::string& cookie,
   SHA1 sha;
   sha.addBytes(data.c_str(), (int)data.size());
 
-  DBus::HexEncode(sha.getDigest(), 20, &reply);
+  adbus::HexEncode(sha.getDigest(), 20, &reply);
 }
 
 #define SEND(x) write(sock, x, strlen(x))
@@ -283,8 +283,8 @@ int main(int argc, char* argv[])
   snprintf(euidBuf, 31, "%d", geteuid());
   euidBuf[31] = '\0';
   std::string authString;
-  DBus::HexEncode((const uint8_t*)euidBuf, strlen(euidBuf), &authString);
-  authString = "AUTH DBUS_COOKIE_SHA1 " + authString + "\r\n";
+  adbus::HexEncode((const uint8_t*)euidBuf, strlen(euidBuf), &authString);
+  authString = "AUTH ADBUS_COOKIE_SHA1 " + authString + "\r\n";
 
   write(sock, "\0", 1);
   write(sock, authString.c_str(), authString.size());
@@ -302,7 +302,7 @@ int main(int argc, char* argv[])
 
   std::string fullReply = localData + ' ' + reply;
   std::string encodedFullReply;
-  DBus::HexEncode((const uint8_t*) fullReply.c_str(), fullReply.size(), &encodedFullReply);
+  adbus::HexEncode((const uint8_t*) fullReply.c_str(), fullReply.size(), &encodedFullReply);
 
   encodedFullReply = "DATA " + encodedFullReply + "\r\n";
 
@@ -312,7 +312,7 @@ int main(int argc, char* argv[])
 
   SEND("BEGIN\r\n");
 
-  DBus::Connection connection;
+  adbus::Connection connection;
   connection.setSendCallback(&SendData, (void*)&sock);
 
   SomeRandomClass object;

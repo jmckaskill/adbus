@@ -26,9 +26,9 @@
 #include "Marshall.h"
 #include "Slot.h"
 
-#include "DBusClient/Common.h"
+#include "adbus/Common.h"
 
-namespace DBus{
+namespace adbus{
 
   //-----------------------------------------------------------------------------
 
@@ -55,17 +55,17 @@ namespace DBus{
   a ## x >> *m_Marshaller;  \
   EndArgument<A ## x>(m_Marshaller);
 
-#define MARSHALL_STATEMENTS DBUSCPP_REPEAT(MARSHALL_STATEMENT, DBUSCPP_BLANK)
+#define MARSHALL_STATEMENTS ADBUSCPP_REPEAT(MARSHALL_STATEMENT, ADBUSCPP_BLANK)
 
-  template<DBUSCPP_DECLARE_TYPES>
-  uint32_t MessageFactory::callWithFlags(int flags, DBUSCPP_CRARGS)
+  template<ADBUSCPP_DECLARE_TYPES>
+  uint32_t MessageFactory::callWithFlags(int flags, ADBUSCPP_CRARGS)
   {
     if (setupMarshallerForCall(flags))
       return 0;
 
     MARSHALL_STATEMENTS;
 
-    DBusSendMessage(m_Marshaller);
+    ADBusSendMessage(m_Marshaller);
     return m_Serial;
   }
 

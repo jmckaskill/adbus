@@ -28,11 +28,11 @@
 
 #include <string>
 
-#include "DBusClient/Common.h"
+#include "adbus/Common.h"
 
-struct DBusMarshaller;
+struct ADBusMarshaller;
 
-namespace DBus{
+namespace adbus{
 
   class Connection;
   class Slot;
@@ -41,9 +41,9 @@ namespace DBus{
 
   struct MessageRegistration
   {
-    MessageRegistration() :type(DBusInvalidMessage), slot(NULL), errorSlot(NULL){}
+    MessageRegistration() :type(ADBusInvalidMessage), slot(NULL), errorSlot(NULL){}
 
-    DBusMessageType type;
+    ADBusMessageType type;
     std::string     service;
     std::string     path;
     std::string     interface;
@@ -56,7 +56,7 @@ namespace DBus{
 
   class MessageFactory
   {
-    DBUSCPP_NON_COPYABLE(MessageFactory);
+    ADBUSCPP_NON_COPYABLE(MessageFactory);
   public:
     MessageFactory();
     ~MessageFactory();
@@ -113,46 +113,46 @@ namespace DBus{
     { return callWithFlags(0, a0, a1, a2, a3, a4, a5, a6, a7, a8); }
 
     uint32_t callNoReply()
-    { return callWithFlags(DBusNoReplyExpectedFlag, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
 
     template<class A0>
     uint32_t callNoReply(const A0& a0)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
 
     template<class A0,class A1>
     uint32_t callNoReply(const A0& a0, const A1& a1)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
 
     template<class A0,class A1,class A2>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, Null_t(), Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
 
     template<class A0,class A1,class A2,class A3>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2, const A3& a3)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, a3, Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, a3, Null_t(), Null_t(), Null_t(), Null_t(), Null_t()); }
 
     template<class A0,class A1,class A2,class A3,class A4>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2, const A3& a3, const A4& a4)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, Null_t(), Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, Null_t(), Null_t(), Null_t(), Null_t()); }
 
     template<class A0,class A1,class A2,class A3,class A4,class A5>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, Null_t(), Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, Null_t(), Null_t(), Null_t()); }
 
     template<class A0,class A1,class A2,class A3,class A4,class A5,class A6>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5, const A6& a6)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, a6, Null_t(), Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, a6, Null_t(), Null_t()); }
 
     template<class A0,class A1,class A2,class A3,class A4,class A5,class A6,class A7>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5, const A6& a6, const A7& a7)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, a6, a7, Null_t()); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, a6, a7, Null_t()); }
 
     template<class A0,class A1,class A2,class A3,class A4,class A5,class A6,class A7,class A8>
     uint32_t callNoReply(const A0& a0, const A1& a1, const A2& a2, const A3& a3, const A4& a4, const A5& a5, const A6& a6, const A7& a7, const A8& a8)
-    { return callWithFlags(DBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, a6, a7, a8); }
+    { return callWithFlags(ADBusNoReplyExpectedFlag, a0, a1, a2, a3, a4, a5, a6, a7, a8); }
 
-    template<DBUSCPP_DECLARE_TYPES>
-    uint32_t callWithFlags(int flags, DBUSCPP_CRARGS);
+    template<ADBUSCPP_DECLARE_TYPES>
+    uint32_t callWithFlags(int flags, ADBUSCPP_CRARGS);
 
     uint32_t connectSignal();
 
@@ -166,7 +166,7 @@ namespace DBus{
     std::string m_Interface;
     std::string m_Member;
     MessageRegistration m_Registration;
-    DBusMarshaller* m_Marshaller;
+    ADBusMarshaller* m_Marshaller;
     uint32_t m_Serial;
   };
 
