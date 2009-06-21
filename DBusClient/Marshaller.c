@@ -267,7 +267,7 @@ static void setUInt32HeaderField(struct DBusMarshaller* m, enum DBusHeaderFieldC
 
 // ----------------------------------------------------------------------------
 
-static void setStringHeaderField(struct DBusMarshaller* m, 
+static void setStringHeaderField(struct DBusMarshaller* m,
                                  enum DBusHeaderFieldCode code,
                                  enum DBusFieldType field,
                                  const char* str, size_t size)
@@ -497,26 +497,25 @@ void DBusBeginArgument(struct DBusMarshaller* m, const char* type, int typeSize)
     typei = needed;
     needed += 1;            // field type
     needed += 3;            // field variant type
-    needed  = _DBUS_ALIGN_VALUE(needed, 4);   // pad to length
     stringi = needed;
-    needed += 4 + 1;        // string len + null
+    needed += 1 + 1;        // string len + null
 
     GROW_HEADER(m, needed);
 
     uint8_t* typep = &m->h[typei];
-    uint32_t* sizep = (uint32_t*)&m->h[stringi];
-    uint8_t* stringp = (uint8_t*)&m->h[stringi + 4];
+    uint8_t* sizep = &m->h[stringi];
+    uint8_t* stringp = &m->h[stringi + 1];
 
     typep[0] = DBusSignatureCode;
     typep[1] = 1;
-    typep[2] = 's';
+    typep[2] = 'g';
     typep[3] = '\0';
 
     sizep[0] = 0;
 
     stringp[0] = '\0';
 
-    m->typeSizeOffset = typei;
+    m->typeSizeOffset = stringi;
   }
 
   // Append type onto the end of the header buf (ignoring the existing null
@@ -528,7 +527,7 @@ void DBusBeginArgument(struct DBusMarshaller* m, const char* type, int typeSize)
   *psize += typeSize;
 
 
-  size_t needed = m->asize;
+  size_t needed = m->hsize;
   needed += typeSize;
   GROW_HEADER(m, needed);
 

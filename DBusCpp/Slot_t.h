@@ -36,10 +36,12 @@ namespace detail
 #define ARG_LEADING_COMMA(x) , a ## x
 #define ARG(x) a ## x
 #define DEMARSHALL_STATEMENT(x) A ## x ARG(x); ARG(x) << *message;
+#define TYPE_STRING_CASE(x) case x: { return DBusTypeString<A ## x>(); }
 
 #define ARGS_LEADING_COMMA          SLOT_REPEAT(ARG_LEADING_COMMA, DBUSCPP_BLANK)
 #define ARGS                        SLOT_REPEAT(ARG, DBUSCPP_COMMA)
 #define DEMARSHALL_STATEMENTS       SLOT_REPEAT(DEMARSHALL_STATEMENT, DBUSCPP_BLANK)
+#define TYPE_STRING_CASES           SLOT_REPEAT(TYPE_STRING_CASE, DBUSCPP_BLANK)
 
     //-----------------------------------------------------------------------------
     //-----------------------------------------------------------------------------
@@ -98,12 +100,26 @@ namespace detail
     public:
       FMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
+      virtual const char* argumentTypeString(int i)const
+      {
+        switch(i)
+        {
+        case -1:
+          return DBusTypeString<R>();
+        TYPE_STRING_CASES
+        default:
+          return NULL;
+        }
+      }
+
     private:
       virtual void triggered(DBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
         DBusMarshaller* ret = interface()->returnMessage(message);
+        DBusBeginArgument(ret, DBusTypeString<R>(), -1);
         m_Function(m_Object ARGS_LEADING_COMMA ) >> *ret;
+        DBusEndArgument(ret);
         DBusSendMessage(ret);
       }
 
@@ -120,12 +136,26 @@ namespace detail
     public:
       MFMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
+      virtual const char* argumentTypeString(int i)const
+      {
+        switch(i)
+        {
+        case -1:
+          return DBusTypeString<R>();
+        TYPE_STRING_CASES
+        default:
+          return NULL;
+        }
+      }
+
     private:
       virtual void triggered(DBusMessage* message)
       {
         DEMARSHALL_STATEMENTS;
         DBusMarshaller* ret = interface()->returnMessage(message);
+        DBusBeginArgument(ret, DBusTypeString<R>(), -1);
         (m_Object->*m_Function)( ARGS ) >> *ret;
+        DBusEndArgument(ret);
         DBusSendMessage(ret);
       }
 
@@ -137,11 +167,21 @@ namespace detail
     //-----------------------------------------------------------------------------
 
     template<class U, class Fn, DBUSCPP_DECLARE_TYPES_DEF>
-    class FVoidMethod : public MethodBase 
+    class FVoidMethod : public MethodBase
     {
       DBUSCPP_NON_COPYABLE(FVoidMethod);
     public:
       FVoidMethod(U* object, Fn function):m_Object(object),m_Function(function){}
+
+      virtual const char* argumentTypeString(int i)const
+      {
+        switch(i)
+        {
+        TYPE_STRING_CASES
+        default:
+          return NULL;
+        }
+      }
 
     private:
       virtual void triggered(DBusMessage* message)
@@ -165,6 +205,16 @@ namespace detail
     public:
       MFVoidMethod(U* object, Fn function):m_Object(object),m_Function(function){}
 
+      virtual const char* argumentTypeString(int i)const
+      {
+        switch(i)
+        {
+        TYPE_STRING_CASES
+        default:
+          return NULL;
+        }
+      }
+
     private:
       virtual void triggered(DBusMessage* message)
       {
@@ -186,10 +236,12 @@ namespace detail
 #undef ARG_LEADING_COMMA
 #undef ARG
 #undef DEMARSHALL_STATEMENT
+#undef TYPE_STRING_CASE
 
 #undef ARGS_LEADING_COMMA
 #undef ARGS
 #undef DEMARSHALL_STATEMENTS
+#undef TYPE_STRING_CASES
 
 }
 }

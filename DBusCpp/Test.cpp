@@ -82,6 +82,7 @@ public:
 private:
   DBus::Signal<> m_Output;
 };
+DBUSCPP_DECLARE_TYPE_STRING(std::vector<uint32_t>,  "au")
 DBUSCPP_DECLARE_BASE_TYPE(const std::vector<uint32_t>&, std::vector<uint32_t>)
 
 
@@ -103,7 +104,7 @@ void SomeRandomClass::registerInterfaces(DBus::Object* object)
 
   i->addMethod("SomeReturnValue", &SomeRandomClass::someReturnValue, this)
    ->addReturn("return", "d")
-   ->addArgument("argument", "d");
+   ->addArgument("argument", "i");
 
   i->addSignal("SomeOutput", &m_Output);
 
@@ -229,7 +230,7 @@ int  ParseServerData(const char* data,
   const char* decodedDataBegin = (const char*)&decodedData[0];
   const char* decodedDataEnd   = (const char*)&*decodedData.end();
 
-  
+
   const char* keyringEnd = std::find(decodedDataBegin, decodedDataEnd, ' ');
   if (keyringEnd == decodedDataEnd)
     return 1;
@@ -256,7 +257,7 @@ void GenerateReply(const std::string& serverData, const std::string& cookie,
 
   DBus::HexEncode(&clientData[0], 32, &localData);
 
-  std::string data = serverData 
+  std::string data = serverData
                    + ':'
                    + localData
                    + ':'

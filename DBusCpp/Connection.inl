@@ -85,6 +85,25 @@ namespace DBus{
 #undef MARSHALL_STATEMENTS
 
   //-----------------------------------------------------------------------------
+
+#define TYPE_STRING_CASE(x) case x: { return DBusTypeString<A ## x>(); }
+#define TYPE_STRING_CASES   DBUSCPP_REPEAT(TYPE_STRING_CASE, DBUSCPP_BLANK)
+
+  template<DBUSCPP_DECLARE_TYPES>
+  const char* Signal<DBUSCPP_TYPES>::argumentTypeString(int i)const
+  {
+    switch(i)
+    {
+    TYPE_STRING_CASES
+    default:
+      return NULL;
+    }
+  }
+
+#undef TYPE_STRING_CASES
+#undef TYPE_STRING_CASE
+
+  //-----------------------------------------------------------------------------
   //-----------------------------------------------------------------------------
   //-----------------------------------------------------------------------------
 
@@ -120,7 +139,7 @@ namespace DBus{
   //-----------------------------------------------------------------------------
   //-----------------------------------------------------------------------------
   //-----------------------------------------------------------------------------
-  
+
   template<class Container>
   typename Container::iterator
   FindUsingKey(Container& c, const char* str, int size)

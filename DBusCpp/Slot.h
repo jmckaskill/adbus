@@ -45,7 +45,7 @@ namespace DBus
   };
 
   //-----------------------------------------------------------------------------
-  
+
   namespace detail
   {
     template<int Arity>
@@ -124,28 +124,58 @@ namespace DBus
   namespace detail
   {
 
+    template<class U, class M, class R>
+    Slot* createSlot(U* object, R (M::*function)())
+    {
+      return new Target<0>::MFSlot<U, R (M::*)()>(object, function);
+    }
     template<class U, class M, class R, class A0>
     Slot* createSlot(U* object, R (M::*function)(A0))
-    { 
+    {
       typedef typename DBusBaseArgumentType<A0>::type BaseA0;
-      return new Target<1>::MFSlot<U, R (M::*)(A0), BaseA0>(object, function); 
+      return new Target<1>::MFSlot<U, R (M::*)(A0), BaseA0>(object, function);
     }
 
 
+    template<class U, class M, class R>
+    MethodBase* createMethod(U* object, R (M::*function)())
+    {
+      typedef typename DBusBaseArgumentType<R>::type  BaseR;
+      return new Target<0>::MFMethod<U, R (M::*)(), BaseR>(object, function);
+    }
+    template<class U, class M, class R>
+    MethodBase* createMethod(U* object, R (M::*function)()const)
+    {
+      typedef typename DBusBaseArgumentType<R>::type  BaseR;
+      return new Target<0>::MFMethod<U, R (M::*)()const, BaseR>(object, function);
+    }
 
     template<class U, class M, class R, class A0>
     MethodBase* createMethod(U* object, R (M::*function)(A0))
-    { 
+    {
       typedef typename DBusBaseArgumentType<R>::type  BaseR;
       typedef typename DBusBaseArgumentType<A0>::type BaseA0;
-      return new Target<1>::MFMethod<U, R (M::*)(A0), BaseR, BaseA0>(object, function); 
+      return new Target<1>::MFMethod<U, R (M::*)(A0), BaseR, BaseA0>(object, function);
+    }
+    template<class U, class M, class R, class A0>
+    MethodBase* createMethod(U* object, R (M::*function)(A0)const)
+    {
+      typedef typename DBusBaseArgumentType<R>::type  BaseR;
+      typedef typename DBusBaseArgumentType<A0>::type BaseA0;
+      return new Target<1>::MFMethod<U, R (M::*)(A0)const, BaseR, BaseA0>(object, function);
     }
 
+
+    template<class U, class M>
+    MethodBase* createMethod(U* object, void (M::*function)())
+    {
+      return new Target<0>::MFVoidMethod<U, void (M::*)()>(object, function);
+    }
     template<class U, class M, class A0>
     MethodBase* createMethod(U* object, void (M::*function)(A0))
-    { 
+    {
       typedef typename DBusBaseArgumentType<A0>::type BaseA0;
-      return new Target<1>::MFVoidMethod<U, void (M::*)(A0), BaseA0>(object, function); 
+      return new Target<1>::MFVoidMethod<U, void (M::*)(A0), BaseA0>(object, function);
     }
 
   }

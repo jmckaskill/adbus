@@ -35,6 +35,17 @@ using namespace DBus;
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 
+class InvalidPathError : public DBus::Error
+{
+public:
+  virtual const char* errorName()const
+  { return "nz.co.foobar.DBus.InvalidPath"; }
+  virtual const char* errorMessage()const
+  { return "Path not found"; }
+};
+
+//-----------------------------------------------------------------------------
+
 Connection::Connection()
   : m_Callback(NULL),
     m_CallbackData(NULL),
@@ -49,6 +60,8 @@ Connection::Connection()
   m_BusFactory.setService("org.freedesktop.DBus");
   m_BusFactory.setPath("/org/freedesktop/DBus");
   m_BusFactory.setInterface("org.freedesktop.DBus");
+
+  m_ErrorMarshaller = DBusCreateMarshaller();
 }
 
 //-----------------------------------------------------------------------------
@@ -59,6 +72,7 @@ Connection::~Connection()
   for (oi = m_Objects.begin(); oi != m_Objects.end(); ++oi)
     delete oi->second;
   DBusFreeParser(m_Parser);
+  DBusFreeMarshaller(m_ErrorMarshaller);
 }
 
 //-----------------------------------------------------------------------------
@@ -72,6 +86,11 @@ Object* Connection::addObject(const char* name, int size)
   Object* o = new Object(this);
   o->setName(name, size);
   m_Objects[o->name()] = o;
+
+  ObjectInterface* introspect = o->addInterface("org.freedesktop.DBus.Introspectable");
+  introspect->addMethod("Introspect", &Object::introspect, o)
+            ->addReturn("data", "s");
+
   return o;
 }
 
@@ -86,6 +105,47 @@ void Connection::removeObject(const char* name, int size)
 
   delete oi->second;
   m_Objects.erase(oi);
+}
+
+//-----------------------------------------------------------------------------
+
+std::string Connection::introspectObject(const std::string& objectName)const
+{
+  std::string out = "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\"\n"
+                    "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
+                    "<node>\n";
+
+  Objects::const_iterator ii = m_Objects.find(objectName);
+  if (ii == m_Objects.end() || !ii->second || objectName.empty())
+    throw InvalidPathError();
+
+  ii->second->introspectInterfaces(out);
+
+  ++ii;
+
+  std::string path = objectName;
+  if (objectName[objectName.size() - 1] != '/')
+    path += '/';
+  while (ii != m_Objects.end())
+  {
+    const std::string& name = ii->first;
+    if (name.size() < path.size())
+      break;
+    if (strncmp(name.c_str(), path.c_str(), path.size()) != 0)
+      break;
+
+    // Make sure its a direct child of the object
+    if (memchr(name.c_str() + path.size(), name.size() - path.size(), '/') != NULL)
+      continue;
+
+    out += " <node name=\"";
+    // We only want the tail name
+    out += name.c_str() + path.size();
+    out += "\"/>\n";
+  }
+
+  out += "</node>\n";
+  return out;
 }
 
 //-----------------------------------------------------------------------------
@@ -150,15 +210,6 @@ void Connection::dispatchSignal(DBusMessage* message)
 }
 
 //-----------------------------------------------------------------------------
-
-class InvalidPathError : public DBus::Error
-{
-public:
-  virtual const char* errorName()const
-  { return "nz.co.foobar.DBus.InvalidPath"; }
-  virtual const char* errorMessage()const
-  { return "Path not found"; }
-};
 
 void Connection::dispatchMethodCall(DBusMessage* message)
 {
@@ -297,7 +348,8 @@ uint32_t Connection::addRegistration(MessageRegistration* registration)
 //-----------------------------------------------------------------------------
 
 Object::Object(Connection* c)
-: m_Connection(c)
+: m_Connection(c),
+  m_Marshaller(NULL)
 {
 }
 
@@ -305,6 +357,8 @@ Object::Object(Connection* c)
 
 Object::~Object()
 {
+  if (m_Marshaller)
+    DBusFreeMarshaller(m_Marshaller);
 }
 
 //-----------------------------------------------------------------------------
@@ -340,6 +394,13 @@ void Object::removeInterface(const char* name, int size)
 
   if (ii != m_Interfaces.end())
     m_Interfaces.erase(ii);
+}
+
+//-----------------------------------------------------------------------------
+
+std::string Object::introspect()const
+{
+  return connection()->introspectObject(name());
 }
 
 //-----------------------------------------------------------------------------
@@ -446,6 +507,11 @@ DBusMarshaller* ObjectInterface::signalMessage(const char* name, int size)
 DBusMarshaller* ObjectInterface::returnMessage(DBusMessage* request)
 {
   DBusMarshaller* m = m_Object->marshaller();
+  DBusSetMessageType(m, DBusMethodReturnMessage);
+  int remoteSize;
+  const char* remote = DBusGetSender(request, &remoteSize);
+  if (remote)
+    DBusSetDestination(m, remote, remoteSize);
   DBusSetReplySerial(m, DBusGetSerial(request));
   return m;
 }
@@ -454,7 +520,7 @@ DBusMarshaller* ObjectInterface::returnMessage(DBusMessage* request)
 
 void ObjectInterface::introspect(std::string& out)const
 {
-  out += "<interface name=\""
+  out += " <interface name=\""
        + name()
        + "\">\n";
 
@@ -470,7 +536,7 @@ void ObjectInterface::introspect(std::string& out)const
   for (si = m_Signals.begin(); si != m_Signals.end(); ++si)
     si->second->introspect(out);
 
-  out += "</interface>\n";
+  out += " </interface>\n";
 }
 
 //-----------------------------------------------------------------------------
@@ -509,17 +575,6 @@ InterfaceComponent::InterfaceComponent()
 
 //-----------------------------------------------------------------------------
 
-void InterfaceComponent::addArgument(const char* name, const char* type, Direction dir)
-{
-  Argument arg;
-  arg.name = name;
-  arg.type = type;
-  arg.direction = dir;
-  m_Arguments.insert(arg);
-}
-
-//-----------------------------------------------------------------------------
-
 InterfaceComponent* InterfaceComponent::addAnnotation(const char* key, const char* value)
 {
   m_Annotations[key] = value;
@@ -533,7 +588,7 @@ void InterfaceComponent::introspectAnnotations(std::string& out)const
   Annotations::const_iterator ii;
   for (ii = m_Annotations.begin(); ii != m_Annotations.end(); ++ii)
   {
-    out += "<annotation name=\""
+    out += "   <annotation name=\""
          + ii->first
          + "\" value=\""
          + ii->second
@@ -546,15 +601,21 @@ void InterfaceComponent::introspectAnnotations(std::string& out)const
 void InterfaceComponent::introspectArguments(std::string& out)const
 {
   Arguments::const_iterator ii;
-  for (ii = m_Arguments.begin(); ii != m_Arguments.end(); ++ii)
+  for (ii = m_InArguments.begin(); ii != m_InArguments.end(); ++ii)
   {
-    out += "<argument name=\""
-         + ii->name
+    out += "   <arg name=\""
+         + ii->first
          + "\" type=\""
-         + ii->type
-         + "\" direction=\""
-         + (ii->direction == In ? "in" : "out")
-         + "\"/>\n";
+         + ii->second
+         + "\" direction=\"in\"/>\n";
+  }
+  for (ii = m_OutArguments.begin(); ii != m_OutArguments.end(); ++ii)
+  {
+    out += "   <arg name=\""
+         + ii->first
+         + "\" type=\""
+         + ii->second
+         + "\" direction=\"out\"/>\n";
   }
 }
 
@@ -572,32 +633,69 @@ void InterfaceComponent::setName(const char* name, int size)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 
+MethodBase* MethodBase::addArgument(const char* name, const char* type)
+{
+  assert(argumentTypeString(m_InArguments.size()) != NULL);
+  assert(strcmp(type, argumentTypeString(m_InArguments.size())) == 0);
+
+  m_InArguments.push_back(std::make_pair(name,type));
+
+  return this;
+}
+
+//-----------------------------------------------------------------------------
+
+MethodBase* MethodBase::addReturn(const char* name, const char* type)
+{
+  assert(m_OutArguments.empty());
+  assert(argumentTypeString(-1) != NULL);
+  assert(strcmp(type, argumentTypeString(-1)) == 0);
+
+  m_OutArguments.push_back(std::make_pair(name,type));
+
+  return this;
+}
+
+//-----------------------------------------------------------------------------
+
 void MethodBase::introspect(std::string& out)const
 {
-  out += "<method name=\""
+  out += "  <method name=\""
        + name()
-       + "\"\n";
+       + "\">\n";
 
   introspectArguments(out);
   introspectAnnotations(out);
 
-  out += "</method>\n";
+  out += "  </method>\n";
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 
+SignalBase* SignalBase::addArgument(const char* name, const char* type)
+{
+  assert(argumentTypeString(m_OutArguments.size()) != NULL);
+  assert(strcmp(type, argumentTypeString(m_OutArguments.size())) == 0);
+
+  m_OutArguments.push_back(std::make_pair(name,type));
+
+  return this;
+}
+
+//-----------------------------------------------------------------------------
+
 void SignalBase::introspect(std::string& out)const
 {
-  out += "<signal name=\""
+  out += "  <signal name=\""
        + name()
-       + "\"\n";
+       + "\">\n";
 
   introspectArguments(out);
   introspectAnnotations(out);
 
-  out += "</signal>\n";
+  out += "  </signal>\n";
 }
 
 //-----------------------------------------------------------------------------
@@ -606,15 +704,15 @@ void SignalBase::introspect(std::string& out)const
 
 void PropertyBase::introspectProperty(std::string& out, const char* typeString)const
 {
-  out += "<property name\""
+  out += "  <property name\""
        + name()
        + "\" type=\""
        + typeString
-       + ">\n";
+       + "\">\n";
 
   introspectAnnotations(out);
 
-  out += "</property>\n";
+  out += "  </property>\n";
 }
 
 //-----------------------------------------------------------------------------

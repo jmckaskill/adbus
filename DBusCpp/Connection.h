@@ -25,6 +25,7 @@
 #pragma once
 
 #include "Macros.h"
+#include "Marshall.h"
 #include "MessageFactory.h"
 
 #include "DBusClient/Marshaller.h"
@@ -63,10 +64,10 @@ namespace DBus{
 
   //-----------------------------------------------------------------------------
 
-  template<class Container> 
+  template<class Container>
   typename Container::iterator
   FindUsingKey(Container& c, const char* str, int size);
-  
+
   //-----------------------------------------------------------------------------
 
   class Connection
@@ -93,6 +94,8 @@ namespace DBus{
 
     Object* addObject(const char* name, int size = -1);
     void removeObject(const char* name, int size = -1);
+
+    std::string introspectObject(const std::string& objectName)const;
 
   private:
     friend class RegistrationHandle;
@@ -128,6 +131,7 @@ namespace DBus{
     ObjectInterface* addInterface(const char* name, int size = -1);
     void removeInterface(const char* name, int size = -1);
 
+    std::string introspect()const;
     void introspectInterfaces(std::string& out)const;
 
     const std::string& name()const{return m_Name;}
@@ -209,14 +213,6 @@ namespace DBus{
     InterfaceComponent();
     virtual ~InterfaceComponent(){}
 
-    enum Direction
-    {
-      In,
-      Out,
-    };
-
-    void addArgument(const char* name, const char* type, Direction dir);
-
     void introspectArguments(std::string& out)const;
     void introspectAnnotations(std::string& out)const;
 
@@ -226,23 +222,16 @@ namespace DBus{
     void setName(const char* name, int size = -1);
     void setInterface(ObjectInterface* interface){m_Interface = interface;}
 
+    typedef std::vector<std::pair<std::string, std::string> >  Arguments;
+    Arguments   m_InArguments;
+    Arguments   m_OutArguments;
+
   private:
     friend class ObjectInterface;
 
-    struct Argument
-    {
-      std::string name;
-      std::string type;
-      Direction   direction;
-      bool operator<(const Argument& other)const
-      { return name < other.name; }
-    };
-
     typedef std::map<std::string, std::string>  Annotations;
-    typedef std::set<Argument>                  Arguments;
 
     Annotations m_Annotations;
-    Arguments   m_Arguments;
 
     std::string m_Name;
     ObjectInterface* m_Interface;
@@ -253,17 +242,16 @@ namespace DBus{
   class MethodBase : public InterfaceComponent
   {
   public:
-    MethodBase* addArgument(const char* name, const char* type)
-    { InterfaceComponent::addArgument(name, type, In); return this; }
+    MethodBase* addArgument(const char* name, const char* type);
 
-    MethodBase* addReturn(const char* name, const char* type)
-    { InterfaceComponent::addArgument(name, type, Out); return this; }
+    MethodBase* addReturn(const char* name, const char* type);
 
   protected:
     MethodBase(){}
 
   private:
     friend class ObjectInterface;
+    virtual const char* argumentTypeString(int i)const=0;
     virtual void triggered(DBusMessage* m)=0;
 
     virtual void introspect(std::string& out)const;
@@ -274,8 +262,7 @@ namespace DBus{
   class SignalBase : public InterfaceComponent
   {
   public:
-    SignalBase* addArgument(const char* name, const char* type)
-    { InterfaceComponent::addArgument(name, type, Out); return this; }
+    SignalBase* addArgument(const char* name, const char* type);
 
   protected:
     SignalBase(){}
@@ -283,6 +270,7 @@ namespace DBus{
   private:
     friend class ObjectInterface;
     virtual void introspect(std::string& out)const;
+    virtual const char* argumentTypeString(int i)const=0;
   };
 
   //-----------------------------------------------------------------------------
@@ -292,6 +280,8 @@ namespace DBus{
   {
   public:
     void trigger(DBUSCPP_CRARGS_DEF);
+  private:
+    virtual const char* argumentTypeString(int i)const;
   };
 
   //-----------------------------------------------------------------------------

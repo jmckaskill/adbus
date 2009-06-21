@@ -5,7 +5,7 @@ include_directories(..)
 
 
 
-add_library(DBusCpp SHARED 
+add_library(DBusCpp SHARED
             Arity.h
             Auth.h
             Auth.cpp

@@ -56,11 +56,11 @@ template<class T>
 const char* DBusTypeString();
 
 #define DBUSCPP_DECLARE_TYPE_STRING(type, string) \
-  DBUSCPP_DECLARE_BASE_TYPE(type const&, type) \
   template<> inline \
   const char* DBusTypeString<type>() \
   { return string; }
 
+DBUSCPP_DECLARE_TYPE_STRING(DBus::Null_t, NULL)
 DBUSCPP_DECLARE_TYPE_STRING(bool,         "b")
 DBUSCPP_DECLARE_TYPE_STRING(uint8_t,      "y")
 DBUSCPP_DECLARE_TYPE_STRING( int16_t,     "n")
@@ -72,6 +72,8 @@ DBUSCPP_DECLARE_TYPE_STRING(uint64_t,     "t")
 DBUSCPP_DECLARE_TYPE_STRING(double,       "d")
 DBUSCPP_DECLARE_TYPE_STRING(const char*,  "s")
 DBUSCPP_DECLARE_TYPE_STRING(std::string,  "s")
+DBUSCPP_DECLARE_BASE_TYPE(const std::string&, std::string)
+
 
 // ----------------------------------------------------------------------------
 
@@ -128,10 +130,10 @@ inline void operator<<(const char*& str, DBusMessage& m)
 { DBus::CheckForError(DBusTakeString(&m, &str, NULL)); }
 
 inline void operator<<(std::string& str, DBusMessage& m)
-{ 
+{
   const char* cstr;
   int size;
-  DBus::CheckForError(DBusTakeString(&m, &cstr, &size)); 
+  DBus::CheckForError(DBusTakeString(&m, &cstr, &size));
   str.clear();
   str.insert(str.end(), cstr, cstr + size);
 }
