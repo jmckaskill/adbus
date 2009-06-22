@@ -1,29 +1,29 @@
 -- vim: ts=4 sw=4 sts=4 et
 
-c = dbus.connection.new()
+c = adbus.connection.new()
 o = c:add_object("/")
-i = c:add_interface("nz.co.foobar.DBusLua.Test")
+i = c:add_interface("nz.co.foobar.ADBusLua.Test")
 
 i:add_method{{a.member_function, a},
              "MethodName",
              {"ArgumentName", "s", "in"},
              {"ReturnArg1", "d", "out"},
-             com.ctct.foobar.DBusLua.SomeRandomAnnotation = "TheAnnotation"
+             nz.co.foobar.ADBusLua.SomeRandomAnnotation = "TheAnnotation"
             }
 
 i:add_signal("SignalName",
              {"ArgumentName", "s", "in"})
 
 
-dbus = {}
-dbus.connection = {}
+adbus = {}
+adbus.connection = {}
 
-function dbus.connection.new()
+function adbus.connection.new()
     local o = {}
-    setmetatable(o, dbus.connection)
-    o._parser = dbusclient.parser()
+    setmetatable(o, adbus.connection)
+    o._parser = adbusclient.parser()
     o._parser:set_parse_callback(o._parse_callback, o)
-    o._marshaller = dbusclient.marshaller()
+    o._marshaller = adbusclient.marshaller()
 
     -- All callbacks use the same format: a table with index 1 = function and
     -- the rest are unpacked as the first arguments. Thus to bind
@@ -50,7 +50,7 @@ function dbus.connection.new()
     return o
 end
 
-function dbus.connection:_parse_callback(message)
+function adbus.connection:_parse_callback(message)
     local message_type = message:message_type()
     if message_type == "signal" then
         self:_dispatch_signal(message)
@@ -63,7 +63,7 @@ function dbus.connection:_parse_callback(message)
     end
 end
 
-function dbus.connection:_dispatch_signal(message)
+function adbus.connection:_dispatch_signal(message)
     local path = message:path()
     local interface = message:interface()
     local sender = message:sender()
@@ -82,7 +82,7 @@ function dbus.connection:_dispatch_signal(message)
     end
 end
 
-function dbus.connection:_send_error(message, error_name, error_message)
+function adbus.connection:_send_error(message, error_name, error_message)
     self._marshaller:clear()
     self._marshaller:set_send_callback(self._send_callback, self)
     self._marshaller:set_serial(self.next_serial)
@@ -103,7 +103,7 @@ function dbus.connection:_send_error(message, error_name, error_message)
     self.next_serial = self.next_serial + 1
 end
 
-function dbus.connection:_get_return_marshaller(message)
+function adbus.connection:_get_return_marshaller(message)
     self._marshaller:clear()
     self._marshaller:set_send_callback(self._send_callback, self)
     self._marshaller:set_serial(self.next_serial)
@@ -118,11 +118,11 @@ function dbus.connection:_get_return_marshaller(message)
 end
 
 
-function dbus.connection:_dispatch_method_call(message)
+function adbus.connection:_dispatch_method_call(message)
     local path = message:path()
     local object = o._objects[path]
     if object == nil then
-        self:_send_error("nz.co.foobar.DBusLua.Error.NoObject", "No object found")
+        self:_send_error("nz.co.foobar.ADBusLua.Error.NoObject", "No object found")
     else
         local ret = { object:_dispatch_method_call(message) }
         if ret[1] == nil and ret[2] ~= nil then
@@ -132,11 +132,11 @@ function dbus.connection:_dispatch_method_call(message)
     end
 end
 
-dbus.object={}
+adbus.object={}
 
-function dbus.object.new(connection, path)
+function adbus.object.new(connection, path)
     local o = {}
-    setmetatable(o, dbus.object)
+    setmetatable(o, adbus.object)
 
     --Key: interface names
     --Values: interface table
@@ -145,16 +145,16 @@ function dbus.object.new(connection, path)
     return o
 end
 
-function dbus.object:introspect()
+function adbus.object:introspect()
 end
 
 
 
-dbus.interface={}
+adbus.interface={}
 
-function dbus.interface.new(object, name)
+function adbus.interface.new(object, name)
     local o = {}
-    setmetatable(o, dbus.interface)
+    setmetatable(o, adbus.interface)
 
     o.name = name
 
@@ -172,74 +172,65 @@ function dbus.interface.new(object, name)
 end
 
 
-function dbus.interface:introspect()
-    local function introspect_annotations(v)
-        for ak, av in pairs(v.annotations) do
-            ret = ret
-                + "   <annotation name=\""
-                + ak
-                + "\" value=\""
-                + av
-                + "\"/>\n"
-        end
+local interface_begin = " <interface name=\"%s\">\n"
+local interface_end   = " </interface>\n"
+local method_begin    = "  <method name=\"%s\">\n"
+local method_end      = "  </method>\n"
+local signal_begin    = "  <signal name=\"%s\">\n"
+local signal_end      = "  </signal>\n"
+local property_begin  = "  <property name=\"%s\" type=\"%s\">\n"
+local property_end    = "  </property>\n"
+local annotation_xml  = "   <annotation name=\"%s\" value=\"%s\"/>\n"
+local arg_xml         = "   <arg name=\"%s\" value=\"%s\" direction=\"%s\"/>\n"
+
+local function introspect_annotations(v)
+    local ret = ""
+    for ak, av in pairs(v.annotations) do
+        ret = ret .. string.format(annotation_xml, ak, av)
+    end
+    return ret
+end
+
+local function introspect_arguments(v)
+    local ret = ""
+    for ak, av in pairs(v.in_arguments) do
+        ret = ret .. string.format(arg_xml, ak, av, "in")
+    end
+    for ak, av in pairs(v.out_arguments) do
+        ret = ret .. string.format(arg_xml, ak, av, "out")
+    end
+    return ret
+end
+
+function adbus.interface:introspect()
+    local ret = ""
+    local function append(...)
+        ret = ret .. string.format(...)
     end
 
-    local function introspect_arguments(v)
-        for ak, av in pairs(v.in_arguments) do
-            ret = ret
-                + "   <arg name=\""
-                + ak
-                + "\" value=\""
-                + av
-                + "\" direction=\"in\"/>\n"
-        end
-
-        for ak, av in pairs(v.out_arguments) do
-            ret = ret
-                + "   <arg name=\""
-                + ak
-                + "\" value=\""
-                + av
-                + "\" direction=\"out\"/>\n"
-        end
-    end
-
-    local ret = " <interface name=\"" 
-              + self.name
-              + "\">\n"
+    append(interface_begin, self.name)
 
     for k,v in pairs(self._methods) do
-        ret = ret 
-            + "  <method name=\""
-            + k
-            + "\">\n"
-            + introspect_annotations(v)
-            + introspect_arguments(v)
-            + "  </method>\n"
+        append(method_begin, k)
+        append(introspect_annotations(v))
+        append(introspect_arguments(v))
+        append(method_end)
     end
 
     for k,v in pairs(self._signals) do
-        ret = ret 
-            + "  <signal name=\""
-            + k
-            + "\">\n"
-            + introspect_annotations(v)
-            + introspect_arguments(v)
-            + "  </signal>\n"
+        append(signal_begin, k)
+        append(introspect_annotations(v))
+        append(introspect_arguments(v))
+        append(signal_end)
     end
 
-    for k,v in pairs(self._signals) do
-        ret = ret 
-            + "  <property name=\""
-            + k
-            + "\" type=\""
-            + v.type
-            + "\">\n"
-            + introspect_annotations(v)
-            + "  </property>\n"
+    for k,v in pairs(self._propertiess) do
+        append(property_begin, k, v.type)
+        append(introspect_annotations(v))
+        append(property_end)
     end
 
-    ret = ret + " </interface>\n"
+    append(interface_end)
 
     return ret
 end
@@ -270,8 +261,99 @@ local function sep_args_annotations(data)
     return r
 end
 
+local function get_array(message, scope)
+    local ret = {}
+    while not message:is_scope_finished(scope) do
+        local field, err = next_lua_field(message)
+        if field == nil then return nil, err end
+        if field.type == "dict_entry" then
+            ret[field.key] = field.value
+        else
+            ret:insert(field.data)
+        end
+    end
+    local a, err = message:take_array_end()
+    if d == nil then return nil, err end
+
+    return {type = "array", data = ret}
+end
+
+local function get_struct(message, scope)
+    local ret = {}
+    while not message:is_scope_finished(scope) do
+        local field, err = next_lua_field(message)
+        if field == nil then return nil, err end
+        ret:insert(field.data)
+    end
+    local a, err = message:take_struct_end()
+    if d == nil then return nil, err end
+
+    return {type = "array", data = ret}
+end
+
+local function get_dict_entry(message, scope)
+    local key, value, d, err
+    key, err = next_lua_field(message)
+    if key == nil then return nil, err end
+
+    value, err = next_lua_field(message)
+    if value == nil then return nil, err end
+
+    d, err = message:take_dict_entry_end()
+    if d == nil then return nil, err end
+
+    return {type = "dict_entry", key = key, value = value}    
+end
+
+local function get_variant(message, scope)
+    local field, err, v
+    field, err = next_lua_field(message)
+    if field == nil then return nil, err end
+
+    v,err = message:take_variant_end()
+    if v == nil then return nil, err end
+
+    return {type = "variant", data = field}
+end
+
+local function next_lua_field(message)
+    local field, err = message:next_field()
+    if field == nil then return nil, err end
+
+    if field.type == "boolean" then
+        return field
+    elseif field.type == "string" then
+        return field
+    elseif field.type == "number" then
+        return field
+    elseif field.type == "array_begin" then
+        return get_array(message, field.scope)
+    elseif field.type == "struct_begin" then
+        return get_struct(message, field.scope)
+    elseif field.type == "variant_begin" then
+        return get_variant(message, field.scope)
+    elseif field.type == "dict_entry_begin" then
+        return get_dict_entry(message, field.scope)
+    end
+end
+
 local function next_lua_argument(message, typestring)
-    message_type = message:get_signature()
+    local argument_type = message:next_argument_signature()
+    if argument_type ~= typestring then
+        return nil, dbus._errors.InvalidArgument
+    end
+
+    local argbegin, argend, field, err
+    argbegin, err = message:take_argument_begin()
+    if argbegin == nil then return nil, err end
+
+    field, err = next_lua_field(message)
+    if field == nil then return nil, err end
+
+    argend, err = message:take_argument_end()
+    if argend == nil then return nil, err end
+
+    return field
 end
 
 
@@ -280,11 +362,11 @@ i:add_method{{a.member_function, a},
              "MethodName",
              {"ArgumentName", "s", "in"},
              {"ReturnArg1", "d", "out"},
-             com.ctct.foobar.DBusLua.SomeRandomAnnotation = "TheAnnotation"
+             nz.co.foobar.ADBusLua.SomeRandomAnnotation = "TheAnnotation"
             }
 --]]
 
-function dbus.interface:add_method(data)
+function adbus.interface:add_method(data)
     local callback = table.remove(data, 1)
     local name = table.remove(data, 1)
     local reg  = sep_arg_annotations(data)
@@ -292,11 +374,11 @@ function dbus.interface:add_method(data)
     self._methods[name] = reg
 end
 
-function dbus.interface:_has_method(name)
+function adbus.interface:_has_method(name)
     return self._methods[name] ~= nil
 end
 
-function dbus.interface:_dispatch_method(name, message)
+function adbus.interface:_dispatch_method(name, message)
     local m = self._methods[name]
 
 end
@@ -306,11 +388,11 @@ i:add_signal("SignalName",
              {"ArgumentName", "s", "in"})
 --]]
 
-function dbus.interface:add_signal(data)
+function adbus.interface:add_signal(data)
     local name = table.remove(data, 1)
     local reg = sep_arg_annotations(data)
     self._signals[name] = reg
 end
 
-function dbus.interface:add_property(data)
+function adbus.interface:add_property(data)
 end
