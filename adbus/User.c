@@ -22,36 +22,54 @@
 //
 // ----------------------------------------------------------------------------
 
-#pragma once
+#include "User.h"
 
-#include "Common.h"
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+#include <stdlib.h>
 
 // ----------------------------------------------------------------------------
 
-struct ADBusParser;
-struct ADBusMessage;
+void ADBusUserClone(const struct ADBusUser* from, struct ADBusUser* to)
+{
+  if (to->free || to->data)
+    ADBusUserFree(to);
 
-struct ADBusParser* ADBusCreateParser();
-void ADBusFreeParser(struct ADBusParser* parser);
-
-// Returns an error code or 0 on none
-int  ADBusParse(struct ADBusParser* parser, const uint8_t* data, size_t size);
-
-typedef int (*ADBusParserCallback)(void* /*userData*/, struct ADBusMessage*);
-
-void ADBusSetParserCallback(struct ADBusParser* parser,
-                            ADBusParserCallback callback,
-                            void* userData);
-
-// ----------------------------------------------------------------------------
-
-
-#ifdef __cplusplus
+  if (from->clone)
+    from->clone(from, to);
+  else
+    ADBusUserCloneDefault(from, to);
 }
-#endif
+
+// ----------------------------------------------------------------------------
+
+void ADBusUserFree(struct ADBusUser* data)
+{
+  if (data->free)
+    data->free(data);
+  else
+    ADBusUserFreeDefault(data);
+}
+
+// ----------------------------------------------------------------------------
+
+void ADBusUserCloneDefault(const struct ADBusUser* from, struct ADBusUser* to)
+{
+  if (from->size == 0) {
+    memcpy(to, from, sizeof(struct ADBusUser));
+  } else {
+    memcpy(to, from, sizeof(struct ADBusUser));
+    to->data = malloc(from->size);
+    memcpy(to->data, from->data, from->size);
+  }
+}
+
+// ----------------------------------------------------------------------------
+
+void ADBusUserFreeDefault(struct ADBusUser* data)
+{
+  if (data->size)
+    free(data->data);
+}
+
+// ----------------------------------------------------------------------------
+
+

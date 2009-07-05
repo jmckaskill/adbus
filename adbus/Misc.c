@@ -25,8 +25,22 @@
 #include "Misc_p.h"
 
 #include <assert.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
+
+// ----------------------------------------------------------------------------
+
+void _ADBusPrintDebug(const char* format, ...)
+{
+  va_list ap;
+  va_start(ap, format);
+  fprintf(stderr, "[adbus] ");
+  vfprintf(stderr, format, ap);
+  fprintf(stderr, "\n");
+  va_end(ap);
+}
 
 // ----------------------------------------------------------------------------
 

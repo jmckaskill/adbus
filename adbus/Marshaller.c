@@ -87,8 +87,6 @@ struct ADBusMarshaller
   struct StackEntry*  stack;
   size_t              stackSize;
   size_t              stackAlloc;
-  ADBusSendCallback    callback;
-  void*               callbackData;
 };
 
 
@@ -159,6 +157,9 @@ void ADBusClearMarshaller(struct ADBusMarshaller* m)
 
 void ADBusFreeMarshaller(struct ADBusMarshaller* m)
 {
+  if (!m)
+    return;
+
   free(m->a);
   free(m->h);
   free(m->stack);
@@ -167,22 +168,13 @@ void ADBusFreeMarshaller(struct ADBusMarshaller* m)
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetSendCallback(struct ADBusMarshaller* m, ADBusSendCallback callback, void* userData)
+void ADBusSendMessage(struct ADBusMarshaller* m, ADBusSendCallback callback, void* user)
 {
-  m->callback = callback;
-  m->callbackData = userData;
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSendMessage(struct ADBusMarshaller* m)
-{
-  if (!m->callback)
+  if (!callback)
     return;
 
   ASSERT_RETURN(m->type == NULL || *m->type == '\0');
   ASSERT_RETURN(m->stackSize == 0);
-
 
   // Fill out header field size field
   size_t headerFieldBegin = sizeof(struct _ADBusMessageExtendedHeader);
@@ -209,7 +201,7 @@ void ADBusSendMessage(struct ADBusMarshaller* m)
 
 
   // Send data off
-  m->callback(m->callbackData, m->h, m->hsize);
+  callback(user, m->h, m->hsize);
 
   ADBusClearMarshaller(m);
 }
@@ -363,6 +355,75 @@ void ADBusSetSender(struct ADBusMarshaller* m, const char* sender, int size)
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
+void ADBusSetSignature(struct ADBusMarshaller* m, const char* type, int typeSize)
+{
+  ASSERT_RETURN(m->type == NULL || *m->type);
+  ASSERT_RETURN(m->stackSize == 0);
+
+  if (typeSize < 0)
+    typeSize = (int)strlen(type);
+
+  if (!m->typeSizeOffset)
+  {
+    size_t typei, stringi;
+
+    size_t needed = m->hsize;
+    needed  = _ADBUS_ALIGN_VALUE(needed, 8);   // pad to structure
+    typei = needed;
+    needed += 1;            // field type
+    needed += 3;            // field variant type
+    stringi = needed;
+    needed += 1 + 1;        // string len + null
+
+    GROW_HEADER(m, needed);
+
+    uint8_t* typep = &m->h[typei];
+    uint8_t* sizep = &m->h[stringi];
+    uint8_t* stringp = &m->h[stringi + 1];
+
+    typep[0] = ADBusSignatureCode;
+    typep[1] = 1;
+    typep[2] = 'g';
+    typep[3] = '\0';
+
+    sizep[0] = 0;
+
+    stringp[0] = '\0';
+
+    m->typeSizeOffset = stringi;
+  }
+
+  // Append type onto the end of the header buf
+
+  // First we increment the string size
+  uint8_t* psize = &m->h[m->typeSizeOffset];
+  ASSERT_RETURN(*psize + typeSize <= 256);
+  *psize += typeSize;
+
+
+  size_t needed = m->hsize;
+  needed += typeSize;
+  GROW_HEADER(m, needed);
+
+  size_t stringi = m->hsize - typeSize - 1; //insert before terminating null
+  uint8_t* pstr = &m->h[stringi];
+  memcpy(pstr, type, typeSize);
+  pstr[typeSize] = '\0';
+
+  m->type = (char*)&m->h[stringi];
+}
+
+// ----------------------------------------------------------------------------
+
+const char* ADBusMarshallerCurrentSignature(struct ADBusMarshaller* m)
+{
+  return m->type;
+}
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
 static void appendField(struct ADBusMarshaller* m);
 
 #define APPEND_FIXED_SIZE_FIELD(m, fieldtype, DataType, data) \
@@ -474,85 +535,6 @@ void ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size)
   m->type++;
 
   appendField(m);
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-void ADBusBeginArgument(struct ADBusMarshaller* m, const char* type, int typeSize)
-{
-  ASSERT_RETURN(m->type == NULL || *m->type);
-  ASSERT_RETURN(m->stackSize == 0);
-
-  if (typeSize < 0)
-    typeSize = (int)strlen(type);
-
-  if (!m->typeSizeOffset)
-  {
-    size_t typei, stringi;
-
-    size_t needed = m->hsize;
-    needed  = _ADBUS_ALIGN_VALUE(needed, 8);   // pad to structure
-    typei = needed;
-    needed += 1;            // field type
-    needed += 3;            // field variant type
-    stringi = needed;
-    needed += 1 + 1;        // string len + null
-
-    GROW_HEADER(m, needed);
-
-    uint8_t* typep = &m->h[typei];
-    uint8_t* sizep = &m->h[stringi];
-    uint8_t* stringp = &m->h[stringi + 1];
-
-    typep[0] = ADBusSignatureCode;
-    typep[1] = 1;
-    typep[2] = 'g';
-    typep[3] = '\0';
-
-    sizep[0] = 0;
-
-    stringp[0] = '\0';
-
-    m->typeSizeOffset = stringi;
-  }
-
-  // Append type onto the end of the header buf (ignoring the existing null
-  // and adding a null back on afterwards)
-
-  // First we increment the string size
-  uint8_t* psize = &m->h[m->typeSizeOffset];
-  ASSERT_RETURN(*psize + typeSize <= 256);
-  *psize += typeSize;
-
-
-  size_t needed = m->hsize;
-  needed += typeSize;
-  GROW_HEADER(m, needed);
-
-  size_t stringi = m->hsize - typeSize - 1; // need to insert before previously existing null
-  uint8_t* pstr = &m->h[stringi];
-  memcpy(pstr, type, typeSize);
-  pstr[typeSize] = '\0';
-
-  m->type = (char*)&m->h[stringi];
-}
-
-// ----------------------------------------------------------------------------
-
-static void appendArgumentChild(struct ADBusMarshaller* m)
-{
-  // Each arugment should only be one complete type
-  ASSERT_RETURN(*m->type == '\0');
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusEndArgument(struct ADBusMarshaller* m)
-{
-  ASSERT_RETURN(*m->type == '\0');
-  ASSERT_RETURN(m->stackSize == 0);
 }
 
 // ----------------------------------------------------------------------------
@@ -684,11 +666,12 @@ void ADBusEndDictEntry(struct ADBusMarshaller* m)
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type)
+void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type, int typeSize)
 {
   ASSERT_RETURN(*m->type == ADBusVariantBeginField);
 
-  size_t typeSize = strlen(type);
+  if (typeSize < 0)
+    typeSize = strlen(type);
 
   ASSERT_RETURN(typeSize <= 256);
   if (typeSize > 256)
@@ -742,7 +725,7 @@ void ADBusEndVariant(struct ADBusMarshaller* m)
 static void appendField(struct ADBusMarshaller* m)
 {
   if (m->stackSize == 0)
-    return appendArgumentChild(m);
+    return;
 
   switch(stackTop(m)->type)
   {

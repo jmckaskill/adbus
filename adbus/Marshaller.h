@@ -26,14 +26,15 @@
 
 #include "Common.h"
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // ----------------------------------------------------------------------------
 
-typedef void (*ADBusSendCallback)(void* user, uint8_t* data, size_t len);
+typedef void (*ADBusSendCallback)(void*           user,
+                                  const uint8_t*  data,
+                                  size_t          len);
 
 struct ADBusMarshaller;
 
@@ -41,8 +42,7 @@ struct ADBusMarshaller* ADBusCreateMarshaller();
 void ADBusFreeMarshaller(struct ADBusMarshaller* m);
 
 void ADBusClearMarshaller(struct ADBusMarshaller* m);
-void ADBusSetSendCallback(struct ADBusMarshaller* m, ADBusSendCallback callback, void* userData);
-void ADBusSendMessage(struct ADBusMarshaller* m);
+void ADBusSendMessage(struct ADBusMarshaller* m, ADBusSendCallback callback, void* user);
 
 void ADBusSetMessageType(struct ADBusMarshaller* m, enum ADBusMessageType type);
 void ADBusSetSerial(struct ADBusMarshaller* m, uint32_t serial);
@@ -56,8 +56,8 @@ void ADBusSetErrorName(struct ADBusMarshaller* m, const char* path, int size);
 void ADBusSetDestination(struct ADBusMarshaller* m, const char* path, int size);
 void ADBusSetSender(struct ADBusMarshaller* m, const char* path, int size);
 
-void ADBusBeginArgument(struct ADBusMarshaller* m, const char* type, int typeSize);
-void ADBusEndArgument(struct ADBusMarshaller* m);
+void ADBusSetSignature(struct ADBusMarshaller*, const char* sig, int size);
+const char* ADBusMarshallerCurrentSignature(struct ADBusMarshaller* m);
 
 void ADBusAppendBoolean(struct ADBusMarshaller* m, uint32_t data);
 void ADBusAppendUInt8(struct ADBusMarshaller* m, uint8_t data);
@@ -83,7 +83,7 @@ void ADBusEndStruct(struct ADBusMarshaller* m);
 void ADBusBeginDictEntry(struct ADBusMarshaller* m);
 void ADBusEndDictEntry(struct ADBusMarshaller* m);
 
-void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type);
+void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type, int size);
 void ADBusEndVariant(struct ADBusMarshaller* m);
 
 // ----------------------------------------------------------------------------

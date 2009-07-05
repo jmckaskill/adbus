@@ -36,7 +36,7 @@
 // Helper Functions
 // ----------------------------------------------------------------------------
 
-static unsigned int isStackEmpty(struct ADBusMessage* m)
+static uint isStackEmpty(struct ADBusMessage* m)
 {
   return m->stackSize == 0;
 }
@@ -116,7 +116,7 @@ static uint64_t get64BitData(struct ADBusMessage* m)
 
 // ----------------------------------------------------------------------------
 
-static unsigned int isAligned(struct ADBusMessage* m)
+static uint isAligned(struct ADBusMessage* m)
 {
   return (((uintptr_t)(m->data)) % _ADBusRequiredAlignment(*m->signature)) == 0;
 }
@@ -386,7 +386,7 @@ int _ADBusNextRootField(struct ADBusMessage* m, struct ADBusField* f)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _ADBusIsRootAtEnd(struct ADBusMessage* m)
+uint _ADBusIsRootAtEnd(struct ADBusMessage* m)
 {
   return *m->signature == ADBusMessageEndField;
 }
@@ -432,7 +432,7 @@ int _ADBusNextStructField(struct ADBusMessage* m, struct ADBusField* f)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _ADBusIsStructAtEnd(struct ADBusMessage* m)
+uint _ADBusIsStructAtEnd(struct ADBusMessage* m)
 {
   return *m->signature == ')';
 }
@@ -480,7 +480,7 @@ int _ADBusNextDictEntryField(struct ADBusMessage* m, struct ADBusField* f)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _ADBusIsDictEntryAtEnd(struct ADBusMessage* m)
+uint _ADBusIsDictEntryAtEnd(struct ADBusMessage* m)
 {
   return *m->signature == '}';
 }
@@ -536,7 +536,7 @@ int _ADBusNextArrayField(struct ADBusMessage* m, struct ADBusField* f)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _ADBusIsArrayAtEnd(struct ADBusMessage* m)
+uint _ADBusIsArrayAtEnd(struct ADBusMessage* m)
 {
   struct _ADBusMessageStackEntry* e = stackTop(m);
   return m->data >= e->data.array.dataEnd;
@@ -595,7 +595,7 @@ int _ADBusNextVariantField(struct ADBusMessage* m, struct ADBusField* f)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _ADBusIsVariantAtEnd(struct ADBusMessage* m)
+uint _ADBusIsVariantAtEnd(struct ADBusMessage* m)
 {
   return *m->signature == '\0';
 }
@@ -609,6 +609,16 @@ unsigned int _ADBusIsVariantAtEnd(struct ADBusMessage* m)
 
 // ----------------------------------------------------------------------------
 //  Public API
+// ----------------------------------------------------------------------------
+
+void ADBusReparseMessage(struct ADBusMessage* m)
+{
+  m->stackSize  = 0;
+  m->data       = m->origData;
+  m->dataEnd    = m->origDataEnd;
+  m->signature  = m->origSignature;
+}
+
 // ----------------------------------------------------------------------------
 
 enum ADBusMessageType ADBusGetMessageType(struct ADBusMessage* m)
@@ -663,9 +673,25 @@ const char* ADBusGetMember(struct ADBusMessage* m, int* len)
 
 // ----------------------------------------------------------------------------
 
+const char* ADBusGetErrorName(struct ADBusMessage* m, int* len)
+{
+  if (len)
+    *len = m->errorNameSize;
+  return m->errorName;
+}
+
+// ----------------------------------------------------------------------------
+
 uint32_t ADBusGetSerial(struct ADBusMessage* m)
 {
   return m->serial;
+}
+
+// ----------------------------------------------------------------------------
+
+uint ADBusHasReplySerial(struct ADBusMessage* m)
+{
+  return m->hasReplySerial;
 }
 
 // ----------------------------------------------------------------------------
@@ -677,14 +703,14 @@ uint32_t ADBusGetReplySerial(struct ADBusMessage* m)
 
 // ----------------------------------------------------------------------------
 
-const char* ADBusGetSignature(struct ADBusMessage* m)
+const char* ADBusGetSignatureRemaining(struct ADBusMessage* m)
 {
   return m->signature;
 }
 
 // ----------------------------------------------------------------------------
 
-unsigned int ADBusIsScopeAtEnd(struct ADBusMessage* m, unsigned int scope)
+uint ADBusIsScopeAtEnd(struct ADBusMessage* m, uint scope)
 {
   if (stackSize(m) < scope)
   {
@@ -873,12 +899,12 @@ int ADBusTakeSignature(struct ADBusMessage* m, const char** str, int* size)
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeArrayBegin(struct ADBusMessage* m, unsigned int* scope, int* arrayDataSize)
+int ADBusTakeArrayBegin(struct ADBusMessage* m, uint* scope, int* arrayDataSize)
 {
   struct ADBusField f;
   int err = takeSpecificField(m, &f, ADBusArrayBeginField);
   if (scope)
-    *scope = (unsigned int)stackSize(m);
+    *scope = (uint) stackSize(m);
   if (arrayDataSize)
     *arrayDataSize = f.data.arrayDataSize;
   return err;
@@ -895,12 +921,12 @@ int ADBusTakeArrayEnd(struct ADBusMessage* m)
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeStructBegin(struct ADBusMessage* m, unsigned int* scope)
+int ADBusTakeStructBegin(struct ADBusMessage* m, uint* scope)
 {
   struct ADBusField f;
   int err = takeSpecificField(m, &f, ADBusStructBeginField);
   if (scope)
-    *scope = (unsigned int)stackSize(m);
+    *scope = (uint) stackSize(m);
   return err;
 }
 
@@ -915,12 +941,12 @@ int ADBusTakeStructEnd(struct ADBusMessage* m)
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeDictEntryBegin(struct ADBusMessage* m, unsigned int* scope)
+int ADBusTakeDictEntryBegin(struct ADBusMessage* m, uint* scope)
 {
   struct ADBusField f;
   int err = takeSpecificField(m, &f, ADBusDictEntryBeginField);
   if (scope)
-    *scope = (unsigned int)stackSize(m);
+    *scope = (uint) stackSize(m);
   return err;
 }
 
@@ -936,14 +962,14 @@ int ADBusTakeDictEntryEnd(struct ADBusMessage* m)
 // ----------------------------------------------------------------------------
 
 int ADBusTakeVariantBegin(struct ADBusMessage* m,
-    unsigned int* scope,
+    uint* scope,
     const char** variantType,
     int* variantTypeSize)
 {
   struct ADBusField f;
   int err = takeSpecificField(m, &f, ADBusVariantBeginField);
   if (scope)
-    *scope = (unsigned int)stackSize(m);
+    *scope = (uint) stackSize(m);
   if (variantType)
     *variantType = f.data.variantType.str;
   if (variantTypeSize)

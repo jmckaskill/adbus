@@ -24,33 +24,31 @@
 
 #pragma once
 
-#include "Common.h"
-
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+struct ADBusUser;
 
-// ----------------------------------------------------------------------------
+typedef void (*ADBusUserCloneFunction)(const struct ADBusUser*, struct ADBusUser*);
+typedef void (*ADBusUserFreeFunction)(struct ADBusUser*);
 
-struct ADBusParser;
-struct ADBusMessage;
+struct ADBusUser
+{
+  void*  data;
+  size_t size;
+  ADBusUserCloneFunction clone;
+  ADBusUserFreeFunction  free;
+};
 
-struct ADBusParser* ADBusCreateParser();
-void ADBusFreeParser(struct ADBusParser* parser);
+#define ADBusUserInit(pdata) memset(pdata, 0, sizeof(struct ADBusUser))
+void ADBusUserClone(const struct ADBusUser* from, struct ADBusUser* to);
+void ADBusUserFree(struct ADBusUser* data);
 
-// Returns an error code or 0 on none
-int  ADBusParse(struct ADBusParser* parser, const uint8_t* data, size_t size);
-
-typedef int (*ADBusParserCallback)(void* /*userData*/, struct ADBusMessage*);
-
-void ADBusSetParserCallback(struct ADBusParser* parser,
-                            ADBusParserCallback callback,
-                            void* userData);
-
-// ----------------------------------------------------------------------------
-
+void ADBusUserCloneDefault(const struct ADBusUser* from, struct ADBusUser* to);
+void ADBusUserFreeDefault(struct ADBusUser* data);
 
 #ifdef __cplusplus
 }

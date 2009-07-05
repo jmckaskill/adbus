@@ -26,7 +26,19 @@
 
 #include "Common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+// ----------------------------------------------------------------------------
+
+#ifndef NDEBUG
+#   define LOGD _ADBusPrintDebug
+#else
+#   define LOGD if(0) {} else _ADBusPrintDebug
+#endif
+
+void _ADBusPrintDebug(const char* format, ...);
 
 // ----------------------------------------------------------------------------
 
@@ -114,4 +126,7 @@ unsigned int _ADBusIsValidUtf8(const char* str, size_t len);
 
 // ----------------------------------------------------------------------------
 
+#ifdef __cplusplus
+}
+#endif
 

@@ -61,18 +61,22 @@ struct _ADBusMessageStackEntry
 
 struct ADBusMessage
 {
+  uint8_t*    origData;
+  uint8_t*    origDataEnd;
+  const char* origSignature;
+
   uint8_t*    data;
   uint8_t*    dataEnd;
   const char* signature;
 
   // Base header
-  unsigned int            nativeEndian;
+  uint            nativeEndian;
   enum ADBusMessageType messageType;
   uint32_t        serial;
 
   // Header fields
   uint32_t    replySerial;
-  unsigned int        haveReplySerial;
+  uint        hasReplySerial;
 
   const char* path;
   int         pathSize;
@@ -112,23 +116,23 @@ int _ADBusProcessString(struct ADBusMessage* m, struct ADBusField* f);
 int _ADBusProcessSignature(struct ADBusMessage* m, struct ADBusField* f);
 
 int _ADBusNextRootField(struct ADBusMessage* m, struct ADBusField* f);
-unsigned int _ADBusIsRootAtEnd(struct ADBusMessage* m);
+uint _ADBusIsRootAtEnd(struct ADBusMessage* m);
 
 int _ADBusProcessStruct(struct ADBusMessage* m, struct ADBusField* f);
 int _ADBusNextStructField(struct ADBusMessage* m, struct ADBusField* f);
-unsigned int _ADBusIsStructAtEnd(struct ADBusMessage* m);
+uint _ADBusIsStructAtEnd(struct ADBusMessage* m);
 
 int _ADBusProcessDictEntry(struct ADBusMessage* m, struct ADBusField* f);
 int _ADBusNextDictEntryField(struct ADBusMessage* m, struct ADBusField* f);
-unsigned int _ADBusIsDictEntryAtEnd(struct ADBusMessage* m);
+uint _ADBusIsDictEntryAtEnd(struct ADBusMessage* m);
 
 int _ADBusProcessArray(struct ADBusMessage* m, struct ADBusField* f);
 int _ADBusNextArrayField(struct ADBusMessage* m, struct ADBusField* f);
-unsigned int _ADBusIsArrayAtEnd(struct ADBusMessage* m);
+uint _ADBusIsArrayAtEnd(struct ADBusMessage* m);
 
 int _ADBusProcessVariant(struct ADBusMessage* m, struct ADBusField* f);
 int _ADBusNextVariantField(struct ADBusMessage* m, struct ADBusField* f);
-unsigned int _ADBusIsVariantAtEnd(struct ADBusMessage* m);
+uint _ADBusIsVariantAtEnd(struct ADBusMessage* m);
 
 int _ADBusNextField(struct ADBusMessage* m, struct ADBusField* f);
 

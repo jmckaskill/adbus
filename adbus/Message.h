@@ -59,25 +59,31 @@ struct ADBusField
     struct ADBusStringRef   variantType;
     size_t          arrayDataSize;
   } data;
+  uint scope;
 };
 
 // ----------------------------------------------------------------------------
 
 struct ADBusMessage;
 
+void ADBusReparseMessage(struct ADBusMessage* m);
+
 enum ADBusMessageType ADBusGetMessageType(struct ADBusMessage* m);
 
+uint32_t    ADBusGetFlags(struct ADBusMessage* m);
 const char* ADBusGetPath(struct ADBusMessage* m, int* len);
 const char* ADBusGetInterface(struct ADBusMessage* m, int* len);
 const char* ADBusGetSender(struct ADBusMessage* m, int* len);
 const char* ADBusGetDestination(struct ADBusMessage* m, int* len);
 const char* ADBusGetMember(struct ADBusMessage* m, int* len);
+const char* ADBusGetErrorName(struct ADBusMessage* m, int* len);
 uint32_t    ADBusGetSerial(struct ADBusMessage* m);
+uint        ADBusHasReplySerial(struct ADBusMessage* m);
 uint32_t    ADBusGetReplySerial(struct ADBusMessage* m);
 
-const char* ADBusGetSignature(struct ADBusMessage* m);
+const char* ADBusGetSignatureRemaining(struct ADBusMessage* m);
 
-unsigned int ADBusIsScopeAtEnd(struct ADBusMessage* m, unsigned int scope);
+uint ADBusIsScopeAtEnd(struct ADBusMessage* m, uint scope);
 int ADBusTakeField(struct ADBusMessage* m, struct ADBusField* field);
 
 int ADBusTakeMessageEnd(struct ADBusMessage* m);
@@ -99,17 +105,17 @@ int ADBusTakeString(struct ADBusMessage* m, const char** str, int* size);
 int ADBusTakeObjectPath(struct ADBusMessage* m, const char** str, int* size);
 int ADBusTakeSignature(struct ADBusMessage* m, const char** str, int* size);
 
-int ADBusTakeArrayBegin(struct ADBusMessage* m, unsigned int* scope, int* arrayDataSize);
+int ADBusTakeArrayBegin(struct ADBusMessage* m, uint* scope, int* arrayDataSize);
 int ADBusTakeArrayEnd(struct ADBusMessage* m);
 
-int ADBusTakeStructBegin(struct ADBusMessage* m, unsigned int* scope);
+int ADBusTakeStructBegin(struct ADBusMessage* m, uint* scope);
 int ADBusTakeStructEnd(struct ADBusMessage* m);
 
-int ADBusTakeDictEntryBegin(struct ADBusMessage* m, unsigned int* scope);
+int ADBusTakeDictEntryBegin(struct ADBusMessage* m, uint* scope);
 int ADBusTakeDictEntryEnd(struct ADBusMessage* m);
 
-int ADBusTakeVariantBegin(struct ADBusMessage* m, unsigned int* scope,
-                         const char** variantType, int* variantSize);
+int ADBusTakeVariantBegin(struct ADBusMessage* m, uint* scope,
+                          const char** variantType, int* variantSize);
 int ADBusTakeVariantEnd(struct ADBusMessage* m);
 
 // ----------------------------------------------------------------------------

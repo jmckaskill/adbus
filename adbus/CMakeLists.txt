@@ -11,6 +11,9 @@ endif (big_endian)
 
 add_library(adbus SHARED
             Common.h
+            Connection.h
+            Connection_p.h
+            Connection.cpp
             Marshaller.c
             Marshaller.h
             Message.c
@@ -20,6 +23,8 @@ add_library(adbus SHARED
             Misc_p.h
             Parser.c
             Parser.h
+            User.c
+            User.h
             )
 
 install(TARGETS adbus LIBRARY DESTINATION lib)

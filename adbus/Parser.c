@@ -59,6 +59,9 @@ struct ADBusParser* ADBusCreateParser()
 
 void ADBusFreeParser(struct ADBusParser* p)
 {
+  if (!p)
+    return;
+
   free(p->buffer);
   free(p);
 }
@@ -67,7 +70,7 @@ void ADBusFreeParser(struct ADBusParser* p)
 
 static int processData(struct ADBusMessage* m, uint8_t* data, size_t dataSize, size_t* dataUsed);
 
-int ADBusParse(struct ADBusParser* p, uint8_t* data, size_t dataSize)
+int ADBusParse(struct ADBusParser* p, const uint8_t* data, size_t dataSize)
 {
   size_t insertOffset = p->bufferSize;
   ALLOC_GROW(uint8_t, p->buffer, insertOffset + dataSize, p->bufferAlloc);
@@ -202,6 +205,10 @@ static int processData(struct ADBusMessage* m, uint8_t* data, size_t dataSize, s
     m->dataEnd   = oldDataEnd;
   }
 
+  m->origSignature  = m->signature;
+  m->origData       = m->data;
+  m->origDataEnd    = m->dataEnd;
+
   return err;
 }
 
@@ -227,7 +234,7 @@ static int processHeaderFields(struct ADBusMessage* m)
   m->senderSize = 0;
 
   m->replySerial = 0;
-  m->haveReplySerial = 0;
+  m->hasReplySerial = 0;
 
   int err = 0;
 
@@ -253,7 +260,7 @@ static int processHeaderFields(struct ADBusMessage* m)
     case ADBusReplySerialCode:
       err = err || ADBusTakeUInt32(m, &m->replySerial);
       if (!err)
-        m->haveReplySerial = 1;
+        m->hasReplySerial = 1;
       break;
 
     case ADBusInterfaceCode:
@@ -314,12 +321,12 @@ static int processHeaderFields(struct ADBusMessage* m)
     break;
 
   case ADBusMethodReturnMessage:
-    if (!m->haveReplySerial)
+    if (!m->hasReplySerial)
       return ADBusInvalidData;
     break;
 
   case ADBusErrorMessage:
-    if (!m->haveReplySerial || !m->errorName)
+    if (!m->hasReplySerial || !m->errorName)
       return ADBusInvalidData;
     break;
 
