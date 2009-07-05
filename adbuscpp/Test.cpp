@@ -23,13 +23,14 @@
 // ----------------------------------------------------------------------------
 
 #include "Auth.h"
-#include "Connection.h"
-#include "Connection.inl"
+//#include "Connection.h"
+//#include "Connection.inl"
 
 #include "sha1.h"
 
 #include <boost/bind.hpp>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#if 0
 class SomeRandomClass
 {
 public:
@@ -120,6 +122,8 @@ void SomeRandomClass::registerInterfaces(adbus::Object* object)
 
   other->addSignal("RandomSignal", &m_Output);
 }
+
+#endif
 
 static int tcpConnect(const char* address, const char* service)
 {
@@ -263,17 +267,20 @@ void GenerateReply(const std::string& serverData, const std::string& cookie,
                    + ':'
                    + cookie;
 
+  printf("Data to SHA: %s\n", data.c_str());
+
   SHA1 sha;
   sha.addBytes(data.c_str(), (int)data.size());
 
   adbus::HexEncode(sha.getDigest(), 20, &reply);
+  printf("SHA: %s\n", reply.c_str());
 }
 
 #define SEND(x) write(sock, x, strlen(x))
 
 int main(int argc, char* argv[])
 {
-  int err = 0;
+  //int err = 0;
   ssize_t r;
   uint8_t buf[4096];
   int sock = tcpConnect("localhost", "12345");
@@ -284,7 +291,8 @@ int main(int argc, char* argv[])
   euidBuf[31] = '\0';
   std::string authString;
   adbus::HexEncode((const uint8_t*)euidBuf, strlen(euidBuf), &authString);
-  authString = "AUTH ADBUS_COOKIE_SHA1 " + authString + "\r\n";
+  authString = "AUTH DBUS_COOKIE_SHA1 " + authString + "\r\n";
+  printf("AuthString: %s\n", authString.c_str());
 
   write(sock, "\0", 1);
   write(sock, authString.c_str(), authString.size());
@@ -294,15 +302,21 @@ int main(int argc, char* argv[])
 
   if (ParseServerData((const char*)&buf[0], r, keyring, id, serverData))
     return 1;
+  printf("KeyRing: %s\n", keyring.c_str());
+  printf("Id: %s\n", id.c_str());
+  printf("ServerData: %s\n", serverData.c_str());
 
   if (GetCookieData(keyring, id, cookie))
     return 1;
+  printf("Cookie: %s\n", cookie.c_str());
 
   GenerateReply(serverData, cookie, localData, reply);
 
   std::string fullReply = localData + ' ' + reply;
+  printf("FullReply: %s\n", fullReply.c_str());
   std::string encodedFullReply;
   adbus::HexEncode((const uint8_t*) fullReply.c_str(), fullReply.size(), &encodedFullReply);
+  printf("EncodedFullReply: %s\n", encodedFullReply.c_str());
 
   encodedFullReply = "DATA " + encodedFullReply + "\r\n";
 
@@ -312,6 +326,7 @@ int main(int argc, char* argv[])
 
   SEND("BEGIN\r\n");
 
+#if 0
   adbus::Connection connection;
   connection.setSendCallback(&SendData, (void*)&sock);
 
@@ -333,5 +348,7 @@ int main(int argc, char* argv[])
 
 
   return err;
+#endif
+  return 0;
 
 }
