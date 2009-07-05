@@ -2,3 +2,12 @@
 /bin
 /lib
 *.o
+*.so
+/adbuscpp/adbuscpptest
+cmake_install.cmake
+CMakeCache.txt
+CMakeFiles
+Makefile
+/adbuscpp/adbuscpp
+/install_manifest.txt
+/adbuslua/adbuslua_test
