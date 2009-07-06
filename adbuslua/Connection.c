@@ -235,7 +235,7 @@ int LADBusSendReply(lua_State* L)
             destinationSize,
             c->marshaller);
 
-    LADBusConvertLuaToMessage(L, 3, c->marshaller, signature, signatureSize);
+    LADBusConvertLuaToMessage(L, 2, c->marshaller, signature, signatureSize);
 
     ADBusConnectionSendMessage(c->connection, c->marshaller);
 

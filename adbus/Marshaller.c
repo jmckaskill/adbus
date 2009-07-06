@@ -262,7 +262,7 @@ static void setUInt32HeaderField(struct ADBusMarshaller* m, enum ADBusHeaderFiel
 static void setStringHeaderField(struct ADBusMarshaller* m,
                                  enum ADBusHeaderFieldCode code,
                                  enum ADBusFieldType field,
-                                 const char* str, size_t size)
+                                 const char* str, int size)
 {
   if (size < 0)
     size = strlen(str);

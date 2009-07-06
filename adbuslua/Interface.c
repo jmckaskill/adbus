@@ -48,10 +48,13 @@ int LADBusCheckFields(
 
         if (lua_type(L, keyIndex) == LUA_TNUMBER) {
             LOGD("Found number key '%g'", lua_tonumber(L, keyIndex));
-            if (allowNumbers)
+            if (allowNumbers) {
+                assert(lua_gettop(L) == valueIndex);
+                lua_settop(L, keyIndex);
                 continue;
-            else
+            } else {
                 return -1;
+            }
         }
 
         // lua_next doesn't like lua_tolstring if the type is in fact a number
@@ -129,12 +132,11 @@ int LADBusCreateInterface(lua_State* L)
                 LADBusUnpackPropertyMember(L, i, memberTable, member, &data);
                 break;
         }
-        if (data.ref[0] || data.ref[1] || data.ref[2]) {
-            struct ADBusUser user;
-            LADBusSetupData(&data, &user);
-            assert(member);
-            ADBusSetMemberUserData(member, &user);
-        }
+
+        struct ADBusUser user;
+        LADBusSetupData(&data, &user);
+        assert(member);
+        ADBusSetMemberUserData(member, &user);
 
         lua_pop(L, 1); // membertable
         assert(argstop == lua_gettop(L));

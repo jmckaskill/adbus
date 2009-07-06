@@ -159,7 +159,7 @@ enum ADBusHeaderFieldCode
 enum ADBusFieldType
 {
   ADBusInvalidField          = 0,
-  ADBusMessageEndField       = 1,
+  ADBusMessageEndField       = 0,
   ADBusUInt8Field            = 'y',
   ADBusBooleanField          = 'b',
   ADBusInt16Field            = 'n',
@@ -173,13 +173,13 @@ enum ADBusFieldType
   ADBusObjectPathField       = 'o',
   ADBusSignatureField        = 'g',
   ADBusArrayBeginField       = 'a',
-  ADBusArrayEndField         = 2,
+  ADBusArrayEndField         = 1,
   ADBusStructBeginField      = '(',
   ADBusStructEndField        = ')',
   ADBusDictEntryBeginField   = '{',
   ADBusDictEntryEndField     = '}',
   ADBusVariantBeginField     = 'v',
-  ADBusVariantEndField       = 3,
+  ADBusVariantEndField       = 2,
 };
 
 // ----------------------------------------------------------------------------

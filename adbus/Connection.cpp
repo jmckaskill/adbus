@@ -40,7 +40,6 @@
 struct ADBusConnection* ADBusCreateConnection()
 {
     struct ADBusConnection* c = new ADBusConnection;
-#if 0
     c->marshaller = ADBusCreateMarshaller();
     c->parser = ADBusCreateParser();
     ADBusSetParserCallback(c->parser, &_ADBusDispatchMessage, (void*) c);
@@ -57,7 +56,6 @@ struct ADBusConnection* ADBusCreateConnection()
     ADBusSetMethodCallback(m, &_ADBusIntrospectCallback);
 
 
-#endif
     return c;
 }
 
@@ -128,7 +126,7 @@ static int CallMethodOnInterface(
     ADBusInterface::Members::const_iterator mi;
     mi = interface->members.find(memberName);
 
-    if (*called)
+    if (called)
         *called = false;
 
     if ( mi == interface->members.end() 
@@ -193,13 +191,18 @@ int _ADBusDispatchMethodCall(
 
         ADBusInterface* interface = ii->second.interface;
 
-        if (!CallMethodOnInterface(
+        bool called;
+        int err = CallMethodOnInterface(
                     interface,
                     object,
                     &ii->second.user,
                     member,
-                    message))
-        {
+                    message,
+                    &called);
+
+        if (called) {
+            return err;
+        } else {
             ADBusSendError(
                     c,
                     message,
@@ -769,28 +772,80 @@ void ADBusSetPropertySetCallback(
 // Object management
 // ----------------------------------------------------------------------------
 
-struct ADBusObject* ADBusAddObject(struct ADBusConnection* c,
-        const char* name,
-        int size)
+void _ADBusAddObject(
+        ADBusConnection*        c,
+        ADBusObject*&           o,
+        const std::string&      n,
+        bool                    dummy)
 {
-    assert(name);
-
-    if (size < 0)
-        size = strlen(name);
-
-    std::string n(name, name + size);
-
-    ADBusObject*& o = c->objects[n];
-    assert(o == NULL);
-
     o = new ADBusObject;
     o->name = n;
+    o->dummyObject = dummy;
+    o->connection = c;
 
     struct ADBusUser user;
     ADBusUserInit(&user);
     user.data = (void*) o;
 
     ADBusBindInterface(o, c->introspectableInterface, &user);
+}
+
+struct ADBusObject* ADBusAddObject(
+        struct ADBusConnection* c,
+        const char*             name,
+        int                     size)
+{
+    assert(name);
+
+    if (size < 0)
+        size = strlen(name);
+
+    // Remove trailing /
+    if (size > 1 && name[size - 1] == '/')
+        size--;
+
+    assert(size >= 1 && name[0] == '/');
+
+    std::string n(name, name + size);
+
+    ADBusObject*& o = c->objects[n];
+    assert(o == NULL || o->dummyObject);
+
+    if (o == NULL)
+        _ADBusAddObject(c, o, n, false);
+
+    // Add in some dummy parents so introspection works
+
+    int lastSlash = size + 1;
+    int slash = size;
+    while (true)
+    {
+        while (slash > 0 && name[slash] != '/')
+            slash--;
+
+        if (slash == 0)
+            break;
+
+        // You can't have double /'s
+        assert(lastSlash - slash > 1);
+        lastSlash = slash;
+
+        n = std::string(name, slash - 1);
+
+        ADBusObject*& oparent = c->objects[n];
+        if (oparent)
+            break;
+
+        _ADBusAddObject(c, oparent, n, true);
+    }
+
+    if (slash == 0)
+    {
+        ADBusObject*& oroot = c->objects["/"];
+        if (!oroot)
+            _ADBusAddObject(c, oroot, "/", true);
+    }
+
 
     return o;
 }
@@ -831,11 +886,9 @@ void ADBusBindInterface(
 {
     assert(object && interface);
 
-    BoundInterface b;
+    BoundInterface& b = object->interfaces[interface->name];
     b.interface = interface;
     ADBusUserClone(bindData, &b.user);
-
-    object->interfaces[interface->name] = b;
 }
 
 // ----------------------------------------------------------------------------
@@ -948,7 +1001,7 @@ void _ADBusIntrospectNode(struct ADBusConnection* connection,
     if (p[p.size() - 1] != '/')
         p += "/";
 
-    while (oi != connection->objects.end())
+    for (;oi != connection->objects.end(); ++oi)
     {
         const std::string& path = oi->first;
         // Break out once we hit a path that does not begin with p
@@ -965,10 +1018,10 @@ void _ADBusIntrospectNode(struct ADBusConnection* connection,
         out += "\t<node name=\"";
         // We only want the tail name
         out += path.c_str() + p.size();
-        out += "\"\n";
+        out += "\"/>\n";
     }
 
-    out += "<node>\n";
+    out += "</node>\n";
 }
 
 // ----------------------------------------------------------------------------

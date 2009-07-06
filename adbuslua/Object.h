@@ -43,6 +43,13 @@ struct LADBusObject
     int interfaceRefTable;
 };
 
+enum LADBusBindRef
+{
+    LADBusConnectionBindRef,
+    LADBusObjectBindRef,
+    LADBusInterfaceBindRef,
+};
+
 int LADBusAddObject(lua_State* L);
 int LADBusRemoveObject(lua_State* L);
 

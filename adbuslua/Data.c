@@ -49,11 +49,18 @@ void LADBusCloneData(const struct ADBusUser* from, struct ADBusUser* to)
     LADBusSetupData(dfrom, to); 
     struct LADBusData* dto = (struct LADBusData*) to->data;
     if (dfrom->L) {
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < LADBUSDATA_REF_NUMBER; ++i) {
             if (!dfrom->ref[i])
                 continue;
-            lua_rawgeti(dfrom->L, LUA_REGISTRYINDEX, dfrom->ref[0]);
-            dto->ref[0] = luaL_ref(dfrom->L, LUA_REGISTRYINDEX);
+            lua_rawgeti(dfrom->L, LUA_REGISTRYINDEX, dfrom->ref[i]);
+            dto->ref[i] = luaL_ref(dfrom->L, LUA_REGISTRYINDEX);
+            assert(dto->ref[i] != dfrom->ref[i]);
+            lua_rawgeti(dfrom->L, LUA_REGISTRYINDEX, dfrom->ref[i]);
+            lua_rawgeti(dto->L, LUA_REGISTRYINDEX, dto->ref[i]);
+            assert(dto->L == dfrom->L);
+            assert(lua_type(dto->L, -1) == lua_type(dto->L, -2));
+            assert(lua_rawequal(dto->L, -1, -2));
+            lua_pop(dto->L, 2);
         }
     }
 }
@@ -64,7 +71,7 @@ void LADBusFreeData(struct ADBusUser* user)
 {
     const struct LADBusData* u = LADBusCheckData(user);
     if (u->L) {
-        for (int i = 0; i < 3; ++i) {
+        for (int i = 0; i < LADBUSDATA_REF_NUMBER; ++i) {
             if (u->ref[i])
                 luaL_unref(u->L, LUA_REGISTRYINDEX, u->ref[i]);
         }
@@ -77,6 +84,9 @@ void LADBusFreeData(struct ADBusUser* user)
 
 const struct LADBusData* LADBusCheckData(const struct ADBusUser* user)
 {
+    if (!user || !user->data)
+        return NULL;
+
     assert(user->size == sizeof(struct LADBusData) && user->data);
     return (struct LADBusData*) user->data;
 }

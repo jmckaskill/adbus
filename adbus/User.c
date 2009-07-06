@@ -33,6 +33,11 @@ void ADBusUserClone(const struct ADBusUser* from, struct ADBusUser* to)
   if (to->free || to->data)
     ADBusUserFree(to);
 
+  if (from == NULL) {
+    ADBusUserInit(to);
+    return;
+  }
+
   if (from->clone)
     from->clone(from, to);
   else

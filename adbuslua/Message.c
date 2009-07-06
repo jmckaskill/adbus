@@ -53,7 +53,34 @@ static const char* kMessageFields[] = {
     NULL,
 };
 
+static const char* kMessageTypes[] = {
+    "invalid",
+    "method_call",
+    "method_return",
+    "error",
+    "signal",
+    NULL,
+};
+static size_t kMessageTypeNum = 5;
+
 // ----------------------------------------------------------------------------
+
+typedef void (*SetStringFunc)(struct ADBusMarshaller*, const char*, int);
+static void SetStringHeader(
+        lua_State*              L,
+        int                     index,
+        struct ADBusMarshaller* marshaller,
+        const char*             field,
+        SetStringFunc           function)
+{
+    lua_getfield(L, index, field);
+    if (!lua_isnil(L, -1)) {
+        size_t size;
+        const char* string = luaL_checklstring(L, -1, &size);
+        function(marshaller, string, (int) size);
+    }
+    lua_pop(L, 1);
+}
 
 // Uses the signature provided in the argument if not NULL, otherwise requires
 // a list of signature strings in the 'signature' field of the table at index
@@ -68,47 +95,93 @@ void LADBusConvertLuaToMessage(
         luaL_error(L, "Invalid field in the message table");
         return;
     }
+    int argnum = lua_gettop(L);
 
+    // Type
+    lua_getfield(L, index, "type");
+    int type = luaL_checkoption(L, -1, "invalid", kMessageTypes);
+    if (type != ADBusInvalidMessage) {
+        ADBusSetMessageType(marshaller, (enum ADBusMessageType) type);
+    }
+    lua_pop(L, 1);
+
+
+    // Flags
+    int flags = 0;
+    lua_getfield(L, index, "no_reply_expected");
+    if (!lua_isnil(L, -1)) {
+        flags |= luaL_checkint(L, -1) ? ADBusNoReplyExpectedFlag : 0;
+    }
+    lua_getfield(L, index, "no_auto_start");
+    if (!lua_isnil(L, -1)) {
+        flags |= luaL_checkint(L, -1) ? ADBusNoAutoStartFlag : 0;
+    }
+    ADBusSetFlags(marshaller, flags);
+    lua_pop(L, 2);
+
+    // Serial
+    lua_getfield(L, index, "serial");
+    if (!lua_isnil(L, -1))
+        ADBusSetSerial(marshaller, luaL_checkint(L, -1));
+
+    lua_getfield(L, index, "reply_serial");
+    if (!lua_isnil(L, -1))
+        ADBusSetReplySerial(marshaller, luaL_checkint(L, -1));
+
+    lua_pop(L, 2);
+
+    // String fields
+    SetStringHeader(L, index, marshaller, "path", &ADBusSetPath);
+    SetStringHeader(L, index, marshaller, "interface", &ADBusSetInterface);
+    SetStringHeader(L, index, marshaller, "member", &ADBusSetMember);
+    SetStringHeader(L, index, marshaller, "error_name", &ADBusSetErrorName);
+    SetStringHeader(L, index, marshaller, "destination", &ADBusSetDestination);
+    SetStringHeader(L, index, marshaller, "sender", &ADBusSetSender);
+
+    // Signature
     if (signature) {
         ADBusSetSignature(marshaller, signature, signatureSize);
+        
+        size_t tableSize = lua_objlen(L, index);
+        for (int i = 1; i <= (int) tableSize; ++i) {
+            lua_rawgeti(L, index, i);
+            int argindex = lua_gettop(L);
+            LADBusMarshallNextField(marshaller, L, argindex);
+            assert(lua_gettop(L) == argindex);
+            lua_pop(L, 1);
+        }
+
     } else {
         lua_getfield(L, index, "signature");
         if (!lua_istable(L, index)) {
             luaL_error(L, "Missing or invalid signature field of message table");
             return;
         }
-    }
+        int sigtable = lua_gettop(L);
 
-    int arg = 1;
-    int sigtable = lua_gettop(L);
-    while (1) {
-        assert(lua_gettop(L) == sigtable);
-        lua_rawgeti(L, index, arg);
-        int argindex = lua_gettop(L);
-        uint validArg = !lua_isnil(L, argindex);
-
-        if (!signature) {
-            lua_rawgeti(L, sigtable, arg);
-            int sigindex = lua_gettop(L);
-            uint validSig = !lua_isstring(L, sigindex);
-            if (validSig != validArg) {
-                luaL_error(L, "Mismatch between number of arguments and signature");
-                return;
-            }
-
-            if (!validSig && !validArg)
-                break;
-
+        size_t tableSize = lua_objlen(L, index);
+        size_t sigTableSize = lua_objlen(L, sigtable);
+        if (sigTableSize != tableSize) {
+            luaL_error(L, "Mismatch between number of arguments and signature");
+            return;
+        }
+        for (int i = 1; i <= (int) tableSize; ++i) {
+            lua_rawgeti(L, sigtable, i);
             size_t sigLen;
-            const char* sig = lua_tolstring(L, sigindex, &sigLen);
-
+            const char* sig = luaL_checklstring(L, -1, &sigLen);
             ADBusSetSignature(marshaller, sig, (int) sigLen);
-        } else if (!validArg) {
-            break;
+            lua_pop(L, 1);
+
+            lua_rawgeti(L, index, i);
+            int argindex = lua_gettop(L);
+            LADBusMarshallNextField(marshaller, L, argindex);
+            assert(lua_gettop(L) == argindex);
+            lua_pop(L, 1);
         }
 
-        LADBusMarshallNextField(marshaller, L, argindex);
+        lua_pop(L, 1);
     }
+    assert(lua_gettop(L) == argnum);
 
 }
 
@@ -350,17 +423,6 @@ void LADBusMarshallArray(
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-static const char* kMessageTypes[] = {
-    "invalid",
-    "method_call",
-    "method_return",
-    "error",
-    "signal"
-};
-static size_t kMessageTypeNum = 5;
-
 // ----------------------------------------------------------------------------
 
 static void SetStringField(

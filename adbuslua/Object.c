@@ -75,19 +75,29 @@ int LADBusBindInterface(lua_State* L)
     struct LADBusObject* object       = LADBusCheckObject(L, 1);
     struct LADBusInterface* interface = LADBusCheckInterface(L, 2);
 
-    if (!lua_isnoneornil(L, 3)){
-        struct LADBusData data;
-        memset(&data, 0, sizeof(struct LADBusData));
-        data.L = L;
-        lua_pushvalue(L, 3);
-        data.ref[0] = luaL_ref(L, LUA_REGISTRYINDEX);
-        struct ADBusUser user;
-        LADBusSetupData(&data, &user);
+    struct LADBusData data;
+    memset(&data, 0, sizeof(struct LADBusData));
+    data.L = L;
 
-        ADBusBindInterface(object->object, interface->interface, &user);
-    } else {
-        ADBusBindInterface(object->object, interface->interface, NULL);
+    // We need a handle on the connection so that we can fill out
+    // _connectiondata in the message (so we can send replies)
+    lua_rawgeti(L, LUA_REGISTRYINDEX, object->connectionRef);
+    data.ref[LADBusConnectionBindRef] = luaL_ref(L, LUA_REGISTRYINDEX);
+    
+    // We also need a handle on the interface to fill out _interfacedata (for
+    // replies as well)
+    lua_pushvalue(L, 2);
+    data.ref[LADBusInterfaceBindRef] = luaL_ref(L, LUA_REGISTRYINDEX);
+
+    if (!lua_isnoneornil(L, 3)){
+        // If the user provides an object then we need to add that as well
+        lua_pushvalue(L, 3);
+        data.ref[LADBusObjectBindRef] = luaL_ref(L, LUA_REGISTRYINDEX);
     }
+
+    struct ADBusUser user;
+    LADBusSetupData(&data, &user);
+    ADBusBindInterface(object->object, interface->interface, &user);
 
     // Store a copy of the interface object in our interfaceRefTable so the
     // interface doesn't get collected until after the object is
@@ -164,8 +174,9 @@ static int CallCallback(
     int top = lua_gettop(L);
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, mdata->ref[refIndex]);
-    if (bdata) {
-        lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[0]);
+    assert(lua_isfunction(L, -1));
+    if (bdata->ref[LADBusObjectBindRef]) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[LADBusObjectBindRef]);
     }
 
     int err = LADBusConvertMessageToLua(message, L);
@@ -173,8 +184,16 @@ static int CallCallback(
         lua_settop(L, top);
         return err;
     }
+    // Now we need to set a few fields in the message for use with replies
+    int messageIndex = lua_gettop(L);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[LADBusConnectionBindRef]);
+    lua_setfield(L, messageIndex, "_connectiondata");
 
-    lua_call(L, lua_gettop(L) - top, 0);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[LADBusInterfaceBindRef]);
+    lua_setfield(L, messageIndex, "_interfacedata");
+
+    // function itself is not included in arg count
+    lua_call(L, lua_gettop(L) - top - 1, 0);
 
     return 0;
 }

@@ -377,8 +377,11 @@ int _ADBusNextField(struct ADBusMessage* m, struct ADBusField* f)
 
 int _ADBusNextRootField(struct ADBusMessage* m, struct ADBusField* f)
 {
-  if (*m->signature == ADBusMessageEndField)
+  if (*m->signature == ADBusMessageEndField) 
+  {
+    f->type = ADBusMessageEndField;
     return 0;
+  }
 
   processAlignment(m);
   return _ADBusProcessField(m,f);

@@ -171,9 +171,17 @@ struct ADBusInterface
 
 struct BoundInterface
 {
+private:
+    BoundInterface& operator=(const BoundInterface& r);
+public:
     BoundInterface()
     {
         ADBusUserInit(&user);
+    }
+    BoundInterface(const BoundInterface& other)
+    {
+        ADBusUserInit(&user);
+        ADBusUserClone(&other.user, &user);
     }
     ~BoundInterface()
     {
@@ -191,9 +199,10 @@ struct ADBusObject
     }
     typedef std::map<std::string, BoundInterface> Interfaces;
 
-    ADBusConnection*  connection;
-    std::string       name;
-    Interfaces        interfaces;
+    ADBusConnection*    connection;
+    std::string         name;
+    Interfaces          interfaces;
+    bool                dummyObject;
 };
 
 // ----------------------------------------------------------------------------

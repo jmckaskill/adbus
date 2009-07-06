@@ -29,8 +29,10 @@
 struct LADBusData
 {
     lua_State*      L;
-    int             ref[3];
+    int             ref[4];
 };
+
+#define LADBUSDATA_REF_NUMBER 4
 
 struct ADBusUser;
 void LADBusSetupData(const struct LADBusData* data, struct ADBusUser* user);
