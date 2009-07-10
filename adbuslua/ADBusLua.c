@@ -22,6 +22,10 @@
 //
 // ----------------------------------------------------------------------------
 
+#ifdef WIN32
+#define WINVER 0x500
+#define _WIN32_WINNT 0x500
+#endif
 
 #include "ADBusLua.h"
 
@@ -107,6 +111,81 @@ struct LADBusInterface* LADBusCheckInterface(lua_State* L, int index)
 
 // ----------------------------------------------------------------------------
 
+#ifdef WIN32
+#include <malloc.h>
+#include <windows.h>
+#include <sddl.h>
+
+int LADBusGetSid(lua_State* L)
+{
+  HANDLE process_token = NULL;
+  TOKEN_USER *token_user = NULL;
+  DWORD n;
+  PSID psid;
+  LPTSTR stringsid;
+  
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &process_token)) 
+      goto failed;
+
+  // it should fail as it has no buffer
+  if (GetTokenInformation(process_token, TokenUser, NULL, 0, &n))
+      goto failed;
+
+  if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+      goto failed;
+
+  token_user = (TOKEN_USER*) alloca(n);
+  if (!GetTokenInformation(process_token, TokenUser, token_user, n, &n))
+      goto failed;
+
+  psid = token_user->User.Sid;
+  if (!IsValidSid (psid))
+      goto failed;
+
+  if (!ConvertSidToStringSid(psid, &stringsid))
+      goto failed;
+
+#ifdef UNICODE
+  size_t sidlen = wcslen(stringsid);
+  char* asciisid = (char*) alloca(sidlen + 1);
+  for (size_t i = 0; i < sidlen + 1; ++i)
+    asciisid[i] = (char) stringsid[i];
+  lua_pushlstring(L, asciisid, sidlen);
+#else
+  lua_pushstring(L, stringsid);
+#endif
+
+  LocalFree(stringsid);
+
+  return 1;
+
+failed:
+  if (process_token != NULL)
+    CloseHandle(process_token);
+
+  return luaL_error(L, "Failed to get sid");
+}
+
+#else
+
+#include <unistd.h>
+#include <sys/types.h>
+
+int LADBusGetEuid(lua_State* L)
+{
+    uid_t id = geteuid();
+    char buf[32];
+    snprintf(buf, 31, "%d", (int) id);
+    buf[31] = '\0';
+
+    lua_pushstring(L, buf);
+    return 1;
+}
+
+#endif
+
+// ----------------------------------------------------------------------------
+
 // Reg for adbuslua_core.connection
 static const luaL_Reg kConnectionReg[] = {
     {"new", &LADBusCreateConnection},
@@ -145,6 +224,11 @@ static const luaL_Reg kObjectReg[] = {
 static const luaL_Reg kCoreReg[] = {
     {"send_error", &LADBusSendError},
     {"send_reply", &LADBusSendReply},
+#ifdef WIN32
+    {"getlocalid", &LADBusGetSid},
+#else
+    {"getlocalid", &LADBusGetEuid},
+#endif
     {NULL, NULL},
 };
 
