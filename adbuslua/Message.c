@@ -451,7 +451,7 @@ int LADBusConvertMessageToLua(
     int sigtable = lua_gettop(L);
 
     enum ADBusMessageType type = ADBusGetMessageType(message);
-    if (type >= kMessageTypeNum || type <= ADBusInvalidMessage)
+    if (type >= (int) kMessageTypeNum || type <= ADBusInvalidMessage)
         return ADBusInternalError;
 
     int pathLen, interfaceLen, senderLen, destinationLen, memberLen, errorLen;

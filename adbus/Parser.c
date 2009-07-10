@@ -133,7 +133,7 @@ static int processData(struct ADBusMessage* m, uint8_t* data, size_t dataSize, s
   if (!(header->endianness == 'B' || header->endianness == 'l'))
     return ADBusInvalidData;
 
-  m->messageType  = header->type;
+  m->messageType  = (enum ADBusMessageType) header->type;
   m->nativeEndian = (header->endianness == _ADBusNativeEndianness);
 
   // Get the non single byte fields out of the header

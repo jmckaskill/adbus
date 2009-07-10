@@ -188,11 +188,12 @@ static void UnpackMatch(
         const char* key = lua_tolstring(L, keyIndex, &keySize);
 
         if (strncmp(key, "type", keySize) == 0) {
-            match->type = UnpackEnum(L,
-                                     valueIndex,
-                                     "type",
-                                     kValidTypes,
-                                     kTypesString);
+            int i = UnpackEnum(L,
+                               valueIndex,
+                               "type",
+                               kValidTypes,
+                               kTypesString);
+            match->type = (enum ADBusMessageType) i;
 
         } else if (strncmp(key, "sender", keySize) == 0) {
             UnpackString(L,
