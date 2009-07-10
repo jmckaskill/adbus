@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include <lua.h>
+#include "LuaInclude.h"
 
 struct LADBusData
 {

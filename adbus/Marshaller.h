@@ -38,53 +38,53 @@ typedef void (*ADBusSendCallback)(void*           user,
 
 struct ADBusMarshaller;
 
-struct ADBusMarshaller* ADBusCreateMarshaller();
-void ADBusFreeMarshaller(struct ADBusMarshaller* m);
+ADBUS_API struct ADBusMarshaller* ADBusCreateMarshaller();
+ADBUS_API void ADBusFreeMarshaller(struct ADBusMarshaller* m);
 
-void ADBusClearMarshaller(struct ADBusMarshaller* m);
-void ADBusSendMessage(struct ADBusMarshaller* m, ADBusSendCallback callback, void* user);
+ADBUS_API void ADBusClearMarshaller(struct ADBusMarshaller* m);
+ADBUS_API void ADBusSendMessage(struct ADBusMarshaller* m, ADBusSendCallback callback, void* user);
 
-void ADBusSetMessageType(struct ADBusMarshaller* m, enum ADBusMessageType type);
-void ADBusSetSerial(struct ADBusMarshaller* m, uint32_t serial);
-void ADBusSetFlags(struct ADBusMarshaller* m, int flags);
+ADBUS_API void ADBusSetMessageType(struct ADBusMarshaller* m, enum ADBusMessageType type);
+ADBUS_API void ADBusSetSerial(struct ADBusMarshaller* m, uint32_t serial);
+ADBUS_API void ADBusSetFlags(struct ADBusMarshaller* m, int flags);
 
-void ADBusSetReplySerial(struct ADBusMarshaller* m, uint32_t reply);
-void ADBusSetPath(struct ADBusMarshaller* m, const char* path, int size);
-void ADBusSetInterface(struct ADBusMarshaller* m, const char* path, int size);
-void ADBusSetMember(struct ADBusMarshaller* m, const char* path, int size);
-void ADBusSetErrorName(struct ADBusMarshaller* m, const char* path, int size);
-void ADBusSetDestination(struct ADBusMarshaller* m, const char* path, int size);
-void ADBusSetSender(struct ADBusMarshaller* m, const char* path, int size);
+ADBUS_API void ADBusSetReplySerial(struct ADBusMarshaller* m, uint32_t reply);
+ADBUS_API void ADBusSetPath(struct ADBusMarshaller* m, const char* path, int size);
+ADBUS_API void ADBusSetInterface(struct ADBusMarshaller* m, const char* path, int size);
+ADBUS_API void ADBusSetMember(struct ADBusMarshaller* m, const char* path, int size);
+ADBUS_API void ADBusSetErrorName(struct ADBusMarshaller* m, const char* path, int size);
+ADBUS_API void ADBusSetDestination(struct ADBusMarshaller* m, const char* path, int size);
+ADBUS_API void ADBusSetSender(struct ADBusMarshaller* m, const char* path, int size);
 
-void ADBusSetSignature(struct ADBusMarshaller*, const char* sig, int size);
-const char* ADBusMarshallerCurrentSignature(struct ADBusMarshaller* m);
+ADBUS_API void ADBusSetSignature(struct ADBusMarshaller*, const char* sig, int size);
+ADBUS_API const char* ADBusMarshallerCurrentSignature(struct ADBusMarshaller* m);
 
-void ADBusAppendBoolean(struct ADBusMarshaller* m, uint32_t data);
-void ADBusAppendUInt8(struct ADBusMarshaller* m, uint8_t data);
-void ADBusAppendInt16(struct ADBusMarshaller* m, int16_t data);
-void ADBusAppendUInt16(struct ADBusMarshaller* m, uint16_t data);
-void ADBusAppendInt32(struct ADBusMarshaller* m, int32_t data);
-void ADBusAppendUInt32(struct ADBusMarshaller* m, uint32_t data);
-void ADBusAppendInt64(struct ADBusMarshaller* m, int64_t data);
-void ADBusAppendUInt64(struct ADBusMarshaller* m, uint64_t data);
+ADBUS_API void ADBusAppendBoolean(struct ADBusMarshaller* m, uint32_t data);
+ADBUS_API void ADBusAppendUInt8(struct ADBusMarshaller* m, uint8_t data);
+ADBUS_API void ADBusAppendInt16(struct ADBusMarshaller* m, int16_t data);
+ADBUS_API void ADBusAppendUInt16(struct ADBusMarshaller* m, uint16_t data);
+ADBUS_API void ADBusAppendInt32(struct ADBusMarshaller* m, int32_t data);
+ADBUS_API void ADBusAppendUInt32(struct ADBusMarshaller* m, uint32_t data);
+ADBUS_API void ADBusAppendInt64(struct ADBusMarshaller* m, int64_t data);
+ADBUS_API void ADBusAppendUInt64(struct ADBusMarshaller* m, uint64_t data);
 
-void ADBusAppendDouble(struct ADBusMarshaller* m, double data);
+ADBUS_API void ADBusAppendDouble(struct ADBusMarshaller* m, double data);
 
-void ADBusAppendString(struct ADBusMarshaller* m, const char* str, int size);
-void ADBusAppendObjectPath(struct ADBusMarshaller* m, const char* str, int size);
-void ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size);
+ADBUS_API void ADBusAppendString(struct ADBusMarshaller* m, const char* str, int size);
+ADBUS_API void ADBusAppendObjectPath(struct ADBusMarshaller* m, const char* str, int size);
+ADBUS_API void ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size);
 
-void ADBusBeginArray(struct ADBusMarshaller* m);
-void ADBusEndArray(struct ADBusMarshaller* m);
+ADBUS_API void ADBusBeginArray(struct ADBusMarshaller* m);
+ADBUS_API void ADBusEndArray(struct ADBusMarshaller* m);
 
-void ADBusBeginStruct(struct ADBusMarshaller* m);
-void ADBusEndStruct(struct ADBusMarshaller* m);
+ADBUS_API void ADBusBeginStruct(struct ADBusMarshaller* m);
+ADBUS_API void ADBusEndStruct(struct ADBusMarshaller* m);
 
-void ADBusBeginDictEntry(struct ADBusMarshaller* m);
-void ADBusEndDictEntry(struct ADBusMarshaller* m);
+ADBUS_API void ADBusBeginDictEntry(struct ADBusMarshaller* m);
+ADBUS_API void ADBusEndDictEntry(struct ADBusMarshaller* m);
 
-void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type, int size);
-void ADBusEndVariant(struct ADBusMarshaller* m);
+ADBUS_API void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type, int size);
+ADBUS_API void ADBusEndVariant(struct ADBusMarshaller* m);
 
 // ----------------------------------------------------------------------------
 

@@ -28,8 +28,7 @@
 #include "Data.h"
 
 #include "adbus/Connection.h"
-#include <lua.h>
-#include <lauxlib.h>
+#include "LuaInclude.h"
 
 struct LADBusInterface
 {

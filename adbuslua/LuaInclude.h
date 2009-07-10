@@ -1,4 +1,4 @@
-// vim: ts=2 sw=2 sts=2 et
+// vim: ts=4 sw=4 sts=4 et
 //
 // Copyright (c) 2009 James R. McKaskill
 //
@@ -24,33 +24,12 @@
 
 #pragma once
 
-#include "Common.h"
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
-// ----------------------------------------------------------------------------
-
-struct ADBusParser;
-struct ADBusMessage;
-
-ADBUS_API struct ADBusParser* ADBusCreateParser();
-ADBUS_API void ADBusFreeParser(struct ADBusParser* parser);
-
-// Returns an error code or 0 on none
-ADBUS_API int  ADBusParse(struct ADBusParser* parser, const uint8_t* data, size_t size);
-
-typedef int (*ADBusParserCallback)(void* /*userData*/, struct ADBusMessage*);
-
-ADBUS_API void ADBusSetParserCallback(struct ADBusParser* parser,
-                                      ADBusParserCallback callback,
-                                      void* userData);
-
-// ----------------------------------------------------------------------------
-
+#   include <lua.h>
+#   include <lauxlib.h>
 
 #ifdef __cplusplus
 }

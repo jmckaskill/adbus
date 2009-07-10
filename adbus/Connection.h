@@ -42,9 +42,9 @@ struct ADBusObject;
 
 // Connection management
 
-struct ADBusConnection* ADBusCreateConnection();
+ADBUS_API struct ADBusConnection* ADBusCreateConnection();
 
-void ADBusFreeConnection(
+ADBUS_API void ADBusFreeConnection(
         struct ADBusConnection*     connection);
 
 typedef void (*ADBusConnectionSendCallback)(
@@ -53,12 +53,12 @@ typedef void (*ADBusConnectionSendCallback)(
         const uint8_t*              data,
         size_t                      size);
 
-void ADBusSetConnectionSendCallback(
+ADBUS_API void ADBusSetConnectionSendCallback(
         struct ADBusConnection*     connection,
         ADBusConnectionSendCallback callback,
         struct ADBusUser*           data);
 
-int ADBusConnectionParse(
+ADBUS_API int ADBusConnectionParse(
         struct ADBusConnection*     connection,
         const uint8_t*              data,
         size_t                      size);
@@ -69,18 +69,18 @@ typedef void (*ADBusConnectToBusCallback)(
         struct ADBusConnection*     /*connection*/,
         struct ADBusUser*           /*user*/);
 
-void ADBusConnectToBus(
+ADBUS_API void ADBusConnectToBus(
         struct ADBusConnection*     connection,
         ADBusConnectToBusCallback   callback,
         struct ADBusUser*           user);
 
-uint ADBusIsConnectedToBus(
+ADBUS_API uint ADBusIsConnectedToBus(
         struct ADBusConnection* connection);
 
 //void ADBusAddService(struct ADBusConnection* c, const char* name, int size);
 //void ADBusRemoveService(struct ADBusConnection* c, const char* name, int size);
 
-const char* ADBusGetUniqueServiceName(
+ADBUS_API const char* ADBusGetUniqueServiceName(
         struct ADBusConnection*     connection,
         int*                        size);
 
@@ -120,21 +120,21 @@ struct ADBusMatch
     struct ADBusUser user;
 };
 
-uint32_t ADBusNextSerial(
+ADBUS_API uint32_t ADBusNextSerial(
         struct ADBusConnection*     connection);
 
-int ADBusAddMatch(
+ADBUS_API int ADBusAddMatch(
         struct ADBusConnection*     connection,
         const struct ADBusMatch*    match);
 
-void ADBusRemoveMatch(
+ADBUS_API void ADBusRemoveMatch(
         struct ADBusConnection*     connection,
         int                         id);
 
 
 // Message management
 
-void ADBusSendError(
+ADBUS_API void ADBusSendError(
         struct ADBusConnection*     connection,
         struct ADBusMessage*        message,
         const char*                 errorName,
@@ -142,7 +142,7 @@ void ADBusSendError(
         const char*                 errorMessage,
         int                         errorMessageSize);
 
-void ADBusSendErrorExpanded(
+ADBUS_API void ADBusSendErrorExpanded(
         struct ADBusConnection*     connection,
         int                         replySerial,
         const char*                 destination,
@@ -152,35 +152,35 @@ void ADBusSendErrorExpanded(
         const char*                 errorMessage,
         int                         errorMessageSize);
 
-void ADBusSetupSignalMarshaller(
+ADBUS_API void ADBusSetupSignalMarshaller(
         struct ADBusObject*         object,
         struct ADBusMember*         signal,
         struct ADBusMarshaller*     marshaller);
 
-void ADBusSetupReturnMarshaller(
+ADBUS_API void ADBusSetupReturnMarshaller(
         struct ADBusConnection*     connection,
         struct ADBusMessage*        message,
         struct ADBusMarshaller*     marshaller);
 
-void ADBusSetupReturnMarshallerExpanded(
+ADBUS_API void ADBusSetupReturnMarshallerExpanded(
         struct ADBusConnection*     connection,
         int                         replySerial,
         const char*                 destination,
         int                         destinationSize,
         struct ADBusMarshaller*     marshaller);
 
-void ADBusConnectionSendMessage(
+ADBUS_API void ADBusConnectionSendMessage(
         struct ADBusConnection*     connection,
         struct ADBusMarshaller*     marshaller);
 
 
 // Interface management
 
-struct ADBusInterface* ADBusCreateInterface(
+ADBUS_API struct ADBusInterface* ADBusCreateInterface(
         const char*                 name,
         int                         size);
 
-void ADBusFreeInterface(
+ADBUS_API void ADBusFreeInterface(
         struct ADBusInterface*      interface);
 
 typedef int (*ADBusMemberCallback)(
@@ -196,13 +196,13 @@ enum ADBusMemberType
     ADBusPropertyMember,
 };
 
-struct ADBusMember* ADBusAddMember(
+ADBUS_API struct ADBusMember* ADBusAddMember(
         struct ADBusInterface*      interface,
         enum ADBusMemberType        type,
         const char*                 name,
         int                         size);
 
-struct ADBusMember* ADBusGetInterfaceMember(
+ADBUS_API struct ADBusMember* ADBusGetInterfaceMember(
         struct ADBusInterface*      interface,
         enum ADBusMemberType        type,
         const char*                 name,
@@ -214,7 +214,7 @@ enum ADBusArgumentDirection
     ADBusOutArgument,
 };
 
-void ADBusAddArgument(
+ADBUS_API void ADBusAddArgument(
         struct ADBusMember*         member,
         enum ADBusArgumentDirection direction,
         const char*                 name,
@@ -222,55 +222,55 @@ void ADBusAddArgument(
         const char*                 type,
         int                         typeSize);
 
-const char* ADBusFullMemberSignature(
+ADBUS_API const char* ADBusFullMemberSignature(
         const struct ADBusMember*   member,
         enum ADBusArgumentDirection direction,
         int*                        size);
 
-void ADBusAddAnnotation(
+ADBUS_API void ADBusAddAnnotation(
         struct ADBusMember*         member,
         const char*                 name,
         int                         nameSize,
         const char*                 value,
         int                         valueSize);
 
-void ADBusSetMemberUserData(
+ADBUS_API void ADBusSetMemberUserData(
         struct ADBusMember*         member,
         struct ADBusUser*           user);
 
-const struct ADBusUser* ADBusMemberUserData(
+ADBUS_API const struct ADBusUser* ADBusMemberUserData(
         const struct ADBusMember*   member);
 
-void ADBusSetMethodCallback(
+ADBUS_API void ADBusSetMethodCallback(
         struct ADBusMember*         member,
         ADBusMemberCallback         callback);
 
-void ADBusSetPropertyType(
+ADBUS_API void ADBusSetPropertyType(
         struct ADBusMember*         member,
         const char*                 type,
         int                         typeSize);
 
-void ADBusSetPropertyGetCallback(
+ADBUS_API void ADBusSetPropertyGetCallback(
         struct ADBusMember*         member,
         ADBusMemberCallback         callback);
 
-void ADBusSetPropertySetCallback(
+ADBUS_API void ADBusSetPropertySetCallback(
         struct ADBusMember*         member,
         ADBusMemberCallback         callback);
 
 
 // Object management
 
-struct ADBusObject* ADBusAddObject(
+ADBUS_API struct ADBusObject* ADBusAddObject(
         struct ADBusConnection*     connection,
         const char*                 name,
         int                         size);
 
-void ADBusRemoveObject(
+ADBUS_API void ADBusRemoveObject(
         struct ADBusConnection*     connection,
         struct ADBusObject*         object);
 
-void ADBusBindInterface(
+ADBUS_API void ADBusBindInterface(
         struct ADBusObject*         object,
         struct ADBusInterface*      interface,
         struct ADBusUser*           bindData);

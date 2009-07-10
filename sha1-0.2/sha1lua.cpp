@@ -24,8 +24,17 @@ static const luaL_Reg kReg[] = {
   {NULL, NULL},
 };
 
-extern "C" int luaopen_sha1(lua_State* L);
+extern "C" 
+{
+  #ifdef WIN32
+  __declspec(dllexport)
+  #endif
+  int luaopen_sha1(lua_State* L);
+}
 
+#ifdef WIN32
+__declspec(dllexport)
+#endif
 int luaopen_sha1(lua_State* L)
 {
   luaL_register(L, "sha1", kReg);

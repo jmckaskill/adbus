@@ -24,7 +24,7 @@
 
 #pragma once
 
-#include <lua.h>
+#include "LuaInclude.h"
 
 
 #ifndef NDEBUG
@@ -48,6 +48,17 @@ struct LADBusConnection*    LADBusCheckConnection(lua_State* L, int index);
 struct LADBusObject*        LADBusCheckObject(lua_State* L, int index);
 struct LADBusInterface*     LADBusCheckInterface(lua_State* L, int index);
 
+#ifdef __cplusplus
+extern "C"{
+#endif
+
+#ifdef WIN32
+__declspec(dllexport)
+#endif
 int luaopen_adbuslua_core(lua_State* L);
+
+#ifdef __cplusplus
+}
+#endif
 
 

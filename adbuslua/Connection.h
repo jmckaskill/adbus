@@ -29,8 +29,7 @@
 #include "adbus/Connection.h"
 #include "adbus/Marshaller.h"
 
-#include <lua.h>
-#include <lauxlib.h>
+#include "LuaInclude.h"
 
 
 struct LADBusConnection

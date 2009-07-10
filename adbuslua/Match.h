@@ -25,8 +25,7 @@
 #pragma once
 
 #include "adbus/Connection.h"
-#include <lua.h>
-#include <lauxlib.h>
+#include "LuaInclude.h"
 
 int LADBusAddBusMatch(lua_State* L);
 int LADBusAddMatch(lua_State* L);

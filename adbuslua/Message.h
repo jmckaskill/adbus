@@ -27,8 +27,7 @@
 #include "adbus/Marshaller.h"
 #include "adbus/Message.h"
 
-#include <lua.h>
-#include <lauxlib.h>
+#include "LuaInclude.h"
 
 void LADBusConvertLuaToMessage(
     lua_State*              L,

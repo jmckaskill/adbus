@@ -3,6 +3,9 @@ project(adbuscpp)
 
 include_directories(..)
 
+if (MSVC)
+  include_directories(../deps/msvc)
+endif (MSVC)
 
 
 

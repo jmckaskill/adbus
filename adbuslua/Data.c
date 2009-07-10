@@ -27,7 +27,6 @@
 #include "adbus/User.h"
 
 #include <assert.h>
-#include <lauxlib.h>
 #include <stdlib.h>
 
 

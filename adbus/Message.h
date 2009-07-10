@@ -66,57 +66,57 @@ struct ADBusField
 
 struct ADBusMessage;
 
-void ADBusReparseMessage(struct ADBusMessage* m);
+ADBUS_API void ADBusReparseMessage(struct ADBusMessage* m);
 
-enum ADBusMessageType ADBusGetMessageType(struct ADBusMessage* m);
+ADBUS_API enum ADBusMessageType ADBusGetMessageType(struct ADBusMessage* m);
 
-uint32_t    ADBusGetFlags(struct ADBusMessage* m);
-const char* ADBusGetPath(struct ADBusMessage* m, int* len);
-const char* ADBusGetInterface(struct ADBusMessage* m, int* len);
-const char* ADBusGetSender(struct ADBusMessage* m, int* len);
-const char* ADBusGetDestination(struct ADBusMessage* m, int* len);
-const char* ADBusGetMember(struct ADBusMessage* m, int* len);
-const char* ADBusGetErrorName(struct ADBusMessage* m, int* len);
-uint32_t    ADBusGetSerial(struct ADBusMessage* m);
-uint        ADBusHasReplySerial(struct ADBusMessage* m);
-uint32_t    ADBusGetReplySerial(struct ADBusMessage* m);
+ADBUS_API uint32_t    ADBusGetFlags(struct ADBusMessage* m);
+ADBUS_API const char* ADBusGetPath(struct ADBusMessage* m, int* len);
+ADBUS_API const char* ADBusGetInterface(struct ADBusMessage* m, int* len);
+ADBUS_API const char* ADBusGetSender(struct ADBusMessage* m, int* len);
+ADBUS_API const char* ADBusGetDestination(struct ADBusMessage* m, int* len);
+ADBUS_API const char* ADBusGetMember(struct ADBusMessage* m, int* len);
+ADBUS_API const char* ADBusGetErrorName(struct ADBusMessage* m, int* len);
+ADBUS_API uint32_t    ADBusGetSerial(struct ADBusMessage* m);
+ADBUS_API uint        ADBusHasReplySerial(struct ADBusMessage* m);
+ADBUS_API uint32_t    ADBusGetReplySerial(struct ADBusMessage* m);
 
-const char* ADBusGetSignatureRemaining(struct ADBusMessage* m);
+ADBUS_API const char* ADBusGetSignatureRemaining(struct ADBusMessage* m);
 
-uint ADBusIsScopeAtEnd(struct ADBusMessage* m, uint scope);
-int ADBusTakeField(struct ADBusMessage* m, struct ADBusField* field);
+ADBUS_API uint ADBusIsScopeAtEnd(struct ADBusMessage* m, uint scope);
+ADBUS_API int ADBusTakeField(struct ADBusMessage* m, struct ADBusField* field);
 
-int ADBusTakeMessageEnd(struct ADBusMessage* m);
+ADBUS_API int ADBusTakeMessageEnd(struct ADBusMessage* m);
 
-int ADBusTakeUInt8(struct ADBusMessage* m, uint8_t* data);
+ADBUS_API int ADBusTakeUInt8(struct ADBusMessage* m, uint8_t* data);
 
-int ADBusTakeInt16(struct ADBusMessage* m, int16_t* data);
-int ADBusTakeUInt16(struct ADBusMessage* m, uint16_t* data);
+ADBUS_API int ADBusTakeInt16(struct ADBusMessage* m, int16_t* data);
+ADBUS_API int ADBusTakeUInt16(struct ADBusMessage* m, uint16_t* data);
 
-int ADBusTakeInt32(struct ADBusMessage* m, int32_t* data);
-int ADBusTakeUInt32(struct ADBusMessage* m, uint32_t* data);
+ADBUS_API int ADBusTakeInt32(struct ADBusMessage* m, int32_t* data);
+ADBUS_API int ADBusTakeUInt32(struct ADBusMessage* m, uint32_t* data);
 
-int ADBusTakeInt64(struct ADBusMessage* m, int64_t* data);
-int ADBusTakeUInt64(struct ADBusMessage* m, uint64_t* data);
+ADBUS_API int ADBusTakeInt64(struct ADBusMessage* m, int64_t* data);
+ADBUS_API int ADBusTakeUInt64(struct ADBusMessage* m, uint64_t* data);
 
-int ADBusTakeDouble(struct ADBusMessage* m, double* data);
+ADBUS_API int ADBusTakeDouble(struct ADBusMessage* m, double* data);
 
-int ADBusTakeString(struct ADBusMessage* m, const char** str, int* size);
-int ADBusTakeObjectPath(struct ADBusMessage* m, const char** str, int* size);
-int ADBusTakeSignature(struct ADBusMessage* m, const char** str, int* size);
+ADBUS_API int ADBusTakeString(struct ADBusMessage* m, const char** str, int* size);
+ADBUS_API int ADBusTakeObjectPath(struct ADBusMessage* m, const char** str, int* size);
+ADBUS_API int ADBusTakeSignature(struct ADBusMessage* m, const char** str, int* size);
 
-int ADBusTakeArrayBegin(struct ADBusMessage* m, uint* scope, int* arrayDataSize);
-int ADBusTakeArrayEnd(struct ADBusMessage* m);
+ADBUS_API int ADBusTakeArrayBegin(struct ADBusMessage* m, uint* scope, int* arrayDataSize);
+ADBUS_API int ADBusTakeArrayEnd(struct ADBusMessage* m);
 
-int ADBusTakeStructBegin(struct ADBusMessage* m, uint* scope);
-int ADBusTakeStructEnd(struct ADBusMessage* m);
+ADBUS_API int ADBusTakeStructBegin(struct ADBusMessage* m, uint* scope);
+ADBUS_API int ADBusTakeStructEnd(struct ADBusMessage* m);
 
-int ADBusTakeDictEntryBegin(struct ADBusMessage* m, uint* scope);
-int ADBusTakeDictEntryEnd(struct ADBusMessage* m);
+ADBUS_API int ADBusTakeDictEntryBegin(struct ADBusMessage* m, uint* scope);
+ADBUS_API int ADBusTakeDictEntryEnd(struct ADBusMessage* m);
 
-int ADBusTakeVariantBegin(struct ADBusMessage* m, uint* scope,
-                          const char** variantType, int* variantSize);
-int ADBusTakeVariantEnd(struct ADBusMessage* m);
+ADBUS_API int ADBusTakeVariantBegin(struct ADBusMessage* m, uint* scope,
+                                    const char** variantType, int* variantSize);
+ADBUS_API int ADBusTakeVariantEnd(struct ADBusMessage* m);
 
 // ----------------------------------------------------------------------------
 

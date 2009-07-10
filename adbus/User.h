@@ -26,6 +26,8 @@
 
 #include <string.h>
 
+#include "Common.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -44,11 +46,11 @@ struct ADBusUser
 };
 
 #define ADBusUserInit(pdata) memset(pdata, 0, sizeof(struct ADBusUser))
-void ADBusUserClone(const struct ADBusUser* from, struct ADBusUser* to);
-void ADBusUserFree(struct ADBusUser* data);
+ADBUS_API void ADBusUserClone(const struct ADBusUser* from, struct ADBusUser* to);
+ADBUS_API void ADBusUserFree(struct ADBusUser* data);
 
-void ADBusUserCloneDefault(const struct ADBusUser* from, struct ADBusUser* to);
-void ADBusUserFreeDefault(struct ADBusUser* data);
+ADBUS_API void ADBusUserCloneDefault(const struct ADBusUser* from, struct ADBusUser* to);
+ADBUS_API void ADBusUserFreeDefault(struct ADBusUser* data);
 
 #ifdef __cplusplus
 }

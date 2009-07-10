@@ -27,6 +27,16 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+#ifdef ADBUS_BUILD_AS_DLL
+#   ifdef ADBUS_BUILDING
+#       define ADBUS_API __declspec(dllexport)
+#   else
+#       define ADBUS_API __declspec(dllimport)
+#   endif
+#else
+#   define ADBUS_API extern
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

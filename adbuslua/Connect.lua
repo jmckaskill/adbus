@@ -36,26 +36,26 @@ local function print_table(table)
     end
 end
 
-local function connect(host, port, uid)
-
-    local function random_string(length)
-        local ret = ""
-        for i = 1, length do
-            local val = math.random(0, 255)
-            local char = string.format("%c", val)
-            ret = ret .. char
-        end
-        return ret
+function random_string(length)
+    local ret = ""
+    for i = 1, length do
+        local val = math.random(0, 255)
+        local char = string.format("%c", val)
+        ret = ret .. char
     end
+    return ret
+end
 
-    local function printf(formatstr, ...)
-        print(string.format(formatstr, ...))
-    end
+function printf(formatstr, ...)
+    print(string.format(formatstr, ...))
+end
+
+local function connect(host, port, id)
 
     local sock = socket.connect(host, port)
     sock:send("\0")
 
-    local sendauthline = "AUTH DBUS_COOKIE_SHA1 " .. hex_encode(tostring(uid)) .. "\r\n"
+    local sendauthline = "AUTH DBUS_COOKIE_SHA1 " .. hex_encode(tostring(id)) .. "\r\n"
     sock:send(sendauthline)
 
     local authline = sock:receive("*l")
@@ -84,13 +84,31 @@ local function connect(host, port, uid)
     assert(guid)
 
     sock:send("BEGIN\r\n")
-    printf("Connected to tcp:host=%s,port=%d with uid %d and bus guid %s", host, port, uid, guid)
+    printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
     return sock
 end
 
+local function connect_external(host, port, id)
+    local sock = socket.connect(host, port)
+    sock:send("\0")
+
+    local sendauthline = "AUTH EXTERNAL " .. hex_encode(tostring(id)) .. "\r\n"
+    sock:send(sendauthline)
+
+    local okline = sock:receive()
+    local guid = okline:match("OK (%x+)")
+    assert(guid)
+
+    sock:send("BEGIN\r\n")
+    printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
+    return sock
+end
+
+
 math.randomseed(os.time())
 
-local sock = connect("localhost", 12345, 1010)
+--connect("localhost", 12345, 1010)
+local sock = connect_external("localhost", 12434, adbuslua_core.getlocalid())
 
 local adbus = adbuslua_core
 

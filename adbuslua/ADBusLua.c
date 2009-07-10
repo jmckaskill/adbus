@@ -37,7 +37,6 @@
 #include "Object.h"
 
 #include <assert.h>
-#include <lauxlib.h>
 
 #define LADBUSCONNECTION_HANDLE "LADBusConnection"
 #define LADBUSOBJECT_HANDLE     "LADBusObject"
@@ -249,6 +248,9 @@ static void CreateMetatable(
     lua_setfield(L, libTableIndex, luaName);
 }
 
+#ifdef WIN32
+__declspec(dllexport)
+#endif
 int luaopen_adbuslua_core(lua_State* L)
 {
     luaL_register(L, "adbuslua_core", kCoreReg);
