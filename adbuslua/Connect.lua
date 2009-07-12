@@ -1,16 +1,21 @@
 #!/usr/bin/lua
 -- vim: ts=4 sw=4 sts=4 et
 
-require "package"
 
-package.cpath = package.cpath .. ";/home/james/src/adbus/lib/lib?.so"
+module "adbus"
 
 require "math"
 require "os"
 require "io"
 require "sha1"
 require "socket"
-require "adbuslua_core"
+require "adbus"
+
+
+math.randomseed(os.time())
+
+adbus.getlocalid = adbuslua_core.getlocalid
+
 
 local function hex_encode(str)
     local ret = ""
@@ -36,7 +41,7 @@ local function print_table(table)
     end
 end
 
-function random_string(length)
+local function random_string(length)
     local ret = ""
     for i = 1, length do
         local val = math.random(0, 255)
@@ -46,11 +51,11 @@ function random_string(length)
     return ret
 end
 
-function printf(formatstr, ...)
+local function printf(formatstr, ...)
     print(string.format(formatstr, ...))
 end
 
-local function connect(host, port, id)
+function adbus.connect_dbus_cookie_sha1(host, port, id)
 
     local sock = socket.connect(host, port)
     sock:send("\0")
@@ -88,7 +93,7 @@ local function connect(host, port, id)
     return sock
 end
 
-local function connect_external(host, port, id)
+function adbus.connect_external(host, port, id)
     local sock = socket.connect(host, port)
     sock:send("\0")
 
@@ -104,101 +109,5 @@ local function connect_external(host, port, id)
     return sock
 end
 
-
-math.randomseed(os.time())
-
---connect("localhost", 12345, 1010)
-local sock = connect_external("localhost", 12434, adbuslua_core.getlocalid())
-
-local adbus = adbuslua_core
-
-local function echo(object, message)
-    print_table(object)
-    print_table(message)
-    adbus.send_reply(message, {message[1]})
-end
-
-local interface = adbus.interface.new("nz.co.foobar.ADBus.Test", { 
-  { type = "method",
-    name = "Echo",
-    arguments = {{ name = "in", type = "s", direction = "in"},
-                 { name = "out", type = "s", direction = "out"}
-                },
-    --annotations = { "nz.co.foobar.ADBus.Foobar"] = "Test"},
-    callback = echo,
-  },
-  --[[
-  { type = "signal",
-    name = "Changed",
-    arguments = {{ name = "foo", type = "s", direction = "in"}}
-    --annotations = { ["nz.co.foobar.ADBus.Foobar"] = "Test"}
-  },
-  { type = "property",
-    name = "Changed",
-    property_type = "s",
-    --annotations = { ["nz.co.foobar.ADBus.Foobar"] = "Test"},
-    get_callback = adbus.connection.get_foobar,
-    set_callback = adbus.connection.set_foobar,
-  },
-  --]]
-})
-print(interface:name())
-
-local table = { str = "some string" }
-
-local connection = adbus.connection.new()
-local foo = connection:add_object("/foo")
-foo:bind_interface(interface, table)
-
-sock:settimeout(0)
-
-local tosend = ""
-
-local function trysend()
-    local _,res,i = sock:send(tosend)
-    if res == "timeout" then
-        tosend = tosend:sub(i)
-    else
-        tosend = ""
-    end
-end
-
-local function send_callback(data)
-    tosend = tosend .. data
-    trysend()
-end
-
-connection:set_send_callback(send_callback)
-connection:connect_to_bus()
-
-while true do
-    local to_read = {sock}
-    local to_write = {}
-    if tosend:len() > 0 then
-        to_write = {sock}
-    end
-    local ready_read, ready_write, err = socket.select(to_read, to_write)
-
-    if err ~= nil then
-        print ("Error", err)
-        break
-    end
-
-    if ready_read[1] == sock then
-        local data,err,partial = sock:receive(4096)
-        if data ~= nil then
-            print("received full", hex_encode(data))
-            connection:parse(data)
-        elseif partial ~= nil then
-            print("received partial", hex_encode(partial))
-            connection:parse(partial)
-        end
-    end
-
-    if ready_write[1] == sock and tosend:len() > 0 then
-        trysend()
-    end
-
-end
 
 

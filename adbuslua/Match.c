@@ -326,6 +326,8 @@ int LADBusMatchCallback(
         lua_insert(data->L, top + 2);
     }
 
+    lua_pushnumber(L, id);
+
     lua_call(data->L, lua_gettop(data->L) - top, 0);
 
     return 0;
