@@ -6,7 +6,7 @@ add_definitions(-DLUASOCKET_EXPORTS
                 -DLUASOCKET_API_DLLEXPORT
                )
 
-add_library(core SHARED
+add_library(luasocket_core SHARED
             src/auxiliar.c
             src/auxiliar.h
             src/buffer.c
@@ -39,7 +39,12 @@ add_library(core SHARED
             src/wsocket.c
             src/wsocket.h
             )
+set_target_properties(luasocket_core PROPERTIES OUTPUT_NAME socket/core)
 
-target_link_libraries(core ws2_32.lib lua)
+target_link_libraries(luasocket_core ws2_32.lib lua)
 
+set_target_properties(luasocket_core PROPERTIES
+                      RUNTIME_OUTPUT_DIRECTORY ../bin
+                      LIBRARY_OUTPUT_DIRECTORY ../lib
+                      ARCHIVE_OUTPUT_DIRECTORY ../lib)
                       

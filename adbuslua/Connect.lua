@@ -1,23 +1,26 @@
 #!/usr/bin/lua
 -- vim: ts=4 sw=4 sts=4 et
 
+local math          = require("math")
+local os            = require("os")
+local io            = require("io")
+local sha1          = require("sha1")
+local socket        = require("socket")
+local adbuslua_core = require("adbuslua_core")
+local string        = require("string")
+local tostring      = _G.tostring
+local tonumber      = _G.tonumber
+local print         = _G.print
+local assert        = _G.assert
 
-module "adbus"
-
-require "math"
-require "os"
-require "io"
-require "sha1"
-require "socket"
-require "adbus"
-
+module("adbus")
 
 math.randomseed(os.time())
 
-adbus.getlocalid = adbuslua_core.getlocalid
+getlocalid = adbuslua_core.getlocalid
 
 
-local function hex_encode(str)
+function _hex_encode(str)
     local ret = ""
     for i = 1, str:len() do
         ret = ret .. string.format("%02x", str:byte(i))
@@ -25,7 +28,7 @@ local function hex_encode(str)
     return ret
 end
 
-local function hex_decode(str)
+function _hex_decode(str)
     local ret = ""
     for i = 1, str:len(), 2 do
         local val = tonumber(str:sub(i,i+1), 16)
@@ -33,12 +36,6 @@ local function hex_decode(str)
         ret = ret .. char
     end
     return ret
-end
-
-local function print_table(table)
-    for k,v in pairs(table) do
-        print (k,v)
-    end
 end
 
 local function random_string(length)
@@ -51,22 +48,22 @@ local function random_string(length)
     return ret
 end
 
-local function printf(formatstr, ...)
+function _printf(formatstr, ...)
     print(string.format(formatstr, ...))
 end
 
-function adbus.connect_dbus_cookie_sha1(host, port, id)
+function connect_dbus_cookie_sha1(host, port, id)
 
     local sock = socket.connect(host, port)
     sock:send("\0")
 
-    local sendauthline = "AUTH DBUS_COOKIE_SHA1 " .. hex_encode(tostring(id)) .. "\r\n"
+    local sendauthline = "AUTH DBUS_COOKIE_SHA1 " .. _hex_encode(tostring(id)) .. "\r\n"
     sock:send(sendauthline)
 
     local authline = sock:receive("*l")
     local encoded = authline:match("DATA (%x+)")
     assert(encoded)
-    local keyring, id, servdata = hex_decode(encoded):match("([%w_]+) (%w+) (%x+)")
+    local keyring, id, servdata = _hex_decode(encoded):match("([%w_]+) (%w+) (%x+)")
 
     local keyringfile = io.open(os.getenv("HOME") .. "/.dbus-keyrings/" .. keyring, "r")
     local keyringdata
@@ -78,26 +75,26 @@ function adbus.connect_dbus_cookie_sha1(host, port, id)
         end
     end
 
-    local localdata = hex_encode(random_string(32))
+    local localdata = _hex_encode(random_string(32))
     local stringtosha = servdata .. ":" .. localdata .. ":" .. keyringdata
-    local sha = hex_encode(sha1.digest(stringtosha))
+    local sha = _hex_encode(sha1.digest(stringtosha))
 
-    sock:send("DATA " .. hex_encode(localdata .. " " .. sha) .. "\r\n")
+    sock:send("DATA " .. _hex_encode(localdata .. " " .. sha) .. "\r\n")
 
     local okline = sock:receive()
     local guid = okline:match("OK (%x+)")
     assert(guid)
 
     sock:send("BEGIN\r\n")
-    printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
+    _printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
     return sock
 end
 
-function adbus.connect_external(host, port, id)
+function connect_external(host, port, id)
     local sock = socket.connect(host, port)
     sock:send("\0")
 
-    local sendauthline = "AUTH EXTERNAL " .. hex_encode(tostring(id)) .. "\r\n"
+    local sendauthline = "AUTH EXTERNAL " .. _hex_encode(tostring(id)) .. "\r\n"
     sock:send(sendauthline)
 
     local okline = sock:receive()
@@ -105,9 +102,8 @@ function adbus.connect_external(host, port, id)
     assert(guid)
 
     sock:send("BEGIN\r\n")
-    printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
+    _printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
     return sock
 end
-
 
 

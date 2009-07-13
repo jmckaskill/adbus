@@ -17,5 +17,6 @@ add_subdirectory(adbuslua)
 add_subdirectory(sha1-0.2)
 add_subdirectory(lua-5.1.4)
 add_subdirectory(luasocket-2.0.2)
+add_subdirectory(LuaXML_090330)
 
 

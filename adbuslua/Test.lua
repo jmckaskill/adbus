@@ -3,6 +3,11 @@
 
 require "adbus"
 
+local function print_table(table)
+    for k,v in pairs(table) do
+        print (k,v)
+    end
+end
 
 local win32 = adbus.getlocalid():sub(1,1) == "S"
 local sock
@@ -46,13 +51,28 @@ print(interface:name())
 
 local table = { str = "some string" }
 
-local connection = adbus.connection.new(sock)
-local foo = connection:add_object("/foo")
+connection = adbus.connection.new(sock)
+foo = connection:add_object("/foo")
 foo:bind_interface(interface, table)
 
 connection:connect_to_bus()
 
-connection:process_messages()
+bus = connection:new_proxy{
+    path = "/",
+    service = "org.freedesktop.DBus",
+    interface = "org.freedesktop.DBus"
+}
+
+local names = bus:ListNames()
+for k,v in pairs(names) do print(k,v) end
+
+manager = connection:new_proxy{
+    path = "/CAN0",
+    service = "com.ctct.BlueTack.BlueDevice",
+    interface = "com.ctct.bluetack.BlueDevice.DeviceManager",
+}
+
+--connection:process_messages()
 
 
 --[[

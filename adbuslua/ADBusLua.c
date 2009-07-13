@@ -40,7 +40,7 @@
 
 #define LADBUSCONNECTION_HANDLE "LADBusConnection"
 #define LADBUSOBJECT_HANDLE     "LADBusObject"
-#define LADBUSINTERFACE_HANDLE   "LADBusInterface"
+#define LADBUSINTERFACE_HANDLE  "LADBusInterface"
 
 // ----------------------------------------------------------------------------
 
@@ -52,6 +52,16 @@ void LADBusPrintDebug(const char* format, ...)
   vfprintf(stderr, format, ap);
   fprintf(stderr, "\n");
   va_end(ap);
+}
+
+// ----------------------------------------------------------------------------
+
+LADBUS_API void LADBusPushExistingConnection(lua_State* L, struct ADBusConnection* connection)
+{
+  struct LADBusConnection* c = LADBusPushNewConnection(L);
+  c->connection = connection;
+  c->marshaller = ADBusCreateMarshaller();
+  c->existing_connection = 1;
 }
 
 // ----------------------------------------------------------------------------
@@ -200,6 +210,7 @@ static const luaL_Reg kConnectionReg[] = {
     {"add_match", &LADBusAddMatch},
     {"remove_match", &LADBusRemoveMatch},
     {"add_object", &LADBusAddObject},
+    {"send_message", &LADBusSendMessage},
     {NULL, NULL},
 };
 
@@ -248,10 +259,7 @@ static void CreateMetatable(
     lua_setfield(L, libTableIndex, luaName);
 }
 
-#ifdef WIN32
-__declspec(dllexport)
-#endif
-int luaopen_adbuslua_core(lua_State* L)
+LADBUS_API int luaopen_adbuslua_core(lua_State* L)
 {
     luaL_register(L, "adbuslua_core", kCoreReg);
     int libTable = lua_gettop(L);

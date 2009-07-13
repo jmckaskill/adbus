@@ -34,7 +34,7 @@ void LADBusConvertLuaToMessage(
     int                     index,
     struct ADBusMarshaller* marshaller,
     const char*             signature,
-    int                     signatureSie);
+    int                     signatureSize);
 
 void LADBusMarshallNextField(
     struct ADBusMarshaller* marshaller,

@@ -357,7 +357,7 @@ void ADBusSetSender(struct ADBusMarshaller* m, const char* sender, int size)
 
 void ADBusSetSignature(struct ADBusMarshaller* m, const char* type, int typeSize)
 {
-  ASSERT_RETURN(m->type == NULL || *m->type);
+  ASSERT_RETURN(m->type == NULL || *m->type == '\0');
   ASSERT_RETURN(m->stackSize == 0);
 
   if (typeSize < 0)

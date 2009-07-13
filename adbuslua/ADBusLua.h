@@ -26,6 +26,20 @@
 
 #include "LuaInclude.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifdef WIN32
+#   ifdef LADBUS_BUILDING
+#       define LADBUS_API __declspec(dllexport)
+#   else
+#       define LADBUS_API __declspec(dllimport)
+#   endif
+#else
+#   define LADBUS_API extern
+#endif
+
 
 #ifndef NDEBUG
 #   define LOGD LADBusPrintDebug
@@ -36,6 +50,7 @@
 void LADBusPrintDebug(const char* format, ...);
 
 
+struct ADBusConnection;
 struct LADBusConnection;
 struct LADBusObject;
 struct LADBusInterface;
@@ -44,21 +59,15 @@ struct LADBusConnection*    LADBusPushNewConnection(lua_State* L);
 struct LADBusObject*        LADBusPushNewObject(lua_State* L);
 struct LADBusInterface*     LADBusPushNewInterface(lua_State* L);
 
+LADBUS_API void LADBusPushExistingConnection(lua_State* L, struct ADBusConnection* connection);
+
 struct LADBusConnection*    LADBusCheckConnection(lua_State* L, int index);
 struct LADBusObject*        LADBusCheckObject(lua_State* L, int index);
 struct LADBusInterface*     LADBusCheckInterface(lua_State* L, int index);
 
-#ifdef __cplusplus
-extern "C"{
-#endif
+LADBUS_API int luaopen_adbuslua_core(lua_State* L);
 
-#ifdef WIN32
-__declspec(dllexport)
-#endif
-int luaopen_adbuslua_core(lua_State* L);
 
 #ifdef __cplusplus
 }
 #endif
-
-

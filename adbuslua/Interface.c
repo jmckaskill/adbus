@@ -38,7 +38,6 @@ int LADBusCheckFields(
         uint               allowNumbers,
         const char*        valid[])
 {
-    LOGD("Checking fields");
     lua_pushnil(L);
     while (lua_next(L, table) != 0) {
         // Key is at keyIndex -- leave between loops
@@ -47,7 +46,6 @@ int LADBusCheckFields(
         int valueIndex = keyIndex + 1;
 
         if (lua_type(L, keyIndex) == LUA_TNUMBER) {
-            LOGD("Found number key '%g'", lua_tonumber(L, keyIndex));
             if (allowNumbers) {
                 assert(lua_gettop(L) == valueIndex);
                 lua_settop(L, keyIndex);
@@ -65,7 +63,6 @@ int LADBusCheckFields(
         size_t keySize;
         const char* key = lua_tolstring(L, keyIndex, &keySize);
 
-        LOGD("Found string key '%s'", key);
         int i = 0;
         while (valid[i] != NULL) {
             if (strncmp(key, valid[i], keySize) == 0)

@@ -1,27 +1,36 @@
 #!/usr/bin/lua
 -- vim: ts=4 sw=4 sts=4 et
 
-module "adbus"
+local table         = require("table")
+local string        = require("string")
+local xml           = require("xml")
+local setmetatable  = _G.setmetatable
+local error         = _G.error
+local unpack        = _G.unpack
+local ipairs        = _G.ipairs
+local print         = _G.print
 
-require "LuaXml"
+module("adbus")
 
-adbus.proxy = {}
-adbus.proxy.__index = adbus.proxy
+proxy = {}
+proxy.__index = proxy
 
-function adbus.proxy.new(connection, reg)
+function proxy.new(connection, reg)
     if reg.interface == nil or reg.path == nil or reg.service == nil then
         error("Proxies require an explicit service, path, and interface")
     end
 
     local self = {}
-    setmetatable(self, adbus.proxy)
+    setmetatable(self, proxy)
 
-    self._interface = interface
-    self._path = path
-    self._service = service
+    self._interface = reg.interface
+    self._path = reg.path
+    self._service = reg.service
     self._connection = connection
     local serial = connection:next_serial()
     connection:send_message{
+        type        = "method_call",
+        serial      = serial,
         destination = reg.service,
         path        = reg.path,
         interface   = "org.freedesktop.DBus.Introspectable",
@@ -41,9 +50,11 @@ function adbus.proxy.new(connection, reg)
     return self
 end
 
-function adbus.proxy:_call_method(name, signature, ...)
+function proxy:_call_method(name, signature, ...)
     local serial = self._connection:next_serial()
+
     self._connection:send_message{
+        type        = "method_call",
         destination = self._service,
         path        = self._path,
         interface   = self._interface,
@@ -57,7 +68,7 @@ function adbus.proxy:_call_method(name, signature, ...)
         type            = "method_return",
         reply_serial    = serial,
         unpack_message  = false,
-        callback        = {self._method_callback, self}
+        callback        = {self._method_callback, self},
         remove_on_first_match = true,
     }
 
@@ -70,11 +81,11 @@ function adbus.proxy:_call_method(name, signature, ...)
     return unpack(ret)
 end
 
-function adbus.proxy:_method_callback(message)
+function proxy:_method_callback(message)
     self._method_return_message = message
 end
 
-function adbus.proxy:_process_method(member)
+function proxy:_process_method(member)
     local name = member.name
     local signature = {}
 
@@ -88,26 +99,32 @@ function adbus.proxy:_process_method(member)
         end
     end
 
+    local fullsig = ""
+    for _,v in ipairs(signature) do fullsig = fullsig .. v end
+
+    print("Adding", name, fullsig)
+
     self[name] = function(self, ...)
         return self:_call_method(name, signature, ...)
     end
 end
 
-function adbus.proxy:_process_signal(member)
+function proxy:_process_signal(member)
     -- TODO
 end
 
-function adbus.proxy:_process_property(member)
+function proxy:_process_property(member)
     -- TODO
 end
 
-function adbus.proxy:_introspection_callback(introspection)
+function proxy:_introspection_callback(introspection)
     self._signatures = {}
 
     x = xml.eval(introspection)
 
     for _,interface in ipairs(x) do
         if interface.name == self._interface then
+            print(string.format("Got introspection for %s", interface.name))
             for _,member in ipairs(interface) do
                 local tag = member:tag()
                 if tag == "method" then
@@ -124,10 +141,3 @@ function adbus.proxy:_introspection_callback(introspection)
 
 end
 
-
-local proxy = connection:new_proxy{
-    service     = "org.freedesktop.DBus",
-    path        = "/foo/bar",
-    interface   = "some.foo.bar"}
-
-local ret1, ret2 = proxy:Echo("test")

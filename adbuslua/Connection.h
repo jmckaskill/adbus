@@ -36,6 +36,7 @@ struct LADBusConnection
 {
     struct ADBusConnection*    connection;
     struct ADBusMarshaller*    marshaller;
+    uint                       existing_connection;
 };
 
 int LADBusCreateConnection(lua_State* L);
@@ -51,5 +52,6 @@ int LADBusUniqueServiceName(lua_State* L);
 int LADBusNextSerial(lua_State* L);
 int LADBusSendError(lua_State* L);
 int LADBusSendReply(lua_State* L);
+int LADBusSendMessage(lua_State* L);
 
 

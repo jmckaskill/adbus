@@ -27,10 +27,12 @@
 
 #include "Connection.h"
 #include "Data.h"
+#include "Interface.h"
 #include "Message.h"
 
 #include "adbus/Connection.h"
 
+#include <assert.h>
 
 
 // ----------------------------------------------------------------------------
@@ -126,8 +128,16 @@ static void UnpackCallback(
         struct LADBusData* data)
 {
     if (lua_istable(L, offset)) {
-        lua_rawgeti(L, offset, 1);
-        lua_rawgeti(L, offset, 2);
+        if (lua_objlen(L, offset) < 1)
+          lua_pushnil(L);
+        else
+          lua_rawgeti(L, offset, 1);
+
+        if (lua_objlen(L, offset) < 2)
+          lua_pushnil(L);
+        else
+          lua_rawgeti(L, offset, 2);
+
         if (!lua_isfunction(L, -2)) {
             luaL_error(L, "Value for field %s in the match registration "
                     "is not a function or table with a function as key 1",
@@ -158,6 +168,20 @@ static void UnpackCallback(
 
 // ----------------------------------------------------------------------------
 
+static const char* kMatchFields[] = {
+  "type",
+  "sender",
+  "destination",
+  "interface",
+  "reply_serial",
+  "path",
+  "member",
+  "error_name",
+  "remove_on_first_match",
+  "callback",
+  NULL
+};
+
 static void UnpackMatch(
         lua_State* L,
         int offset,
@@ -171,76 +195,116 @@ static void UnpackMatch(
                 offset);
         return;
     }
-    lua_pushnil(L);
-    while (lua_next(L, offset) != 0){
-        // Key is at keyIndex -- leave between loops
-        // Value is at valueIndex -- pop after loop
-        int keyIndex   = lua_gettop(L) - 1;
-        int valueIndex = keyIndex + 1;
 
-        if (lua_type(L, keyIndex) != LUA_TSTRING) {
-            luaL_error(L, "Invalid key type for match registration "
-                    "table - must be a string");
-            return;
-        }
+    LADBusCheckFields(L, offset, 0, kMatchFields);
 
-        size_t keySize;
-        const char* key = lua_tolstring(L, keyIndex, &keySize);
 
-        if (strncmp(key, "type", keySize) == 0) {
-            int i = UnpackEnum(L,
-                               valueIndex,
-                               "type",
-                               kValidTypes,
-                               kTypesString);
-            match->type = (enum ADBusMessageType) i;
-
-        } else if (strncmp(key, "sender", keySize) == 0) {
-            UnpackString(L,
-                         valueIndex,
-                         "sender",
-                         &match->sender,
-                         &match->senderSize);
-
-        } else if (strncmp(key, "destination", keySize) == 0) {
-            UnpackString(L,
-                         valueIndex,
-                         "destination",
-                         &match->destination,
-                         &match->destinationSize);
-
-        } else if (strncmp(key, "interface", keySize) == 0) {
-            UnpackString(L,
-                         valueIndex,
-                         "interface",
-                         &match->interface,
-                         &match->interfaceSize);
-
-        } else if (strncmp(key, "path", keySize) == 0) {
-            UnpackString(L,
-                         valueIndex,
-                         "path",
-                         &match->path,
-                         &match->pathSize);
-
-        } else if (strncmp(key, "callback", keySize) == 0) {
-            UnpackCallback(L,
-                           valueIndex,
-                           "callback",
-                           data);
-
-        } else if (allowRemove && strncmp(key, "remove_on_first_match", keySize) == 0) {
-            match->removeOnFirstMatch 
-                = UnpackBoolean(L,
-                                valueIndex,
-                                "remove_on_first_match");
-
-        } else {
-            luaL_error(L, "Invalid field %s given in match registration",
-                    key);
-            return;
-        }
+    lua_getfield(L, offset, "type");
+    if (!lua_isnil(L, -1)) {
+        int i = UnpackEnum(L,
+                           lua_gettop(L),
+                           "type",
+                           kValidTypes,
+                           kTypesString);
+        match->type = (enum ADBusMessageType) i;
     }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "reply_serial");
+    if (!lua_isnil(L, -1)) {
+        if (!lua_isnumber(L, -1)) {
+            luaL_error(L, "Value for field reply_serial in the match registration is "
+                    "not a number");
+            return;
+        }
+
+        match->replySerial = (uint32_t) lua_tonumber(L, -1);
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "sender");
+    if (!lua_isnil(L, -1)) {
+        UnpackString(L,
+                     lua_gettop(L),
+                     "sender",
+                     &match->sender,
+                     &match->senderSize);
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "destination");
+    if (!lua_isnil(L, -1)) {
+        UnpackString(L,
+                     lua_gettop(L),
+                     "destination",
+                     &match->destination,
+                     &match->destinationSize);
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "path");
+    if (!lua_isnil(L, -1)) {
+        UnpackString(L,
+                     lua_gettop(L),
+                     "path",
+                     &match->path,
+                     &match->pathSize);
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "member");
+    if (!lua_isnil(L, -1)) {
+        UnpackString(L,
+                     lua_gettop(L),
+                     "member",
+                     &match->member,
+                     &match->memberSize);
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "error_name");
+    if (!lua_isnil(L, -1)) {
+        UnpackString(L,
+                     lua_gettop(L),
+                     "error_name",
+                     &match->errorName,
+                     &match->errorNameSize);
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "remove_on_first_match");
+    if (!lua_isnil(L, -1)) {
+        if (!allowRemove) {
+          luaL_error(L, "The remove_on_first_match field is not supported for bus matches");
+          return;
+        }
+
+        match->removeOnFirstMatch 
+            = UnpackBoolean(L,
+                            lua_gettop(L),
+                            "remove_on_first_match");
+    }
+    lua_pop(L, 1);
+
+
+    lua_getfield(L, offset, "callback");
+    if (!lua_isnil(L, -1)) {
+        UnpackCallback(L,
+                       lua_gettop(L),
+                       "callback",
+                       data);
+    }
+    lua_pop(L, 1);
+
+
+
 
     if (!data->ref[0]) {
         luaL_error(L, "Missing required 'callback' field in match "
@@ -326,9 +390,10 @@ int LADBusMatchCallback(
         lua_insert(data->L, top + 2);
     }
 
-    lua_pushnumber(L, id);
+    lua_pushnumber(data->L, id);
 
-    lua_call(data->L, lua_gettop(data->L) - top, 0);
+    // function itself is not included in the arg count
+    lua_call(data->L, lua_gettop(data->L) - top - 1, 0); 
 
     return 0;
 }

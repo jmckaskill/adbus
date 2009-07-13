@@ -410,6 +410,7 @@ int _ADBusProcessStruct(struct ADBusMessage* m, struct ADBusField* f)
   m->signature += 1; // skip over '('
 
   f->type = ADBusStructBeginField;
+  f->scope = m->stackSize;
 
   return 0;
 }
@@ -454,6 +455,7 @@ int _ADBusProcessDictEntry(struct ADBusMessage* m, struct ADBusField* f)
   m->signature += 1; // skip over '{'
 
   f->type = ADBusDictEntryBeginField;
+  f->scope = m->stackSize;
 
   return 0;
 }
@@ -512,6 +514,7 @@ int _ADBusProcessArray(struct ADBusMessage* m, struct ADBusField* f)
 
   f->type = ADBusArrayBeginField;
   f->data.arrayDataSize = size;
+  f->scope = m->stackSize;
 
   return 0;
 }
@@ -565,6 +568,7 @@ int _ADBusProcessVariant(struct ADBusMessage* m, struct ADBusField* f)
   e->data.variant.seenFirst = 0;
 
   f->type = ADBusVariantBeginField;
+  f->scope = m->stackSize;
 
   m->signature = f->data.variantType.str;
 

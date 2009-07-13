@@ -39,6 +39,7 @@ int LADBusCreateConnection(lua_State* L)
     struct LADBusConnection* c = LADBusPushNewConnection(L);
     c->connection = ADBusCreateConnection();
     c->marshaller = ADBusCreateMarshaller();
+    c->existing_connection = 0;
 
     assert(lua_gettop(L) == argnum + 1);
     return 1;
@@ -49,7 +50,8 @@ int LADBusCreateConnection(lua_State* L)
 int LADBusFreeConnection(lua_State* L)
 {
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
-    ADBusFreeConnection(c->connection);
+    if (!c->existing_connection)
+      ADBusFreeConnection(c->connection);
     ADBusFreeMarshaller(c->marshaller);
     return 0;
 }
@@ -240,6 +242,19 @@ int LADBusSendReply(lua_State* L)
     ADBusConnectionSendMessage(c->connection, c->marshaller);
 
     return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+int LADBusSendMessage(lua_State* L)
+{
+  struct LADBusConnection* c = LADBusCheckConnection(L, 1);
+  ADBusClearMarshaller(c->marshaller);
+  LADBusConvertLuaToMessage(L, 2, c->marshaller, NULL, 0);
+
+  ADBusConnectionSendMessage(c->connection, c->marshaller);
+
+  return 0;
 }
 
 // ----------------------------------------------------------------------------

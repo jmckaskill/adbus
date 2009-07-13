@@ -33,6 +33,7 @@ if (MSVC)
 endif (MSVC)
 
 add_library(adbuslua_core SHARED ${code})
+set_target_properties(adbuslua_core PROPERTIES DEFINE_SYMBOL LADBUS_BUILDING)
 
 target_link_libraries(adbuslua_core adbus lua advapi32.lib)
 
