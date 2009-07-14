@@ -66,12 +66,6 @@ bus = connection:new_proxy{
 local names = bus:ListNames()
 for k,v in pairs(names) do print(k,v) end
 
-manager = connection:new_proxy{
-    path = "/CAN0",
-    service = "com.ctct.BlueTack.BlueDevice",
-    interface = "com.ctct.bluetack.BlueDevice.DeviceManager",
-}
-
 --connection:process_messages()
 
 

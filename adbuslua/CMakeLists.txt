@@ -35,7 +35,10 @@ endif (MSVC)
 add_library(adbuslua_core SHARED ${code})
 set_target_properties(adbuslua_core PROPERTIES DEFINE_SYMBOL LADBUS_BUILDING)
 
-target_link_libraries(adbuslua_core adbus lua advapi32.lib)
+target_link_libraries(adbuslua_core adbus lua)
+if (WIN32)
+  target_link_libraries(adbuslua_core advapi32.lib)
+endif (WIN32)
 
 add_executable(adbuslua_test lua.c)
 target_link_libraries(adbuslua_test adbuslua_core)
