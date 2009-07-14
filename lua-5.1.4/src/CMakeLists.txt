@@ -8,9 +8,8 @@ set(code lapi.c lcode.c ldebug.c ldo.c ldump.c lfunc.c lgc.c llex.c
 
 add_library(lua SHARED ${code} )
 
-
-set_target_properties(lua PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ../../bin
-                      LIBRARY_OUTPUT_DIRECTORY ../../lib
-                      ARCHIVE_OUTPUT_DIRECTORY ../../lib)
+install(TARGETS lua
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
 

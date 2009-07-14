@@ -43,8 +43,11 @@ set_target_properties(luasocket_core PROPERTIES OUTPUT_NAME socket/core)
 
 target_link_libraries(luasocket_core ws2_32.lib lua)
 
-set_target_properties(luasocket_core PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ../bin
-                      LIBRARY_OUTPUT_DIRECTORY ../lib
-                      ARCHIVE_OUTPUT_DIRECTORY ../lib)
+install(TARGETS luasocket_core
+        RUNTIME DESTINATION bin/socket
+        LIBRARY DESTINATION lib/socket
+        ARCHIVE DESTINATION lib/socket)
+
+install(FILES src/socket.lua
+        DESTINATION bin)
                       

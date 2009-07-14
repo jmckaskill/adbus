@@ -39,9 +39,8 @@ endif (MSVC)
 
 add_library(adbus SHARED ${code} )
 
-
-set_target_properties(adbus PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ../bin
-                      LIBRARY_OUTPUT_DIRECTORY ../lib
-                      ARCHIVE_OUTPUT_DIRECTORY ../lib)
+install(TARGETS adbus
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
 

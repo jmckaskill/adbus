@@ -7,7 +7,7 @@ local function include(filename)
     f()
 end
 
-include("Connect.lua")
-include("Connection.lua")
-include("Proxy.lua")
+include("adbuslua/Connect.lua")
+include("adbuslua/Connection.lua")
+include("adbuslua/Proxy.lua")
 

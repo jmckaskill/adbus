@@ -8,7 +8,7 @@ local print         = _G.print
 local unpack        = _G.unpack
 local setmetatable  = _G.setmetatable
 
-module("adbus")
+module("adbuslua")
 
 interface     = adbuslua_core.interface
 object        = adbuslua_core.object

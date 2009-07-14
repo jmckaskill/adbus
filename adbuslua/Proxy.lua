@@ -10,7 +10,7 @@ local unpack        = _G.unpack
 local ipairs        = _G.ipairs
 local print         = _G.print
 
-module("adbus")
+module("adbuslua")
 
 proxy = {}
 proxy.__index = proxy

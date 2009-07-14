@@ -10,8 +10,8 @@ add_library(sha1 SHARED
 
 target_link_libraries(sha1 lua)
 
-set_target_properties(sha1 PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ../bin
-                      LIBRARY_OUTPUT_DIRECTORY ../lib
-                      ARCHIVE_OUTPUT_DIRECTORY ../lib)
+install(TARGETS sha1
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
 

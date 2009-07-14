@@ -15,8 +15,10 @@ add_library(LuaXML_lib SHARED ${code})
 
 target_link_libraries(LuaXML_lib lua)
 
-set_target_properties(LuaXML_lib PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ../bin
-                      LIBRARY_OUTPUT_DIRECTORY ../lib
-                      ARCHIVE_OUTPUT_DIRECTORY ../lib)
+install(TARGETS LuaXML_lib
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+
+install(FILES xml.lua DESTINATION bin)
                       

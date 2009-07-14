@@ -41,8 +41,13 @@ add_executable(adbuslua_test lua.c)
 target_link_libraries(adbuslua_test adbuslua_core)
 
 
-set_target_properties(adbuslua_test adbuslua_core PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ../bin
-                      LIBRARY_OUTPUT_DIRECTORY ../lib
-                      ARCHIVE_OUTPUT_DIRECTORY ../lib)
+install(TARGETS adbuslua_test adbuslua_core
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+
+install(FILES init.lua Connect.lua Connection.lua Proxy.lua
+        DESTINATION bin/adbuslua)
+
+install(FILES Test.lua DESTINATION bin)
 

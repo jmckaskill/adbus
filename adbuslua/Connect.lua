@@ -13,7 +13,7 @@ local tonumber      = _G.tonumber
 local print         = _G.print
 local assert        = _G.assert
 
-module("adbus")
+module("adbuslua")
 
 math.randomseed(os.time())
 

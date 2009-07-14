@@ -1,7 +1,7 @@
 #!/usr/bin/lua
 -- vim: ts=4 sw=4 sts=4 et
 
-require "adbus"
+require("adbuslua")
 
 local function print_table(table)
     for k,v in pairs(table) do
@@ -9,41 +9,41 @@ local function print_table(table)
     end
 end
 
-local win32 = adbus.getlocalid():sub(1,1) == "S"
+local win32 = adbuslua.getlocalid():sub(1,1) == "S"
 local sock
 if win32 then
-  sock = adbus.connect_external("localhost", 12434, adbus.getlocalid())
+  sock = adbuslua.connect_external("localhost", 12434, adbuslua.getlocalid())
 else
-  sock = adbus.connect_dbus_cookie_sha1("localhost", 12345, adbus.getlocalid())
+  sock = adbuslua.connect_dbus_cookie_sha1("localhost", 12345, adbuslua.getlocalid())
 end
 
 local function echo(object, message)
     print_table(object)
     print_table(message)
-    adbus.send_reply(message, {message[1]})
+    adbuslua.send_reply(message, {message[1]})
 end
 
-local interface = adbus.interface.new("nz.co.foobar.ADBus.Test", { 
+local interface = adbuslua.interface.new("nz.co.foobar.adbuslua.Test", { 
   { type = "method",
     name = "Echo",
     arguments = {{ name = "in", type = "s", direction = "in"},
                  { name = "out", type = "s", direction = "out"}
                 },
-    --annotations = { "nz.co.foobar.ADBus.Foobar"] = "Test"},
+    --annotations = { "nz.co.foobar.adbuslua.Foobar"] = "Test"},
     callback = echo,
   },
   --[[
   { type = "signal",
     name = "Changed",
     arguments = {{ name = "foo", type = "s", direction = "in"}}
-    --annotations = { ["nz.co.foobar.ADBus.Foobar"] = "Test"}
+    --annotations = { ["nz.co.foobar.adbuslua.Foobar"] = "Test"}
   },
   { type = "property",
     name = "Changed",
     property_type = "s",
-    --annotations = { ["nz.co.foobar.ADBus.Foobar"] = "Test"},
-    get_callback = adbus.connection.get_foobar,
-    set_callback = adbus.connection.set_foobar,
+    --annotations = { ["nz.co.foobar.adbuslua.Foobar"] = "Test"},
+    get_callback = adbuslua.connection.get_foobar,
+    set_callback = adbuslua.connection.set_foobar,
   },
   --]]
 })
@@ -51,7 +51,7 @@ print(interface:name())
 
 local table = { str = "some string" }
 
-connection = adbus.connection.new(sock)
+connection = adbuslua.connection.new(sock)
 foo = connection:add_object("/foo")
 foo:bind_interface(interface, table)
 
@@ -83,8 +83,8 @@ message = {
   no_reply_expected = true,
   no_auto_start = true,
   serial = 3,
-  interface = "nz.co.foobar.ADBus.Test",
-  path = "/nz/co/foobar/ADBus/Test",
+  interface = "nz.co.foobar.adbuslua.Test",
+  path = "/nz/co/foobar/adbuslua/Test",
   member = "SomeMethod",
   error_name = "some_error",
   reply_serial = 34,
@@ -94,30 +94,30 @@ message = {
 }
 
 
-local interface = adbus.interface.new("nz.co.foobar.ADBus.Test", { 
+local interface = adbuslua.interface.new("nz.co.foobar.adbuslua.Test", { 
   { type = "method",
     name = "Bazify",
     arguments = {{ name = "foo", type = "s", direction = "in"},
                  { name = "bar", type = "s", direction = "out"}
                 },
-    annotations = { nz.co.foobar.ADBus.Foobar = "Test"},
-    callback = adbus.connection.foobar,
+    annotations = { nz.co.foobar.adbuslua.Foobar = "Test"},
+    callback = adbuslua.connection.foobar,
   },
   { type = "signal",
     name = "Changed",
     arguments = {{ name = "foo", type = "s", direction = "in"}}
-    annotations = { nz.co.foobar.ADBus.Foobar = "Test"}
+    annotations = { nz.co.foobar.adbuslua.Foobar = "Test"}
   },
   { type = "property",
     name = "Changed",
     property_type = "s",
-    annotations = { nz.co.foobar.ADBus.Foobar = "Test"},
-    get_callback = adbus.connection.get_foobar,
-    set_callback = adbus.connection.set_foobar,
+    annotations = { nz.co.foobar.adbuslua.Foobar = "Test"},
+    get_callback = adbuslua.connection.get_foobar,
+    set_callback = adbuslua.connection.set_foobar,
   },
 })
 
-local connection = adbus.connection.new()
+local connection = adbuslua.connection.new()
 
 connection:send_message(....)
 
