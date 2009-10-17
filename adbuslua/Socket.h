@@ -46,6 +46,10 @@ struct LADBusSocket
     socket_t    socket;
 };
 
+#ifndef WIN32
+LADBUSI_FUNC int LADBusNewUnixSocket(lua_State* L);
+#endif
+
 LADBUSI_FUNC int LADBusNewTcpSocket(lua_State* L);
 LADBUSI_FUNC int LADBusCloseSocket(lua_State* L);
 LADBUSI_FUNC int LADBusSocketSend(lua_State* L);

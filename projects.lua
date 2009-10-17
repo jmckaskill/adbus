@@ -53,7 +53,7 @@ project "luaexec"
   language "c"
   targetname "lua"
   files {"lua-5.1.4/src/lua.c"}
-  links {"lua"}
+  links {"lua", "adbuslua_core"}
   configuration "vs*"
     buildoptions "/TC" -- compile as c
   configuration "linux"

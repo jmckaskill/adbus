@@ -33,10 +33,12 @@
 #   include <Winsock2.h>
 #   include <WS2tcpip.h>
 #else
+#   include <sys/un.h>
 #   include <sys/types.h>
 #   include <sys/socket.h>
 #   include <unistd.h>
 #   include <netdb.h>
+#   include <errno.h>
 #   define closesocket(x) close(x)
 #endif
 
@@ -92,6 +94,35 @@ static socket_t TcpConnect(lua_State* L, const char* address, const char* servic
 
 // ----------------------------------------------------------------------------
 
+#ifndef WIN32
+#define UNIX_PATH_MAX 108
+static socket_t UnixConnect(lua_State* L, const char* path, uint abstract)
+{
+    socket_t sfd;
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof(struct sockaddr_un));
+    sa.sun_family = AF_UNIX;
+    if (abstract) {
+        strncat(sa.sun_path+1, path, UNIX_PATH_MAX-2);
+    } else {
+        strncat(sa.sun_path, path, UNIX_PATH_MAX-1);
+    }
+    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sfd == INVALID_SOCKET) {
+        luaL_error(L, "socket error '%s'", gai_strerror(errno));
+    }
+
+    int s = connect(sfd, (const struct sockaddr*) &sa, sizeof(sa) - UNIX_PATH_MAX + strlen(path) + 1);
+    if (s != 0) {
+        luaL_error(L, "connect error '%s'", gai_strerror(s));
+    }
+
+    return sfd;
+}
+#endif
+
+// ----------------------------------------------------------------------------
+
 static void Send(void* socket, const char* data, size_t len)
 {
     send(*(socket_t*) socket, data, len, 0);
@@ -126,6 +157,27 @@ int LADBusNewTcpSocket(lua_State* L)
 
     return 1;
 }
+
+// ----------------------------------------------------------------------------
+
+#ifndef WIN32
+int LADBusNewUnixSocket(lua_State* L)
+{
+    const char* path = luaL_checkstring(L, 1);
+    uint abstract = lua_isboolean(L, 2) && lua_toboolean(L, 2);
+
+    socket_t s = UnixConnect(L, path, abstract);
+
+    srand(time(NULL));
+
+    ADBusAuthDBusCookieSha1(&Send, &Recv, &Rand, (void*) &s);
+
+    struct LADBusSocket* lsocket = LADBusPushNewSocket(L);
+    lsocket->socket = s;
+
+    return 1;
+}
+#endif
 
 // ----------------------------------------------------------------------------
 

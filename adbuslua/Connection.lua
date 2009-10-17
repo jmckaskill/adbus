@@ -4,10 +4,12 @@
 local adbuslua_core = require("adbuslua_core")
 local string        = require("string")
 local table         = require("table")
+local os            = require("os")
 local print         = _G.print
 local unpack        = _G.unpack
 local setmetatable  = _G.setmetatable
 local assert        = _G.assert
+local error         = _G.error
 
 module("adbuslua")
 
@@ -19,11 +21,37 @@ connection.__index = connection
 
 object = {}
 object.__index = object
-function connection.new(socket, debug)
+local function dump(str, x) print(table.show(x,str)) end
+function connection.new(options)
+    local socket = options.socket
+    if socket == nil then
+        if options.type == "session" then
+            local bus = os.getenv("DBUS_SESSION_BUS_ADDRESS")
+            dump("bus", bus)
+            assert(bus, "DBUS_SESSION_BUS_ADDRESS is not set")
+            local type,opts = bus:match("([^:]*):([^:]*)")
+            options.type = type
+            dump("type", type)
+            dump("opts", opts)
+            for k,v in opts:gmatch("([^=,]*)=([^=,]*)") do
+                options[k] = v
+            end
+        end
+        dump("options", options)
+
+        if options.type == "tcp" then
+            socket = adbuslua_core.socket.new_tcp(options.host, options.port)
+        elseif options.type == "unix" and options.abstract ~= nil then
+            socket = adbuslua_core.socket.new_unix(options.abstract, true)
+        else
+            error("Don't know how to create socket")
+        end
+    end
+
     local self = {}
     setmetatable(self, connection)
 
-    self._connection = adbuslua_core.connection.new(debug)
+    self._connection = adbuslua_core.connection.new(options.debug)
     self._socket     = socket;
 
     self._connection:set_send_callback(function(data)
@@ -31,12 +59,6 @@ function connection.new(socket, debug)
     end)
 
     return self
-end
-
-function new_tcp_connection(host, port, debug)
-    local sock = adbuslua_core.socket.new_tcp(host, port)
-    local connection = connection.new(sock, debug)
-    return connection
 end
 
 function connection:connect_to_bus()
