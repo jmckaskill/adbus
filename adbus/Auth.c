@@ -341,6 +341,36 @@ void ADBusAuthDBusCookieSha1(
     str_free(&reply);
 }
 
+// ----------------------------------------------------------------------------
+
+void ADBusAuthExternal(
+        ADBusAuthSendCallback       send,
+        ADBusAuthRecvCallback       recv,
+        void*                       data)
+{
+    str_t id = NULL;
+    str_t auth = NULL;
+
+    send(data, "\0", 1);
+
+    LocalId(&id);
+
+    str_append(&auth, "AUTH EXTERNAL ");
+    HexEncode(&auth, (const uint8_t*) id, str_size(&id));
+    str_append(&auth, "\r\n");
+
+    send(data, auth, str_size(&auth));
+
+    char buf[4096];
+    int len = recv(data, buf, 4096);
+    buf[len] = '\0';
+
+    send(data, "BEGIN\r\n", strlen("BEGIN\r\n"));
+
+    str_free(&id);
+    str_free(&auth);
+}
+
 
 
 

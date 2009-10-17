@@ -211,7 +211,7 @@ static void SetupBusCall(
 {
     ADBusSetupMethodCall(message, connection);
     ADBusSetDestination(message, "org.freedesktop.DBus", -1);
-    ADBusSetPath(message, "/org/freedesktop/DBus", -1);
+    ADBusSetPath(message, "/", -1);
     ADBusSetInterface(message, "org.freedesktop.DBus", -1);
 }
 

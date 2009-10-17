@@ -93,6 +93,7 @@ struct ADBusExtendedHeader_
 
 #define NEW(STRUCT) ((STRUCT*) calloc(1, sizeof(STRUCT)))
 
+#ifdef WIN32
 static inline char* strndup(const char* string, size_t n)
 {
     char* s = (char*) malloc(n + 1);
@@ -100,6 +101,9 @@ static inline char* strndup(const char* string, size_t n)
     s[n] = '\0';
     return s;
 }
+#else
+extern char* strndup(const char* string, size_t n);
+#endif
 
 // ----------------------------------------------------------------------------
 

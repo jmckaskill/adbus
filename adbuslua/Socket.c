@@ -44,6 +44,7 @@
 
 #include <time.h>
 #include <string.h>
+#include <stdio.h>
 
 // ----------------------------------------------------------------------------
 
@@ -112,8 +113,11 @@ static socket_t UnixConnect(lua_State* L, const char* path, uint abstract)
         luaL_error(L, "socket error '%s'", gai_strerror(errno));
     }
 
-    int s = connect(sfd, (const struct sockaddr*) &sa, sizeof(sa) - UNIX_PATH_MAX + strlen(path) + 1);
+    int s = connect(sfd,
+                    (const struct sockaddr*) &sa,
+                    sizeof(sa.sun_family) + strlen(path) + 1);
     if (s != 0) {
+        closesocket(sfd);
         luaL_error(L, "connect error '%s'", gai_strerror(s));
     }
 
@@ -125,12 +129,17 @@ static socket_t UnixConnect(lua_State* L, const char* path, uint abstract)
 
 static void Send(void* socket, const char* data, size_t len)
 {
-    send(*(socket_t*) socket, data, len, 0);
+    int r = send(*(socket_t*) socket, data, len, 0);
+    if (r < 0)
+        fprintf(stderr, "Send error %s\n", strerror(errno));
 }
 
 static int Recv(void* socket, char* buf, size_t len)
 {
-    return recv(*(socket_t*) socket, buf, len, 0);
+    int r = recv(*(socket_t*) socket, buf, len, 0);
+    if (r < 0)
+        fprintf(stderr, "Recv error %s\n", strerror(errno));
+    return r;
 }
 
 static uint8_t Rand(void* socket)
@@ -160,6 +169,12 @@ int LADBusNewTcpSocket(lua_State* L)
 
 // ----------------------------------------------------------------------------
 
+struct cmsg
+{
+    struct cmsghdr  hdr;
+    struct ucred    cred;
+};
+
 #ifndef WIN32
 int LADBusNewUnixSocket(lua_State* L)
 {
@@ -168,9 +183,7 @@ int LADBusNewUnixSocket(lua_State* L)
 
     socket_t s = UnixConnect(L, path, abstract);
 
-    srand(time(NULL));
-
-    ADBusAuthDBusCookieSha1(&Send, &Recv, &Rand, (void*) &s);
+    ADBusAuthExternal(&Send, &Recv, (void*) &s);
 
     struct LADBusSocket* lsocket = LADBusPushNewSocket(L);
     lsocket->socket = s;
@@ -215,7 +228,7 @@ int LADBusSocketRecv(lua_State* L)
 
     if (s->socket != INVALID_SOCKET) {
         char buf[4096];
-        int recvd = recv(s->socket, buf, 4096, 0);
+        int recvd = Recv((void*) &s->socket, buf, 4096);
         lua_pushlstring(L, buf, recvd);
         return 1;
     }

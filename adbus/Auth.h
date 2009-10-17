@@ -42,6 +42,11 @@ ADBUS_API void ADBusAuthDBusCookieSha1(
         ADBusAuthRandCallback   rand,
         void*                   data);
 
+ADBUS_API void ADBusAuthExternal(
+        ADBusAuthSendCallback   send,
+        ADBusAuthRecvCallback   recv,
+        void*                   data);
+
 #ifdef __cplusplus
 }
 #endif

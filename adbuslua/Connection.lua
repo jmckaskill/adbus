@@ -21,28 +21,32 @@ connection.__index = connection
 
 object = {}
 object.__index = object
-local function dump(str, x) print(table.show(x,str)) end
+
+local function parse_address(address, options, backup)
+    local bus = os.getenv(address) or backup
+    assert(bus, string.format("%s is not set", address))
+    local type,opts = bus:match("([^:]*):([^:]*)")
+    options.type = type
+    for k,v in opts:gmatch("([^=,]*)=([^=,]*)") do
+        options[k] = v
+    end
+end
+
 function connection.new(options)
     local socket = options.socket
     if socket == nil then
         if options.type == "session" then
-            local bus = os.getenv("DBUS_SESSION_BUS_ADDRESS")
-            dump("bus", bus)
-            assert(bus, "DBUS_SESSION_BUS_ADDRESS is not set")
-            local type,opts = bus:match("([^:]*):([^:]*)")
-            options.type = type
-            dump("type", type)
-            dump("opts", opts)
-            for k,v in opts:gmatch("([^=,]*)=([^=,]*)") do
-                options[k] = v
-            end
+            parse_address("DBUS_SESSION_BUS_ADDRESS", options)
+        elseif options.type == "system" then
+            parse_address("DBUS_SYSTEM_BUS_ADDRESS", options, "unix:file=/var/run/dbus/system_bus_socket")
         end
-        dump("options", options)
 
-        if options.type == "tcp" then
+        if options.type == "tcp" and options.host and options.port then
             socket = adbuslua_core.socket.new_tcp(options.host, options.port)
         elseif options.type == "unix" and options.abstract ~= nil then
             socket = adbuslua_core.socket.new_unix(options.abstract, true)
+        elseif options.type == "unix" and options.file ~= nil then
+            socket = adbuslua_core.socket.new_unix(options.file, false)
         else
             error("Don't know how to create socket")
         end
@@ -58,13 +62,9 @@ function connection.new(options)
         self._socket:send(data)
     end)
 
-    return self
-end
+    self._connection:connect_to_bus()
 
-function connection:connect_to_bus()
-    self._connection:connect_to_bus(function() self._yield = true end)
-    -- connected callback will pull us out
-    self:process_messages()
+    return self
 end
 
 function connection:is_connected_to_bus()
