@@ -1,40 +1,336 @@
-// vim: ts=4 sw=4 sts=4 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #include "Message.h"
 
 
 #include "Interface.h" //for LADBusCheckFields
 
+#include "adbus/Iterator.h"
 #include "adbus/Marshaller.h"
 #include "adbus/Message.h"
 
 #include <assert.h>
 
 
+static int MarshallNextField(
+    lua_State*              L,
+    int                     index,
+    struct ADBusMarshaller* marshaller);
+
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+static int MarshallStruct(
+    lua_State*              L,
+    int                     index,
+    struct ADBusMarshaller* marshaller)
+{
+    ADBusBeginStruct(marshaller);
+
+    int n = lua_objlen(L, index);
+    for (int i = 1; i <= n; ++i) {
+        lua_rawgeti(L, index, i);
+        int valueIndex = lua_gettop(L);
+
+        MarshallNextField(L, valueIndex, marshaller);
+
+        assert(lua_gettop(L) == valueIndex);
+        lua_pop(L, 1);
+    }
+
+    ADBusEndStruct(marshaller);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+static const char* GetMetatableVariantType(
+    lua_State*              L,
+    int                     table,
+    int                     metatable)
+{
+    if (lua_isnil(L, metatable))
+        return NULL;
+
+    lua_getfield(L, metatable, "__dbus_signature");
+    if (lua_isfunction(L, -1)) {
+      lua_pushvalue(L, table);
+      lua_call(L, 1, 1);
+    }
+    
+    if (lua_isstring(L, -1))
+        return lua_tostring(L, -1);
+    else
+        return NULL;
+}
+
+static void GetMetatableVariantData(
+    lua_State*              L,
+    int                     table,
+    int                     metatable)
+{
+    if (lua_isnil(L, metatable))
+        return;
+
+    lua_getfield(L, metatable, "__dbus_value");
+    if (lua_isfunction(L, -1)) {
+        lua_pushvalue(L, table);
+        lua_call(L, 1, 1);
+    }
+
+    if (!lua_isnil(L, -1))
+        lua_replace(L, table);
+}
+
+static const char* DetectVariantType(
+    lua_State*              L,
+    int                     index)
+{
+    lua_pushnumber(L, 1);
+    lua_gettable(L, index);
+    if (lua_isnil(L, -1))
+        return "a{vv}";
+    else
+        return "av";
+}
+
+// ----------------------------------------------------------------------------
+
+static int MarshallVariant(
+    lua_State*              L,
+    int                     index,
+    struct ADBusMarshaller* marshaller)
+{
+    int top = lua_gettop(L);
+    const char* signature = NULL;
+    switch (lua_type(L, index)){
+        case LUA_TNUMBER:
+            signature = "d";
+            break;
+        case LUA_TBOOLEAN:
+            signature = "b";
+            break;
+        case LUA_TSTRING:
+            signature = "s";
+            break;
+        case LUA_TTABLE:
+            {
+                lua_getmetatable(L, index);
+                int metatable = lua_gettop(L);
+                // note run metatable variant type before data since get data
+                // may replace the value at index
+                signature = GetMetatableVariantType(L, index, metatable);
+                GetMetatableVariantData(L, index, metatable);
+                if (!signature)
+                    signature = DetectVariantType(L, index);
+            }
+            break;
+    }
+    if (!signature) {
+        return luaL_error(L, "Can not convert argument to dbus variant.");
+    }
+    ADBusBeginVariant(marshaller, signature, -1);
+    // signature may point to string on stack, so only clean up the stack
+    // once we are done using the sig
+    lua_settop(L, top);
+    MarshallNextField(L, index, marshaller);
+    ADBusEndVariant(marshaller);
+    return 0;
+}
+
+
+// ----------------------------------------------------------------------------
+
+static int MarshallArray(
+    lua_State*              L,
+    int                     index,
+    struct ADBusMarshaller* marshaller)
+{
+    ADBusBeginArray(marshaller);
+
+    if (ADBusNextMarshallerField(marshaller) == ADBusDictEntryBeginField) {
+        lua_pushnil(L);
+        while (lua_next(L, index) != 0) {
+            int keyIndex   = lua_gettop(L) - 1;
+            int valueIndex = lua_gettop(L);
+            ADBusBeginDictEntry(marshaller);
+
+            MarshallNextField(L, keyIndex, marshaller);
+            MarshallNextField(L, valueIndex, marshaller);
+
+            ADBusEndDictEntry(marshaller);
+            lua_pop(L, 1); // pop the value, leaving the key
+            assert(lua_gettop(L) == keyIndex);
+        }
+    } else {
+        int n = lua_objlen(L, index);
+        for (int i = 1; i <= n; ++i) {
+            lua_rawgeti(L, index, i);
+            int valueIndex = lua_gettop(L);
+
+            MarshallNextField(L, valueIndex, marshaller);
+            assert(lua_gettop(L) == valueIndex);
+            lua_pop(L, 1);
+        }
+    }
+
+    ADBusEndArray(marshaller);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+// Note these strictly check the type strictly because otherwise the lua_next
+// call in LADBusMarshallArray screws up
+
+static uint CheckBoolean(lua_State* L, int index)
+{
+    if (lua_type(L, index) != LUA_TBOOLEAN) {
+        luaL_error(L, "Mismatch between argument and signature");
+        return 0;
+    }
+    return (uint) lua_toboolean(L, index);
+}
+
+static lua_Number CheckNumber(lua_State* L, int index)
+{
+    if (lua_type(L, index) != LUA_TNUMBER) {
+        luaL_error(L, "Mismatch between argument and signature");
+        return 0;
+    }
+    return lua_tonumber(L, index);
+}
+
+static const char* CheckString(lua_State* L, int index, size_t* size)
+{
+    if (lua_type(L, index) != LUA_TSTRING) {
+        luaL_error(L, "Mismatch between argument and signature");
+        return NULL;
+    }
+    return lua_tolstring(L, index, size);
+}
+
+// ----------------------------------------------------------------------------
+
+static int MarshallNextField(
+    lua_State*              L,
+    int                     index,
+    struct ADBusMarshaller* marshaller)
+{
+    uint b;
+    lua_Number n;
+    size_t size;
+    const char* str;
+    int err = 0;
+    switch(ADBusNextMarshallerField(marshaller)){
+        case ADBusBooleanField:
+            b = CheckBoolean(L, index);
+            err = ADBusAppendBoolean(marshaller, b);
+            break;
+        case ADBusUInt8Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendUInt8(marshaller, (uint8_t) n);
+            break;
+        case ADBusInt16Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendInt32(marshaller, (int16_t) n);
+            break;
+        case ADBusUInt16Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendUInt16(marshaller, (uint16_t) n);
+            break;
+        case ADBusInt32Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendInt32(marshaller, (int32_t) n);
+            break;
+        case ADBusUInt32Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendUInt32(marshaller, (uint32_t) n);
+            break;
+        case ADBusInt64Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendUInt64(marshaller, (int64_t) n);
+            break;
+        case ADBusUInt64Field:
+            n = CheckNumber(L, index);
+            err = ADBusAppendUInt64(marshaller, (uint64_t) n);
+            break;
+        case ADBusDoubleField:
+            n = CheckNumber(L, index);
+            err = ADBusAppendDouble(marshaller, (double) n);
+            break;
+        case ADBusStringField:
+            str = CheckString(L, index, &size);
+            err = ADBusAppendString(marshaller, str, (int) size);
+            break;
+        case ADBusObjectPathField:
+            str = CheckString(L, index, &size);
+            err = ADBusAppendObjectPath(marshaller, str, (int) size);
+            break;
+        case ADBusSignatureField:
+            str = CheckString(L, index, &size);
+            err = ADBusAppendSignature(marshaller, str, (int) size);
+            break;
+        case ADBusArrayBeginField:
+            // This covers both arrays and maps
+            err = MarshallArray(L, index, marshaller);
+            break;
+        case ADBusStructBeginField:
+            err = MarshallStruct(L, index, marshaller);
+            break;
+        case ADBusVariantBeginField:
+            err = MarshallVariant(L, index, marshaller);
+            break;
+        default:
+            return luaL_error(L, "Invalid signature on marshalling message");
+    }
+    if (err)
+        return luaL_error(L, "Error on marshalling message");
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+int LADBusMarshallArgument(
+        lua_State*              L,
+        int                     argumentIndex,
+        const char*             signature,
+        int                     signatureSize,
+        struct ADBusMarshaller* marshaller)
+{
+    int err = ADBusBeginArgument(marshaller, signature, signatureSize);
+    if (err)
+        return err;
+
+    MarshallNextField(L, argumentIndex, marshaller);
+
+    return ADBusEndArgument(marshaller);
+}
+
 // ----------------------------------------------------------------------------
 
 static const char* kMessageFields[] = {
@@ -65,364 +361,324 @@ static size_t kMessageTypeNum = 5;
 
 // ----------------------------------------------------------------------------
 
-typedef void (*SetStringFunc)(struct ADBusMarshaller*, const char*, int);
+typedef void (*SetStringFunction)(struct ADBusMessage*, const char*, int);
 static void SetStringHeader(
         lua_State*              L,
         int                     index,
-        struct ADBusMarshaller* marshaller,
+        struct ADBusMessage*    message,
         const char*             field,
-        SetStringFunc           function)
+        SetStringFunction       function)
 {
     lua_getfield(L, index, field);
     if (!lua_isnil(L, -1)) {
         size_t size;
         const char* string = luaL_checklstring(L, -1, &size);
-        function(marshaller, string, (int) size);
+        function(message, string, (int) size);
     }
     lua_pop(L, 1);
 }
 
-// Uses the signature provided in the argument if not NULL, otherwise requires
-// a list of signature strings in the 'signature' field of the table at index
-void LADBusConvertLuaToMessage(
+int LADBusMarshallMessage(
     lua_State*              L,
-    int                     index,
-    struct ADBusMarshaller* marshaller,
-    const char*             signature,
-    int                     signatureSize)
+    int                     messageIndex,
+    struct ADBusMessage*    message)
 {
-    if (LADBusCheckFields(L, index, 1, kMessageFields)) {
-        luaL_error(L, "Invalid field in the message table");
-        return;
+    ADBusResetMessage(message);
+    if (LADBusCheckFieldsAllowNumbers(L, messageIndex, kMessageFields)) {
+        return luaL_error(L, "Invalid field in the message table");
     }
-    int argnum = lua_gettop(L);
+    int luaTopAtStart = lua_gettop(L);
 
     // Type
-    lua_getfield(L, index, "type");
+    lua_getfield(L, messageIndex, "type");
     int type = luaL_checkoption(L, -1, "invalid", kMessageTypes);
     if (type != ADBusInvalidMessage) {
-        ADBusSetMessageType(marshaller, (enum ADBusMessageType) type);
+        ADBusSetMessageType(message, (enum ADBusMessageType) type);
     }
     lua_pop(L, 1);
 
 
     // Flags
     int flags = 0;
-    lua_getfield(L, index, "no_reply_expected");
+    lua_getfield(L, messageIndex, "no_reply_expected");
     if (!lua_isnil(L, -1)) {
         flags |= luaL_checkint(L, -1) ? ADBusNoReplyExpectedFlag : 0;
     }
-    lua_getfield(L, index, "no_auto_start");
+    lua_getfield(L, messageIndex, "no_auto_start");
     if (!lua_isnil(L, -1)) {
         flags |= luaL_checkint(L, -1) ? ADBusNoAutoStartFlag : 0;
     }
-    ADBusSetFlags(marshaller, flags);
+    ADBusSetFlags(message, flags);
     lua_pop(L, 2);
 
     // Serial
-    lua_getfield(L, index, "serial");
+    lua_getfield(L, messageIndex, "serial");
     if (!lua_isnil(L, -1))
-        ADBusSetSerial(marshaller, luaL_checkint(L, -1));
+        ADBusSetSerial(message, luaL_checkint(L, -1));
 
-    lua_getfield(L, index, "reply_serial");
+    lua_getfield(L, messageIndex, "reply_serial");
     if (!lua_isnil(L, -1))
-        ADBusSetReplySerial(marshaller, luaL_checkint(L, -1));
+        ADBusSetReplySerial(message, luaL_checkint(L, -1));
 
     lua_pop(L, 2);
 
     // String fields
-    SetStringHeader(L, index, marshaller, "path", &ADBusSetPath);
-    SetStringHeader(L, index, marshaller, "interface", &ADBusSetInterface);
-    SetStringHeader(L, index, marshaller, "member", &ADBusSetMember);
-    SetStringHeader(L, index, marshaller, "error_name", &ADBusSetErrorName);
-    SetStringHeader(L, index, marshaller, "destination", &ADBusSetDestination);
-    SetStringHeader(L, index, marshaller, "sender", &ADBusSetSender);
+    SetStringHeader(L, messageIndex, message, "path", &ADBusSetPath);
+    SetStringHeader(L, messageIndex, message, "interface", &ADBusSetInterface);
+    SetStringHeader(L, messageIndex, message, "member", &ADBusSetMember);
+    SetStringHeader(L, messageIndex, message, "error_name", &ADBusSetErrorName);
+    SetStringHeader(L, messageIndex, message, "destination", &ADBusSetDestination);
+    SetStringHeader(L, messageIndex, message, "sender", &ADBusSetSender);
 
     // Signature
-    if (signature) {
-        ADBusSetSignature(marshaller, signature, signatureSize);
-        
-        size_t tableSize = lua_objlen(L, index);
-        for (int i = 1; i <= (int) tableSize; ++i) {
-            lua_rawgeti(L, index, i);
-            int argindex = lua_gettop(L);
-            LADBusMarshallNextField(marshaller, L, argindex);
-            assert(lua_gettop(L) == argindex);
-            lua_pop(L, 1);
-        }
-
-    } else {
-        lua_getfield(L, index, "signature");
-        if (!lua_istable(L, index)) {
-            luaL_error(L, "Missing or invalid signature field of message table");
-            return;
-        }
-        int sigtable = lua_gettop(L);
-
-        size_t tableSize = lua_objlen(L, index);
-        size_t sigTableSize = lua_objlen(L, sigtable);
-        if (sigTableSize != tableSize) {
-            luaL_error(L, "Mismatch between number of arguments and signature");
-            return;
-        }
-        for (int i = 1; i <= (int) tableSize; ++i) {
-            lua_rawgeti(L, sigtable, i);
-            size_t sigLen;
-            const char* sig = luaL_checklstring(L, -1, &sigLen);
-            ADBusSetSignature(marshaller, sig, (int) sigLen);
-            lua_pop(L, 1);
-
-            lua_rawgeti(L, index, i);
-            int argindex = lua_gettop(L);
-            LADBusMarshallNextField(marshaller, L, argindex);
-            assert(lua_gettop(L) == argindex);
-            lua_pop(L, 1);
-        }
-
-        lua_pop(L, 1);
+    lua_getfield(L, messageIndex, "signature");
+    int signatureTable = lua_gettop(L);
+    if (!lua_istable(L, signatureTable) && !lua_isnil(L, signatureTable)) {
+        return luaL_error(L, "Invalid signature table of message table");
     }
-    assert(lua_gettop(L) == argnum);
 
+    // Check signature table size
+    size_t argumentNum = lua_objlen(L, messageIndex);
+    size_t signatureNum = lua_istable(L, signatureTable)
+                        ? lua_objlen(L, signatureTable)
+                        : 0;
+    if (signatureNum != argumentNum) {
+        return luaL_error(L, "Mismatch between number of arguments and "
+                          "signature");
+    }
+
+    // Arguments
+    struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
+    for (int i = 1; i <= (int) argumentNum; ++i) {
+#ifndef NDEBUG
+        int top = lua_gettop(L);
+#endif
+
+        // Get the argument signature
+        lua_rawgeti(L, signatureTable, i);
+        size_t signatureSize;
+        const char* signature = luaL_checklstring(L, -1, &signatureSize);
+
+        // Get the argument
+        lua_rawgeti(L, messageIndex, i);
+
+        // Marshall the argument
+        int err = LADBusMarshallArgument(L,
+                                         lua_gettop(L),
+                                         signature,
+                                         signatureSize,
+                                         marshaller);
+        if (err)
+            return luaL_error(L, "Error on marshalling message");
+
+        // Pop the argument and signature
+        lua_pop(L, 2);
+        assert(lua_gettop(L) == top);
+    }
+
+    lua_settop(L, luaTopAtStart);
+    return 0;
 }
+
+
+
+
+
 
 // ----------------------------------------------------------------------------
-
-// Note these strictly check the type because otherwise the lua_next call in
-// LADBusMarshallArray screws up
-
-uint CheckBoolean(lua_State* L, int index)
-{
-    if (lua_type(L, index) != LUA_TBOOLEAN) {
-        luaL_error(L, "Mismatch between argument and signature");
-        return 0;
-    }
-    return (uint) lua_toboolean(L, index);
-}
-
-lua_Number CheckNumber(lua_State* L, int index)
-{
-    if (lua_type(L, index) != LUA_TNUMBER) {
-        luaL_error(L, "Mismatch between argument and signature");
-        return 0;
-    }
-    return lua_tonumber(L, index);
-}
-
-const char* CheckString(lua_State* L, int index, size_t* size)
-{
-    if (lua_type(L, index) != LUA_TSTRING) {
-        luaL_error(L, "Mismatch between argument and signature");
-        return NULL;
-    }
-    return lua_tolstring(L, index, size);
-}
-
+// ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-void LADBusMarshallNextField(
-    struct ADBusMarshaller* marshaller,
+static int PushNextField(
+        lua_State*              L,
+        struct ADBusIterator*   iterator);
+
+// Structs are seen from lua indentically to an array of variants, ie they are
+// just expanded into an array
+static int PushStruct(
     lua_State*              L,
-    int                     index)
+    struct ADBusIterator*   iterator,
+    struct ADBusField*      field)
 {
-    uint b;
-    lua_Number n;
-    size_t size;
-    const char* str;
-    switch(*ADBusMarshallerCurrentSignature(marshaller)){
-        case ADBusBooleanField:
-            b = CheckBoolean(L, index);
-            ADBusAppendBoolean(marshaller, b);
-            break;
-        case ADBusUInt8Field:
-            n = CheckNumber(L, index);
-            ADBusAppendUInt8(marshaller, (uint8_t) n);
-            break;
-        case ADBusInt16Field:
-            n = CheckNumber(L, index);
-            ADBusAppendInt32(marshaller, (int16_t) n);
-            break;
-        case ADBusUInt16Field:
-            n = CheckNumber(L, index);
-            ADBusAppendUInt16(marshaller, (uint16_t) n);
-            break;
-        case ADBusInt32Field:
-            n = CheckNumber(L, index);
-            ADBusAppendInt32(marshaller, (int32_t) n);
-            break;
-        case ADBusUInt32Field:
-            n = CheckNumber(L, index);
-            ADBusAppendUInt32(marshaller, (uint32_t) n);
-            break;
-        case ADBusInt64Field:
-            n = CheckNumber(L, index);
-            ADBusAppendUInt64(marshaller, (int64_t) n);
-            break;
-        case ADBusUInt64Field:
-            n = CheckNumber(L, index);
-            ADBusAppendUInt64(marshaller, (uint64_t) n);
-            break;
-        case ADBusDoubleField:
-            n = CheckNumber(L, index);
-            ADBusAppendDouble(marshaller, (double) n);
-            break;
-        case ADBusStringField:
-            str = CheckString(L, index, &size);
-            ADBusAppendString(marshaller, str, (int) size);
-            break;
-        case ADBusObjectPathField:
-            str = CheckString(L, index, &size);
-            ADBusAppendObjectPath(marshaller, str, (int) size);
-            break;
-        case ADBusSignatureField:
-            str = CheckString(L, index, &size);
-            ADBusAppendSignature(marshaller, str, (int) size);
-            break;
-        case ADBusArrayBeginField:
-            LADBusMarshallArray(marshaller, L, index);
-            break;
-        case ADBusStructBeginField:
-            LADBusMarshallStruct(marshaller, L, index);
-            break;
-        case ADBusVariantBeginField:
-            LADBusMarshallVariant(marshaller, L, index);
-            break;
-        default:
-            luaL_error(L, "Invalid signature on marshalling message");
-            return;
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-void LADBusMarshallStruct(
-    struct ADBusMarshaller* marshaller,
-    lua_State*              L,
-    int                     index)
-{
-    ADBusBeginStruct(marshaller);
-
+    lua_newtable(L);
+    int table = lua_gettop(L);
     int i = 1;
-    while (1) {
-        lua_rawgeti(L, index, i);
-        int valueIndex = lua_gettop(L);
-        if (lua_isnil(L, valueIndex))
-            break;
+    int err = 0;
+    while (!ADBusIsScopeAtEnd(iterator, field->scope)) {
+        err = PushNextField(L, iterator);
+        if (err) return err;
 
-        LADBusMarshallNextField(marshaller, L, valueIndex);
-        assert(lua_gettop(L) == valueIndex);
+        assert(lua_gettop(L) == table + 1);
+        lua_rawseti(L, table, i++);
     }
-    lua_pop(L, 1);
-
-    ADBusEndStruct(marshaller);
+    return err
+        || ADBusIterate(iterator, field)
+        || field->type != ADBusStructEndField;
 }
 
 // ----------------------------------------------------------------------------
 
-void LADBusMarshallVariant(
-    struct ADBusMarshaller* marshaller,
+static int PushDictEntry(
     lua_State*              L,
-    int                     index)
+    struct ADBusIterator*   iterator,
+    struct ADBusField*      field)
 {
-    int top = lua_gettop(L);
-    const char* signature = NULL;
-    switch (lua_type(L, index)){
-        case LUA_TNUMBER:
-            signature = "d";
-            break;
-        case LUA_TBOOLEAN:
-            signature = "b";
-            break;
-        case LUA_TSTRING:
-            signature = "s";
-            break;
-        case LUA_TTABLE:
-            {
-                lua_getfield(L, index, "__dbus_signature");
-                if (!lua_isfunction(L, -1)) {
-                    luaL_error(L, "Can not convert argument to dbus "
-                            "variant. Non simple types need to overload the "
-                            "__dbus_signature field that returns the variant "
-                            "dbus signature as a string.");
-                    return;
-                }
-                lua_pushvalue(L, index);
-                lua_call(L, 1, 1);
-                if (!lua_isstring(L, -1)) {
-                    luaL_error(L, "Can not convert argument to dbus "
-                            "variant. Non simple types need to overload the "
-                            "__dbus_signature field that returns the variant "
-                            "dbus signature as a string.");
-                    return;
-                }
-                signature = lua_tostring(L, 1);
-            }
-            break;
-        case LUA_TUSERDATA:
-        case LUA_TNIL:
-        case LUA_TLIGHTUSERDATA:
-        case LUA_TFUNCTION:
-        case LUA_TTHREAD:
+    (void) field;
+    // DBus maps are arrays of dict entries which map directly to a table in
+    // lua, so we should be able to get the surrounding array since its on top
+    // of the lua stack
+
+    int table = lua_gettop(L);
+    assert(lua_istable(L, table));
+
+    int err = PushNextField(L, iterator);
+    if (err) return err;
+
+#ifndef NDEBUG
+    int key = lua_gettop(L);
+#endif
+
+    err = PushNextField(L, iterator);
+    if (err) return err;
+
+#ifndef NDEBUG
+    int value = lua_gettop(L);
+    assert(value == key + 1);
+#endif
+
+    // Pops the two last items on the stack - the key and value
+    lua_settable(L, table);
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+// Since lua is dynamically typed it does need to know that a particular
+// argument was originally a variant
+static int PushVariant(
+    lua_State*              L,
+    struct ADBusIterator*   iterator,
+    struct ADBusField*      field)
+{
+    int err = 0;
+    while (!ADBusIsScopeAtEnd(iterator, field->scope)) {
+        err = PushNextField(L, iterator);
+        if (err) return err;
+    }
+    return err
+        || ADBusIterate(iterator, field)
+        || field->type != ADBusVariantEndField;
+}
+
+// ----------------------------------------------------------------------------
+
+// Arrays are pushed as standard lua arrays using 1 based indexes.
+// Note since maps come up from dbus as a{xx} ie an array of dict entries we
+// should only set the index if the inner type was not a dict entry
+static int PushArray(
+    lua_State*              L,
+    struct ADBusIterator*   iterator,
+    struct ADBusField*      field)
+{
+    lua_newtable(L);
+    int table = lua_gettop(L);
+    int i = 1;
+    int err = 0;
+    while (!ADBusIsScopeAtEnd(iterator, field->scope)) {
+        err = PushNextField(L, iterator);
+        if (err) return err;
+
+        // No value is left on the stack if the inner type was a dict entry
+        if (lua_gettop(L) == table)
+            continue;
+
+        assert(lua_gettop(L) == table + 1);
+        lua_rawseti(L, table, i++);
+    }
+    return err
+        || ADBusIterate(iterator, field)
+        || field->type != ADBusArrayEndField;
+}
+
+// ----------------------------------------------------------------------------
+
+// Note depending on the type of lua_Number, some or all of the numeric dbus
+// types may lose data on the conversion - for now there is no decent way
+// around this
+// Also all of the string types (string, object path, signature) all convert
+// to a lua string since there is no reasonable reason for them to be
+// different types (this could be changed to fancy types that overload
+// __tostring, but I don't really see the point of that)
+static int PushNextField(
+    lua_State*              L,
+    struct ADBusIterator*    iterator)
+{
+    struct ADBusField f;
+    int err = ADBusIterate(iterator, &f);
+    if (err) return err;
+
+    // If we cannot grow the stack then the message is most likely trying to
+    // force our memory limit
+    if (!lua_checkstack(L, 3))
+        return ADBusInvalidData;
+
+    switch (f.type) {
+        case ADBusBooleanField:
+            lua_pushboolean(L, f.b);
+            return 0;
+        case ADBusUInt8Field:
+            lua_pushnumber(L, (lua_Number) f.u8);
+            return 0;
+        case ADBusInt16Field:
+            lua_pushnumber(L, (lua_Number) f.i16);
+            return 0;
+        case ADBusUInt16Field:
+            lua_pushnumber(L, (lua_Number) f.u16);
+            return 0;
+        case ADBusInt32Field:
+            lua_pushnumber(L, (lua_Number) f.i32);
+            return 0;
+        case ADBusUInt32Field:
+            lua_pushnumber(L, (lua_Number) f.u32);
+            return 0;
+        case ADBusInt64Field:
+            lua_pushnumber(L, (lua_Number) f.i64);
+            return 0;
+        case ADBusUInt64Field:
+            lua_pushnumber(L, (lua_Number) f.u64);
+            return 0;
+        case ADBusDoubleField:
+            lua_pushnumber(L, (lua_Number) f.d);
+            return 0;
+        case ADBusStringField:
+        case ADBusObjectPathField:
+        case ADBusSignatureField:
+            lua_pushlstring(L, f.string, f.size);
+            return 0;
+        case ADBusArrayBeginField:
+            return PushArray(L, iterator, &f);
+        case ADBusStructBeginField:
+            return PushStruct(L, iterator, &f);
+        case ADBusDictEntryBeginField:
+            return PushDictEntry(L, iterator, &f);
+        case ADBusVariantBeginField:
+            return PushVariant(L, iterator, &f);
         default:
-            luaL_error(L, "Can not convert argument to dbus variant.");
-            return;
+            return ADBusInvalidData;
     }
-    ADBusBeginVariant(marshaller, signature, -1);
-    lua_settop(L, top);
-    LADBusMarshallNextField(marshaller, L, index);
-    ADBusEndVariant(marshaller);
+
 }
 
 // ----------------------------------------------------------------------------
 
-void LADBusMarshallArray(
-    struct ADBusMarshaller* marshaller,
-    lua_State*              L,
-    int                     index)
+int LADBusPushArgument(
+        lua_State*              L,
+        struct ADBusIterator*   iterator)
 {
-    ADBusBeginArray(marshaller);
-
-    char nextField = *ADBusMarshallerCurrentSignature(marshaller);
-
-    if (nextField == ADBusDictEntryBeginField) {
-        lua_pushnil(L);
-        while (lua_next(L, index) != 0) {
-            int keyIndex   = lua_gettop(L) - 1;
-            int valueIndex = lua_gettop(L);
-            ADBusBeginDictEntry(marshaller);
-
-            LADBusMarshallNextField(marshaller, L, keyIndex);
-            LADBusMarshallNextField(marshaller, L, valueIndex);
-
-            ADBusEndDictEntry(marshaller);
-            lua_pop(L, 1);
-            assert(lua_gettop(L) == keyIndex);
-        }
-    } else {
-        int i = 1;
-        while (1) {
-            lua_rawgeti(L, index, i);
-            int valueIndex = lua_gettop(L);
-            if (lua_isnil(L, valueIndex))
-                break;
-
-            LADBusMarshallNextField(marshaller, L, valueIndex);
-            assert(lua_gettop(L) == valueIndex);
-        }
-        lua_pop(L, 1);
-    }
-
-    ADBusEndArray(marshaller);
+    return PushNextField(L, iterator);
 }
 
-// ----------------------------------------------------------------------------
-
-
-
-
-
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
 static void SetStringField(
@@ -441,26 +697,26 @@ static void SetStringField(
 
 // ----------------------------------------------------------------------------
 
-int LADBusConvertMessageToLua(
+int LADBusPushMessage(
+    lua_State*              L,
     struct ADBusMessage*    message,
-    lua_State*              L)
+    struct ADBusIterator*   iterator)
 {
     lua_newtable(L);
     int table = lua_gettop(L);
-    lua_newtable(L);
-    int sigtable = lua_gettop(L);
 
     enum ADBusMessageType type = ADBusGetMessageType(message);
-    if (type >= (int) kMessageTypeNum || type <= ADBusInvalidMessage)
+    if (type >= kMessageTypeNum || type <= ADBusInvalidMessage)
         return ADBusInternalError;
 
-    int pathLen, interfaceLen, senderLen, destinationLen, memberLen, errorLen;
+    size_t pathLen, interfaceLen, senderLen, destinationLen, memberLen, errorLen, sigLen;
     const char* path = ADBusGetPath(message, &pathLen);
     const char* interface = ADBusGetInterface(message, &interfaceLen);
     const char* sender = ADBusGetSender(message, &senderLen);
     const char* destination = ADBusGetDestination(message, &destinationLen);
     const char* member = ADBusGetMember(message, &memberLen);
     const char* error = ADBusGetErrorName(message, &errorLen);
+    const char* sig = ADBusGetSignature(message, &sigLen);
     uint32_t serial = ADBusGetSerial(message);
     uint hasReplySerial = ADBusHasReplySerial(message);
     uint32_t replySerial = ADBusGetReplySerial(message);
@@ -481,22 +737,14 @@ int LADBusConvertMessageToLua(
     SetStringField(L, table, "destination", destination, destinationLen);
     SetStringField(L, table, "member", member, memberLen);
     SetStringField(L, table, "error_name", error, errorLen);
-
-
-    ADBusReparseMessage(message);
+    SetStringField(L, table, "signature", sig, sigLen);
 
     int err = 0;
     int argnum = 1;
-    const char* sig = ADBusGetSignatureRemaining(message);
-    while (!err && !ADBusIsScopeAtEnd(message, 0)) {
-        err = LADBusPushNextField(message, L);
+    while (!err && !ADBusIsScopeAtEnd(iterator, 0)) {
+        err = LADBusPushArgument(L, iterator);
         lua_rawseti(L, table, argnum);
 
-        const char* nextsig = ADBusGetSignatureRemaining(message);
-        lua_pushlstring(L, sig, nextsig - sig);
-        lua_rawseti(L, sigtable, argnum);
-
-        assert(lua_gettop(L) == sigtable);
         argnum++;
     }
 
@@ -505,176 +753,7 @@ int LADBusConvertMessageToLua(
         return err;
     }
 
-    assert(lua_gettop(L) == sigtable);
-    lua_setfield(L, table, "signature");
-    
     return 0;
 }
 
 // ----------------------------------------------------------------------------
-
-// Note depending on the type of lua_Number, some or all of the numeric dbus
-// types may lose data on the conversion - for now there is no decent way
-// around this
-// Also all of the string types (string, object path, signature) all convert
-// to a lua string since there is no reasonable reason for them to be
-// different types (this could be changed to fancy types that overload
-// __tostring, but I don't really see the point of that)
-int LADBusPushNextField(
-    struct ADBusMessage*    message,
-    lua_State*              L)
-{
-    struct ADBusField f;
-    int err = ADBusTakeField(message, &f);
-    if (err) return err;
-
-    // If we cannot grow the stack then the message is most likely trying to
-    // force our memory limit
-    if (!lua_checkstack(L, 3))
-        return ADBusInvalidData;
-
-    switch (f.type) {
-        case ADBusBooleanField:
-            lua_pushboolean(L, f.data.b);
-            return 0;
-        case ADBusUInt8Field:
-            lua_pushnumber(L, (lua_Number) f.data.u8);
-            return 0;
-        case ADBusInt16Field:
-            lua_pushnumber(L, (lua_Number) f.data.i16);
-            return 0;
-        case ADBusUInt16Field:
-            lua_pushnumber(L, (lua_Number) f.data.u16);
-            return 0;
-        case ADBusInt32Field:
-            lua_pushnumber(L, (lua_Number) f.data.i32);
-            return 0;
-        case ADBusUInt32Field:
-            lua_pushnumber(L, (lua_Number) f.data.u32);
-            return 0;
-        case ADBusInt64Field:
-            lua_pushnumber(L, (lua_Number) f.data.i64);
-            return 0;
-        case ADBusUInt64Field:
-            lua_pushnumber(L, (lua_Number) f.data.u64);
-            return 0;
-        case ADBusDoubleField:
-            lua_pushnumber(L, (lua_Number) f.data.d);
-            return 0;
-        case ADBusStringField:
-        case ADBusObjectPathField:
-        case ADBusSignatureField:
-            lua_pushlstring(L, f.data.string.str, f.data.string.size);
-            return 0;
-        case ADBusArrayBeginField:
-            return LADBusPushArray(message, L, &f);
-        case ADBusStructBeginField:
-            return LADBusPushStruct(message, L, &f);
-        case ADBusDictEntryBeginField:
-            return LADBusPushDictEntry(message, L, &f);
-        case ADBusVariantBeginField:
-            return LADBusPushVariant(message, L, &f);
-        default:
-            return ADBusInvalidData;
-    }
-
-}
-
-// ----------------------------------------------------------------------------
-
-// Structs are seen from lua indentically to an array of variants, ie they are
-// just expanded into an array
-int LADBusPushStruct(
-    struct ADBusMessage*    message,
-    lua_State*              L,
-    struct ADBusField*      field)
-{
-    lua_newtable(L);
-    int table = lua_gettop(L);
-    int i = 1;
-    int err = 0;
-    while (!ADBusIsScopeAtEnd(message, field->scope)) {
-        err = LADBusPushNextField(message, L);
-        if (err) return err;
-
-        assert(lua_gettop(L) == table + 1);
-        lua_rawseti(L, table, i++);
-    }
-    return ADBusTakeStructEnd(message);
-}
-
-// ----------------------------------------------------------------------------
-
-int LADBusPushDictEntry(
-    struct ADBusMessage*    message,
-    lua_State*              L,
-    struct ADBusField*      field)
-{
-    int table = lua_gettop(L);
-    assert(lua_istable(L, table));
-
-    int err = LADBusPushNextField(message, L);
-    if (err) return err;
-
-    int key = lua_gettop(L);
-
-    err = LADBusPushNextField(message, L);
-    if (err) return err;
-
-    int value = lua_gettop(L);
-    assert(value == key + 1);
-
-    // Pops the two last items on the stack as the key and value
-    lua_settable(L, table);
-
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-// Since lua is dynamically typed it does need to know that a particular
-// argument was originally a variant
-int LADBusPushVariant(
-    struct ADBusMessage*    message,
-    lua_State*              L,
-    struct ADBusField*      field)
-{
-    int err = 0;
-    while (!ADBusIsScopeAtEnd(message, field->scope)) {
-        err = LADBusPushNextField(message, L);
-        if (err) return err;
-    }
-    return ADBusTakeVariantEnd(message);
-}
-
-// ----------------------------------------------------------------------------
-
-// Arrays are pushed as standard lua arrays using 1 based indexes.
-// Note since maps come up from dbus as a{xx} ie an array of dict entries we
-// should only set the index if the inner type was not a dict entry
-int LADBusPushArray(
-    struct ADBusMessage*    message,
-    lua_State*              L,
-    struct ADBusField*      field)
-{
-    lua_newtable(L);
-    int table = lua_gettop(L);
-    int i = 1;
-    int err = 0;
-    while (!ADBusIsScopeAtEnd(message, field->scope)) {
-        err = LADBusPushNextField(message, L);
-        if (err) return err;
-
-        // No value is left on the stack if the inner type was a dict entry
-        if (lua_gettop(L) == table)
-            continue;
-
-        assert(lua_gettop(L) == table + 1);
-        lua_rawseti(L, table, i++);
-    }
-    return ADBusTakeArrayEnd(message);
-}
-
-// ----------------------------------------------------------------------------
-
-

@@ -1,997 +1,845 @@
-// vim: ts=2 sw=2 sts=2 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #include "Message.h"
 #include "Message_p.h"
 #include "Misc_p.h"
+#include "Marshaller.h"
+#include "Iterator.h"
+#include "str.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef WIN32
+# define strdup _strdup
+#endif
 
 // ----------------------------------------------------------------------------
-// Helper Functions
+// ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-static uint isStackEmpty(struct ADBusMessage* m)
+size_t ADBusNextMessageSize(const uint8_t* data, size_t size)
 {
-  return m->stackSize == 0;
-}
+    // Check that we have enough correct data to decode the header
+    if (size < sizeof(struct ADBusExtendedHeader_))
+        return 0;
 
-static size_t stackSize(struct ADBusMessage* m)
-{
-  return m->stackSize;
-}
+    struct ADBusExtendedHeader_* header = (struct ADBusExtendedHeader_*) data;
 
-static struct _ADBusMessageStackEntry* stackTop(struct ADBusMessage* m)
-{
-  return &m->stack[m->stackSize-1];
-}
+    uint nativeEndian = (header->endianness == ADBusNativeEndianness_);
 
-static struct _ADBusMessageStackEntry* pushStackEntry(struct ADBusMessage* m)
-{
-  ALLOC_GROW(struct _ADBusMessageStackEntry, m->stack, m->stackSize+1, m->stackAlloc);
-  memset(&m->stack[m->stackSize], 0, sizeof(struct _ADBusMessageStackEntry));
-  m->stackSize++;
-  return stackTop(m);
-}
+    size_t length = nativeEndian
+        ? header->length
+        : ENDIAN_CONVERT32(header->length);
 
-void popStackEntry(struct ADBusMessage* m)
-{
-  m->stackSize--;
+    size_t headerFieldLength = nativeEndian
+        ? header->headerFieldLength
+        : ENDIAN_CONVERT32(header->headerFieldLength);
+
+    size_t headerSize = sizeof(struct ADBusExtendedHeader_) + headerFieldLength;
+    // Note the header size is 8 byte aligned even if there is no argument data
+    size_t messageSize = ADBUS_ALIGN_VALUE_(size_t, headerSize, 8) + length;
+
+    return messageSize;
 }
 
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-static size_t dataRemaining(struct ADBusMessage* m)
+struct ADBusMessage* ADBusCreateMessage()
 {
-  return m->dataEnd - m->data;
-}
-
-static uint8_t* getData(struct ADBusMessage* m, size_t size)
-{
-  assert(dataRemaining(m) >= size);
-  uint8_t* ret = m->data;
-  m->data += size;
-  return ret;
+    struct ADBusMessage* m = NEW(struct ADBusMessage);
+    m->marshaller = ADBusCreateMarshaller();
+    m->argumentMarshaller = ADBusCreateMarshaller();
+    m->headerIterator = ADBusCreateIterator();
+    return m;
 }
 
 // ----------------------------------------------------------------------------
 
-
-static uint8_t get8BitData(struct ADBusMessage* m)
+void ADBusFreeMessage(struct ADBusMessage* m)
 {
-  return *getData(m, sizeof(uint8_t));
-}
+    if (!m)
+        return;
 
-static uint16_t get16BitData(struct ADBusMessage* m)
-{
-  uint16_t* data = (uint16_t*)getData(m, sizeof(uint16_t));
-  if (!m->nativeEndian)
-    *data = ENDIAN_CONVERT16(*data);
-
-  return *data;
-}
-
-static uint32_t get32BitData(struct ADBusMessage* m)
-{
-  uint32_t* data = (uint32_t*)getData(m, sizeof(uint32_t));
-  if (!m->nativeEndian)
-    *data = ENDIAN_CONVERT32(*data);
-
-  return *data;
-}
-
-static uint64_t get64BitData(struct ADBusMessage* m)
-{
-  uint64_t* data = (uint64_t*)getData(m, sizeof(uint64_t));
-  if (m->nativeEndian)
-    *data = ENDIAN_CONVERT64(*data);
-
-  return *data;
+    ADBusFreeMarshaller(m->marshaller);
+    ADBusFreeMarshaller(m->argumentMarshaller);
+    ADBusFreeIterator(m->headerIterator);
+    free(m->path);
+    free(m->member);
+    free(m->errorName);
+    free(m->destination);
+    free(m->sender);
+    free(m->signature);
+    free(m);
 }
 
 // ----------------------------------------------------------------------------
 
-static uint isAligned(struct ADBusMessage* m)
+void ADBusResetMessage(struct ADBusMessage* m)
 {
-  return (((uintptr_t)(m->data)) % _ADBusRequiredAlignment(*m->signature)) == 0;
-}
-
-static void processAlignment(struct ADBusMessage* m)
-{
-  uintptr_t data = (uintptr_t) m->data;
-  size_t alignment = _ADBusRequiredAlignment(*m->signature);
-  if (alignment == 0)
-    return;
-  data = _ADBUS_ALIGN_VALUE(data, alignment);
-  m->data = (uint8_t*) data;
-}
-
-// ----------------------------------------------------------------------------
-
-
-
-
-
-
-// ----------------------------------------------------------------------------
-// Private API
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessField(struct ADBusMessage* m, struct ADBusField* f)
-{
-  f->type = ADBusInvalidField;
-  switch(*m->signature)
-  {
-  case ADBusUInt8Field:
-    return _ADBusProcess8Bit(m,f,(uint8_t*)&f->data.u8);
-  case ADBusBooleanField:
-    return _ADBusProcessBoolean(m,f);
-  case ADBusInt16Field:
-    return _ADBusProcess16Bit(m,f,(uint16_t*)&f->data.i16);
-  case ADBusUInt16Field:
-    return _ADBusProcess16Bit(m,f,(uint16_t*)&f->data.u16);
-  case ADBusInt32Field:
-    return _ADBusProcess32Bit(m,f,(uint32_t*)&f->data.i32);
-  case ADBusUInt32Field:
-    return _ADBusProcess32Bit(m,f,(uint32_t*)&f->data.u32);
-  case ADBusInt64Field:
-    return _ADBusProcess64Bit(m,f,(uint64_t*)&f->data.i64);
-  case ADBusUInt64Field:
-    return _ADBusProcess64Bit(m,f,(uint64_t*)&f->data.u64);
-  case ADBusDoubleField:
-    return _ADBusProcess64Bit(m,f,(uint64_t*)&f->data.d);
-  case ADBusStringField:
-    return _ADBusProcessString(m,f);
-  case ADBusObjectPathField:
-    return _ADBusProcessObjectPath(m,f);
-  case ADBusSignatureField:
-    return _ADBusProcessSignature(m,f);
-  case ADBusArrayBeginField:
-    return _ADBusProcessArray(m,f);
-  case ADBusStructBeginField:
-    return _ADBusProcessStruct(m,f);
-  case ADBusVariantBeginField:
-    return _ADBusProcessVariant(m,f);
-  case ADBusDictEntryBeginField:
-    return _ADBusProcessDictEntry(m,f);
-  default:
-    return ADBusInvalidData;
-  }
+    ADBusResetMarshaller(m->marshaller);
+    ADBusResetMarshaller(m->argumentMarshaller);
+    m->argumentOffset = 0;
+    m->hasReplySerial = 0;
+    m->replySerial = 0;
+#define FREE(x) free(x); x = NULL;
+    FREE(m->path);
+    FREE(m->interface);
+    FREE(m->member);
+    FREE(m->errorName);
+    FREE(m->destination);
+    FREE(m->sender);
+    FREE(m->signature);
+#undef FREE
 }
 
 // ----------------------------------------------------------------------------
 
-int _ADBusProcess8Bit(struct ADBusMessage* m, struct ADBusField* f, uint8_t* fieldData)
+#ifdef WIN32
+#define strdup _strdup
+#endif
+
+int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size)
 {
-  assert(isAligned(m));
+    // Reset the message internals first
+    ADBusResetMessage(m);
 
-  if (dataRemaining(m) < 1)
-    return ADBusInvalidData;
+    // We need to copy into the marshaller so that we can hold onto the data
+    // For parsing we will use that copy as it will force 8 byte alignment
+    ADBusSetMarshalledData(m->marshaller, NULL, 0, data, size);
+    ADBusGetMarshalledData(m->marshaller, NULL, NULL, &data, &size);
 
-  f->type = (enum ADBusFieldType)(*m->signature);
-  *fieldData = get8BitData(m);
+    // Check that we have enough correct data to decode the header
+    if (size < sizeof(struct ADBusExtendedHeader_))
+        return ADBusInvalidData;
 
-  m->signature += 1;
+    struct ADBusExtendedHeader_* header = (struct ADBusExtendedHeader_*) data;
 
-  return 0;
-}
+    // Check the single byte header fields
+    if (header->version != ADBusMajorProtocolVersion_)
+        return ADBusInvalidData;
+    if (header->type == ADBusInvalidMessage)
+        return ADBusInvalidData;
+    if (header->endianness != 'B' && header->endianness != 'l')
+        return ADBusInvalidData;
 
-// ----------------------------------------------------------------------------
+    m->messageType = (enum ADBusMessageType) header->type;
+    m->nativeEndian = (header->endianness == ADBusNativeEndianness_);
 
-int _ADBusProcess16Bit(struct ADBusMessage* m, struct ADBusField* f, uint16_t* fieldData)
-{
-  assert(isAligned(m));
+    // Get the non single byte fields out of the header
+    size_t length = m->nativeEndian
+        ? header->length
+        : ENDIAN_CONVERT32(header->length);
 
-  if (dataRemaining(m) < 2)
-    return ADBusInvalidData;
+    size_t headerFieldLength = m->nativeEndian
+        ? header->headerFieldLength
+        : ENDIAN_CONVERT32(header->headerFieldLength);
 
-  f->type = (enum ADBusFieldType)(*m->signature);
-  *fieldData = get16BitData(m);
+    m->serial = m->nativeEndian
+        ? header->serial
+        : ENDIAN_CONVERT32(header->serial);
 
-  m->signature += 1;
+    if (length > ADBusMaximumMessageLength)
+        return ADBusInvalidData;
+    if (headerFieldLength > ADBusMaximumArrayLength)
+        return ADBusInvalidData;
 
-  return 0;
-}
+    // Figure out the message size and see if we have the right amount
+    size_t headerSize = sizeof(struct ADBusExtendedHeader_) + headerFieldLength;
+    headerSize = ADBUS_ALIGN_VALUE_(size_t, headerSize, 8);
+    size_t messageSize = headerSize + length;
 
-// ----------------------------------------------------------------------------
+    if (size != messageSize)
+        return ADBusInvalidData;
 
-int _ADBusProcess32Bit(struct ADBusMessage* m, struct ADBusField* f, uint32_t* fieldData)
-{
-  assert(isAligned(m));
+    m->argumentOffset = messageSize - length;
 
-  if (dataRemaining(m) < 4)
-    return ADBusInvalidData;
+    // Should we parse this?
+    if (header->type > ADBusMessageTypeMax)
+        return ADBusIgnoredData;
 
-  f->type = (enum ADBusFieldType)(*m->signature);
-  *fieldData = get32BitData(m);
+    // Parse the header fields
+    const uint8_t* fieldBegin = data + sizeof(struct ADBusHeader_);
+    size_t fieldSize = headerSize - sizeof(struct ADBusHeader_);
 
-  m->signature += 1;
+    struct ADBusIterator* iterator =  m->headerIterator;
+    ADBusResetIterator(iterator, "a(yv)", -1, fieldBegin, fieldSize);
+    ADBusSetIteratorEndianness(iterator, (enum ADBusEndianness) header->endianness);
+    struct ADBusField field;
 
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusProcess64Bit(struct ADBusMessage* m, struct ADBusField* f, uint64_t* fieldData)
-{
-  assert(isAligned(m));
-
-  if (dataRemaining(m) < 8)
-    return ADBusInvalidData;
-
-  f->type = (enum ADBusFieldType)(*m->signature);
-  *fieldData = get64BitData(m);
-
-  m->signature += 1;
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessBoolean(struct ADBusMessage* m, struct ADBusField* f)
-{
-  int err = _ADBusProcess32Bit(m, f, &f->data.b);
-  if (err)
-    return err;
-
-  if (f->data.b > 1)
-    return ADBusInvalidData;
-
-  f->type = ADBusBooleanField;
-  f->data.b = f->data.b ? 1 : 0;
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessStringData(struct ADBusMessage* m, struct ADBusField* f)
-{
-  size_t size = f->data.string.size;
-  if (dataRemaining(m) < size + 1)
-    return ADBusInvalidData;
-
-  const char* str = (const char*) getData(m, size + 1);
-  if (_ADBusHasNullByte(str, size))
-    return ADBusInvalidData;
-
-  if (*(str + size) != '\0')
-    return ADBusInvalidData;
-
-  if (!_ADBusIsValidUtf8(str, size))
-    return ADBusInvalidData;
-
-  f->data.string.str = str;
-
-  m->signature += 1;
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessObjectPath(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-  assert(&f->data.objectPath == &f->data.string);
-  if (dataRemaining(m) < 4)
-    return ADBusInvalidData;
-
-  f->type = ADBusObjectPathField;
-  f->data.objectPath.size = get32BitData(m);
-
-  int err = _ADBusProcessStringData(m,f);
-  if (err)
-    return err;
-
-  if (!_ADBusIsValidObjectPath(f->data.objectPath.str, f->data.objectPath.size))
-    return ADBusInvalidData;
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessString(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-  if (dataRemaining(m) < 4)
-    return ADBusInvalidData;
-
-  f->type = ADBusStringField;
-  f->data.string.size = get32BitData(m);
-
-  return _ADBusProcessStringData(m,f);
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessSignature(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-  assert(&f->data.signature == &f->data.string);
-  if (dataRemaining(m) < 1)
-    return ADBusInvalidData;
-
-  f->type = ADBusSignatureField;
-  f->data.signature.size = get8BitData(m);
-
-  return _ADBusProcessStringData(m,f);
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusNextField(struct ADBusMessage* m, struct ADBusField* f)
-{
-  if (isStackEmpty(m))
-  {
-    return _ADBusNextRootField(m,f);
-  }
-  else
-  {
-    switch(stackTop(m)->type)
-    {
-    case _ADBusVariantMessageStack:
-      return _ADBusNextVariantField(m,f);
-    case _ADBusDictEntryMessageStack:
-      return _ADBusNextDictEntryField(m,f);
-    case _ADBusArrayMessageStack:
-      return _ADBusNextArrayField(m,f);
-    case _ADBusStructMessageStack:
-      return _ADBusNextStructField(m,f);
-    default:
-      assert(0);
-      return ADBusInternalError;
+#define ITERATE(M, TYPE, PFIELD)                        \
+    {                                                   \
+        int err = ADBusIterate(iterator, PFIELD);    \
+        if (err || (PFIELD)->type != TYPE)                \
+            return ADBusInvalidData;                    \
     }
-  }
-}
+    
+    ITERATE(m, ADBusArrayBeginField, &field);
+    uint arrayScope = field.scope;
+    while (!ADBusIsScopeAtEnd(iterator, arrayScope))
+    {
+        ITERATE(m, ADBusStructBeginField, &field);
+        ITERATE(m, ADBusUInt8Field, &field);
+        uint8_t code = field.u8;
+        ITERATE(m, ADBusVariantBeginField, &field);
 
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
+        int err = ADBusIterate(iterator, &field);
+        if (err)
+            return ADBusInvalidData;
 
-int _ADBusNextRootField(struct ADBusMessage* m, struct ADBusField* f)
-{
-  if (*m->signature == ADBusMessageEndField) 
-  {
-    f->type = ADBusMessageEndField;
+        switch(code)
+        {
+            case ADBusReplySerialCode:
+                if (field.type != ADBusUInt32Field)
+                    return ADBusInvalidData;
+                m->replySerial = field.u32;
+                m->hasReplySerial = 1;
+                break;
+            case ADBusSignatureCode:
+                if (field.type != ADBusSignatureField)
+                    return ADBusInvalidData;
+                m->signature = strndup(field.string, field.size);
+                break;
+            case ADBusPathCode:
+                if (field.type != ADBusObjectPathField)
+                    return ADBusInvalidData;
+                m->path = strndup(field.string, field.size);
+                break;
+            case ADBusInterfaceCode:
+                if (field.type != ADBusStringField)
+                    return ADBusInvalidData;
+                m->interface = strndup(field.string, field.size);
+                break;
+            case ADBusMemberCode:
+                if (field.type != ADBusStringField)
+                    return ADBusInvalidData;
+                m->member = strndup(field.string, field.size);
+                break;
+            case ADBusErrorNameCode:
+                if (field.type != ADBusStringField)
+                    return ADBusInvalidData;
+                m->errorName = strndup(field.string, field.size);
+                break;
+            case ADBusDestinationCode:
+                if (field.type != ADBusStringField)
+                    return ADBusInvalidData;
+                m->destination = strndup(field.string, field.size);
+                break;
+            case ADBusSenderCode:
+                if (field.type != ADBusStringField)
+                    return ADBusInvalidData;
+                m->sender = strndup(field.string, field.size);
+                break;
+            default:
+                break;
+        }
+        ITERATE(m, ADBusVariantEndField, &field);
+        ITERATE(m, ADBusStructEndField, &field);
+    }
+    ITERATE(m, ADBusArrayEndField, &field);
+#undef ITERATE
+
+    // Check that we have required fields
+    if (m->messageType == ADBusMethodCallMessage) {
+        if (!m->path || !m->member)
+            return ADBusInvalidData;
+
+    } else if (m->messageType == ADBusMethodReturnMessage) {
+        if (!m->replySerial)
+            return ADBusInvalidData;
+
+    } else if (m->messageType == ADBusErrorMessage) {
+        if (!m->errorName)
+            return ADBusInvalidData;
+
+    } else if (m->messageType == ADBusSignalMessage) {
+        if (!m->interface || !m->member)
+            return ADBusInvalidData;
+
+    } else {
+        assert(0);
+    }
+
+    // We need to convert the arguments to native endianness so that they
+    // can be pulled out as a memory block
+    // We do this by iterating over the arguments and remarshall them into the
+    // argument marshaller
+    if (!m->nativeEndian && m->signature) {
+        struct ADBusMarshaller* mar = ADBusArgumentMarshaller(m);
+        // Realistically we should break up the signature into the seperate
+        // arguments and begin and end each one with a seperate signature, but
+        // the iterator doesn't return begin and end argument fields
+        ADBusBeginArgument(mar, m->signature, -1);
+
+        struct ADBusField field;
+        ADBusArgumentIterator(m, iterator);
+        ADBusSetIteratorEndianness(iterator, (enum ADBusEndianness) header->endianness);
+        while (!ADBusIsScopeAtEnd(iterator, 0))
+        {
+            int err = ADBusIterate(iterator, &field);
+            if (err)
+                return err;
+            switch (field.type)
+            {
+            case ADBusUInt8Field:
+                ADBusAppendUInt8(mar, field.u8);
+                break;
+            case ADBusBooleanField:
+                ADBusAppendBoolean(mar, field.b);
+                break;
+            case ADBusInt16Field:
+                ADBusAppendInt16(mar, field.i16);
+                break;
+            case ADBusUInt16Field:
+                ADBusAppendUInt16(mar, field.u16);
+                break;
+            case ADBusInt32Field:
+                ADBusAppendInt32(mar, field.i32);
+                break;
+            case ADBusUInt32Field:
+                ADBusAppendUInt32(mar, field.u32);
+                break;
+            case ADBusInt64Field:
+                ADBusAppendInt64(mar, field.i64);
+                break;
+            case ADBusUInt64Field:
+                ADBusAppendUInt64(mar, field.u64);
+                break;
+            case ADBusDoubleField:
+                ADBusAppendDouble(mar, field.d);
+                break;
+            case ADBusStringField:
+                ADBusAppendString(mar, field.string, field.size);
+                break;
+            case ADBusObjectPathField:
+                ADBusAppendObjectPath(mar, field.string, field.size);
+                break;
+            case ADBusSignatureField:
+                ADBusAppendSignature(mar, field.string, field.size);
+                break;
+            case ADBusArrayBeginField:
+                ADBusBeginArray(mar);
+                break;
+            case ADBusArrayEndField:
+                ADBusEndArray(mar);
+                break;
+            case ADBusStructBeginField:
+                ADBusBeginStruct(mar);
+                break;
+            case ADBusStructEndField:
+                ADBusEndStruct(mar);
+                break;
+            case ADBusDictEntryBeginField:
+                ADBusBeginDictEntry(mar);
+                break;
+            case ADBusDictEntryEndField:
+                ADBusEndDictEntry(mar);
+                break;
+            case ADBusVariantBeginField:
+                ADBusBeginVariant(mar, field.string, field.size);
+                break;
+            case ADBusVariantEndField:
+                ADBusEndVariant(mar);
+                break;
+            default:
+                return -1;
+            }
+        }
+        ADBusEndArgument(mar);
+    }
+
     return 0;
-  }
+}
 
-  processAlignment(m);
-  return _ADBusProcessField(m,f);
+// ----------------------------------------------------------------------------
+// Getter functions
+// ----------------------------------------------------------------------------
+
+static void AppendString(struct ADBusMessage* m, uint8_t code, const char* field)
+{
+    if (!field)
+        return;
+    ADBusBeginStruct(m->marshaller);
+    ADBusAppendUInt8(m->marshaller, code);
+    ADBusBeginVariant(m->marshaller, "s", -1);
+    ADBusAppendString(m->marshaller, field, -1);
+    ADBusEndVariant(m->marshaller);
+    ADBusEndStruct(m->marshaller);
+}
+
+static void AppendSignature(struct ADBusMessage* m, uint8_t code, const char* field)
+{
+    if (!field)
+        return;
+    ADBusBeginStruct(m->marshaller);
+    ADBusAppendUInt8(m->marshaller, code);
+    ADBusBeginVariant(m->marshaller, "g", -1);
+    ADBusAppendSignature(m->marshaller, field, -1);
+    ADBusEndVariant(m->marshaller);
+    ADBusEndStruct(m->marshaller);
+}
+
+static void AppendObjectPath(struct ADBusMessage* m, uint8_t code, const char* field)
+{
+    if (!field)
+        return;
+    ADBusBeginStruct(m->marshaller);
+    ADBusAppendUInt8(m->marshaller, code);
+    ADBusBeginVariant(m->marshaller, "o", -1);
+    ADBusAppendObjectPath(m->marshaller, field, -1);
+    ADBusEndVariant(m->marshaller);
+    ADBusEndStruct(m->marshaller);
+}
+
+static void AppendUInt32(struct ADBusMessage* m, uint8_t code, uint32_t field)
+{
+    ADBusBeginStruct(m->marshaller);
+    ADBusAppendUInt8(m->marshaller, code);
+    ADBusBeginVariant(m->marshaller, "u", -1);
+    ADBusAppendUInt32(m->marshaller, field);
+    ADBusEndVariant(m->marshaller);
+    ADBusEndStruct(m->marshaller);
+}
+
+static void BuildMessage(struct ADBusMessage* m)
+{
+    const char* signature;
+    size_t sigsize;
+    const uint8_t* argumentData;
+    size_t argumentSize;
+    ADBusGetMarshalledData(m->argumentMarshaller,
+                           &signature, &sigsize,
+                           &argumentData, &argumentSize);
+
+    ADBusResetMarshaller(m->marshaller);
+    struct ADBusHeader_ header;
+
+    header.endianness   = ADBusNativeEndianness_;
+    header.type         = m->messageType;
+    header.flags        = m->flags;
+    header.version      = ADBusMajorProtocolVersion_;
+    header.length       = argumentSize;
+    header.serial       = m->serial;
+    ADBusAppendData(m->marshaller, (const uint8_t*) &header, sizeof(struct ADBusHeader_));
+
+    ADBusBeginArgument(m->marshaller, "a(yv)", -1);
+    ADBusBeginArray(m->marshaller);
+    AppendString(m, ADBusInterfaceCode, m->interface);
+    AppendString(m, ADBusMemberCode, m->member);
+    AppendString(m, ADBusErrorNameCode, m->errorName);
+    AppendString(m, ADBusDestinationCode, m->destination);
+    AppendString(m, ADBusSenderCode, m->sender);
+    AppendObjectPath(m, ADBusPathCode, m->path);
+
+    if (m->hasReplySerial)
+      AppendUInt32(m, ADBusReplySerialCode, m->replySerial);
+
+    if (argumentData && argumentSize > 0)
+      AppendSignature(m, ADBusSignatureCode, signature);
+
+    ADBusEndArray(m->marshaller);
+    ADBusEndArgument(m->marshaller);
+
+    size_t headerSize;
+    ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &headerSize);
+
+    // The header is 8 byte padded even if there is no argument data
+    static uint8_t paddingData[8]; // since static, guarenteed to be 0s
+    size_t padding = ADBUS_ALIGN_VALUE_(size_t, headerSize, 8) - headerSize;
+    if (padding != 0)
+      ADBusAppendData(m->marshaller, paddingData, padding);
+
+    if (argumentData && argumentSize > 0)
+        ADBusAppendData(m->marshaller, argumentData, argumentSize);
+}
+
+void ADBusGetMessageData(struct ADBusMessage* m, const uint8_t** pdata, size_t* psize)
+{
+    size_t size;
+    ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &size);
+    if (size == 0)
+        BuildMessage(m);
+    ADBusGetMarshalledData(m->marshaller, NULL, NULL, pdata, psize);
 }
 
 // ----------------------------------------------------------------------------
 
-uint _ADBusIsRootAtEnd(struct ADBusMessage* m)
+const char* ADBusGetPath(struct ADBusMessage* m, size_t* len)
 {
-  return *m->signature == ADBusMessageEndField;
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessStruct(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-
-  if (dataRemaining(m) == 0)
-    return ADBusInvalidData;
-
-  struct _ADBusMessageStackEntry* e = pushStackEntry(m);
-  e->type = _ADBusStructMessageStack;
-
-  m->signature += 1; // skip over '('
-
-  f->type = ADBusStructBeginField;
-  f->scope = m->stackSize;
-
-  return 0;
+    if (len)
+        *len = m->path ? strlen(m->path) : 0;
+    return m->path;
 }
 
 // ----------------------------------------------------------------------------
 
-int _ADBusNextStructField(struct ADBusMessage* m, struct ADBusField* f)
+const char* ADBusGetInterface(struct ADBusMessage* m, size_t* len)
 {
-  if (*m->signature != ')')
-  {
-    processAlignment(m);
-    return _ADBusProcessField(m,f);
-  }
-
-  popStackEntry(m);
-
-  m->signature += 1; // skip over ')'
-
-  f->type = ADBusStructEndField;
-
-  return 0;
+    if (len)
+        *len = m->interface ? strlen(m->interface) : 0;
+    return m->interface;
 }
 
 // ----------------------------------------------------------------------------
 
-uint _ADBusIsStructAtEnd(struct ADBusMessage* m)
+const char* ADBusGetSender(struct ADBusMessage* m, size_t* len)
 {
-  return *m->signature == ')';
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessDictEntry(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-
-  struct _ADBusMessageStackEntry* e = pushStackEntry(m);
-  e->type = _ADBusDictEntryMessageStack;
-  e->data.dictEntryFields = 0;
-
-  m->signature += 1; // skip over '{'
-
-  f->type = ADBusDictEntryBeginField;
-  f->scope = m->stackSize;
-
-  return 0;
+    if (len)
+        *len = m->sender ? strlen(m->sender) : 0;
+    return m->sender;
 }
 
 // ----------------------------------------------------------------------------
 
-int _ADBusNextDictEntryField(struct ADBusMessage* m, struct ADBusField* f)
+const char* ADBusGetDestination(struct ADBusMessage* m, size_t* len)
 {
-  struct _ADBusMessageStackEntry* e = stackTop(m);
-  if (*m->signature != '}')
-  {
-    processAlignment(m);
-    if (++(e->data.dictEntryFields) > 2)
-      return ADBusInvalidData;
-    else
-      return _ADBusProcessField(m,f);
-  }
-
-  popStackEntry(m);
-
-  m->signature += 1; // skip over '}'
-
-  f->type = ADBusDictEntryEndField;
-
-  return 0;
+    if (len)
+        *len = m->destination ? strlen(m->destination) : 0;
+    return m->destination;
 }
 
 // ----------------------------------------------------------------------------
 
-uint _ADBusIsDictEntryAtEnd(struct ADBusMessage* m)
+const char* ADBusGetMember(struct ADBusMessage* m, size_t* len)
 {
-  return *m->signature == '}';
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessArray(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-  if (dataRemaining(m) < 4)
-    return ADBusInvalidData;
-  size_t size = get32BitData(m);
-
-  if (size > ADBusMaximumArrayLength || size > dataRemaining(m))
-    return ADBusInvalidData;
-
-  m->signature += 1; // skip over 'a'
-
-  processAlignment(m);
-
-  struct _ADBusMessageStackEntry* e = pushStackEntry(m);
-  e->type = _ADBusArrayMessageStack;
-  e->data.array.dataEnd = m->data + size;
-  e->data.array.typeBegin = m->signature;
-
-  f->type = ADBusArrayBeginField;
-  f->data.arrayDataSize = size;
-  f->scope = m->stackSize;
-
-  return 0;
+    if (len)
+        *len = m->member ? strlen(m->member) : 0;
+    return m->member;
 }
 
 // ----------------------------------------------------------------------------
 
-int _ADBusNextArrayField(struct ADBusMessage* m, struct ADBusField* f)
+const char* ADBusGetErrorName(struct ADBusMessage* m, size_t* len)
 {
-  struct _ADBusMessageStackEntry* e = stackTop(m);
-  if (m->data > e->data.array.dataEnd)
-  {
-    return ADBusInvalidData;
-  }
-  else if (m->data < e->data.array.dataEnd)
-  {
-    m->signature = e->data.array.typeBegin;
-    processAlignment(m);
-    return _ADBusProcessField(m,f);
-  }
-
-  f->type = ADBusArrayEndField;
-  popStackEntry(m);
-  return 0;
+    if (len)
+        *len = m->errorName ? strlen(m->errorName) : 0;
+    return m->errorName;
 }
 
 // ----------------------------------------------------------------------------
 
-uint _ADBusIsArrayAtEnd(struct ADBusMessage* m)
+const char* ADBusGetSignature(struct ADBusMessage* m, size_t* len)
 {
-  struct _ADBusMessageStackEntry* e = stackTop(m);
-  return m->data >= e->data.array.dataEnd;
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-int _ADBusProcessVariant(struct ADBusMessage* m, struct ADBusField* f)
-{
-  assert(isAligned(m));
-  assert(&f->data.variantType == &f->data.signature);
-  int err = _ADBusProcessSignature(m,f);
-  if (err)
-    return err;
-
-  // _ADBusProcessSignature has alread filled out f->data.variantType
-  // and has consumed the field in m->signature
-
-  struct _ADBusMessageStackEntry* e = pushStackEntry(m);
-  e->type = _ADBusVariantMessageStack;
-  e->data.variant.oldSignature = m->signature;
-  e->data.variant.seenFirst = 0;
-
-  f->type = ADBusVariantBeginField;
-  f->scope = m->stackSize;
-
-  m->signature = f->data.variantType.str;
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int _ADBusNextVariantField(struct ADBusMessage* m, struct ADBusField* f)
-{
-  struct _ADBusMessageStackEntry* e = stackTop(m);
-  if (!e->data.variant.seenFirst)
-  {
-    e->data.variant.seenFirst = 1;
-    processAlignment(m);
-    return _ADBusProcessField(m,f);
-  }
-  else if (*m->signature != '\0')
-  {
-    return ADBusInvalidData; // there's more than one root type in the variant type
-  }
-
-  m->signature = e->data.variant.oldSignature;
-
-  popStackEntry(m);
-
-  f->type = ADBusVariantEndField;
-
-  return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-uint _ADBusIsVariantAtEnd(struct ADBusMessage* m)
-{
-  return *m->signature == '\0';
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-
-
-
-
-// ----------------------------------------------------------------------------
-//  Public API
-// ----------------------------------------------------------------------------
-
-void ADBusReparseMessage(struct ADBusMessage* m)
-{
-  m->stackSize  = 0;
-  m->data       = m->origData;
-  m->dataEnd    = m->origDataEnd;
-  m->signature  = m->origSignature;
+    if (len)
+        *len = m->signature ? strlen(m->signature) : 0;
+    return m->signature;
 }
 
 // ----------------------------------------------------------------------------
 
 enum ADBusMessageType ADBusGetMessageType(struct ADBusMessage* m)
 {
-  return m->messageType;
+    return m->messageType;
 }
 
 // ----------------------------------------------------------------------------
 
-const char* ADBusGetPath(struct ADBusMessage* m, int* len)
+uint8_t ADBusGetFlags(struct ADBusMessage* m)
 {
-  if (len)
-    *len = m->pathSize;
-  return m->path;
-}
-
-// ----------------------------------------------------------------------------
-
-const char* ADBusGetInterface(struct ADBusMessage* m, int* len)
-{
-  if (len)
-    *len = m->interfaceSize;
-  return m->interface;
-}
-
-// ----------------------------------------------------------------------------
-
-const char* ADBusGetSender(struct ADBusMessage* m, int* len)
-{
-  if (len)
-    *len = m->senderSize;
-  return m->sender;
-}
-
-// ----------------------------------------------------------------------------
-
-const char* ADBusGetDestination(struct ADBusMessage* m, int* len)
-{
-  if (len)
-    *len = m->destinationSize;
-  return m->destination;
-}
-
-// ----------------------------------------------------------------------------
-
-const char* ADBusGetMember(struct ADBusMessage* m, int* len)
-{
-  if (len)
-    *len = m->memberSize;
-  return m->member;
-}
-
-// ----------------------------------------------------------------------------
-
-const char* ADBusGetErrorName(struct ADBusMessage* m, int* len)
-{
-  if (len)
-    *len = m->errorNameSize;
-  return m->errorName;
+    return m->flags;
 }
 
 // ----------------------------------------------------------------------------
 
 uint32_t ADBusGetSerial(struct ADBusMessage* m)
 {
-  return m->serial;
+    return m->serial;
 }
 
 // ----------------------------------------------------------------------------
 
 uint ADBusHasReplySerial(struct ADBusMessage* m)
 {
-  return m->hasReplySerial;
+    return m->hasReplySerial;
 }
 
 // ----------------------------------------------------------------------------
 
 uint32_t ADBusGetReplySerial(struct ADBusMessage* m)
 {
-  return m->replySerial;
+    return m->replySerial;
 }
 
 // ----------------------------------------------------------------------------
 
-const char* ADBusGetSignatureRemaining(struct ADBusMessage* m)
+void ADBusGetArgumentData(struct ADBusMessage* m, const uint8_t** data, size_t* size)
 {
-  return m->signature;
+    ADBusGetMessageData(m, data, size);
+    if (data)
+        *data += m->argumentOffset;
+    if (size)
+        *size -= m->argumentOffset;
 }
 
 // ----------------------------------------------------------------------------
+// Setter functions
+// ----------------------------------------------------------------------------
 
-uint ADBusIsScopeAtEnd(struct ADBusMessage* m, uint scope)
+void ADBusSetMessageType(struct ADBusMessage* m, enum ADBusMessageType type)
 {
-  if (stackSize(m) < scope)
-  {
-    assert(0);
-    return 1;
-  }
-
-  if (stackSize(m) > scope)
-    return 0;
-
-  if (isStackEmpty(m))
-    return _ADBusIsRootAtEnd(m);
-
-  switch(stackTop(m)->type)
-  {
-  case _ADBusVariantMessageStack:
-    return _ADBusIsVariantAtEnd(m);
-  case _ADBusDictEntryMessageStack:
-    return _ADBusIsDictEntryAtEnd(m);
-  case _ADBusArrayMessageStack:
-    return _ADBusIsArrayAtEnd(m);
-  case _ADBusStructMessageStack:
-    return _ADBusIsStructAtEnd(m);
-  default:
-    assert(0);
-    return 1;
-  }
+    m->messageType = type;
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeField(struct ADBusMessage* m, struct ADBusField* f)
+void ADBusSetSerial(struct ADBusMessage* m, uint32_t serial)
 {
-  return _ADBusNextField(m,f);
+    m->serial = serial;
 }
 
 // ----------------------------------------------------------------------------
 
-static int takeSpecificField(struct ADBusMessage* m, struct ADBusField* f, char type)
+void ADBusSetFlags(struct ADBusMessage* m, uint8_t flags)
 {
-  int err = _ADBusNextField(m, f);
-  if (err)
-    return err;
-
-  if (f->type != type)
-    return ADBusInvalidArgument;
-
-  return 0;
+    m->flags = flags;
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeMessageEnd(struct ADBusMessage* m)
+void ADBusSetReplySerial(struct ADBusMessage* m, uint32_t reply)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusMessageEndField);
-  return err;
+    m->replySerial = reply;
+    m->hasReplySerial = 1;
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeUInt8(struct ADBusMessage* m, uint8_t* data)
+void ADBusSetPath(struct ADBusMessage* m, const char* path, int size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusUInt8Field);
-  if (data)
-    *data = f.data.u8;
-  return err;
+    free(m->path);
+    m->path = (size >= 0)
+            ? strndup(path, size)
+            : strdup(path);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeInt16(struct ADBusMessage* m, int16_t* data)
+void ADBusSetInterface(struct ADBusMessage* m, const char* interface, int size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusInt16Field);
-  if (data)
-    *data = f.data.i16;
-  return err;
+    free(m->interface);
+    m->interface = (size >= 0)
+                 ? strndup(interface, size)
+                 : strdup(interface);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeUInt16(struct ADBusMessage* m, uint16_t* data)
+void ADBusSetMember(struct ADBusMessage* m, const char* member, int size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusUInt16Field);
-  if (data)
-    *data = f.data.u16;
-  return err;
+    free(m->member);
+    m->member = (size >= 0)
+              ? strndup(member, size)
+              : strdup(member);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeInt32(struct ADBusMessage* m, int32_t* data)
+void ADBusSetErrorName(struct ADBusMessage* m, const char* errorName, int size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusInt32Field);
-  if (data)
-    *data = f.data.i32;
-  return err;
+    free(m->errorName);
+    m->errorName = (size >= 0)
+                 ? strndup(errorName, size)
+                 : strdup(errorName);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeUInt32(struct ADBusMessage* m, uint32_t* data)
+void ADBusSetDestination(struct ADBusMessage* m, const char* destination, int size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusUInt32Field);
-  if (data)
-    *data = f.data.u32;
-  return err;
+    free(m->destination);
+    m->destination = (size >= 0)
+                   ? strndup(destination, size)
+                   : strdup(destination);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeInt64(struct ADBusMessage* m, int64_t* data)
+void ADBusSetSender(struct ADBusMessage* m, const char* sender, int size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusInt64Field);
-  if (data)
-    *data = f.data.i64;
-  return err;
+    free(m->sender);
+    m->sender = (size >= 0)
+              ? strndup(sender, size)
+              : strdup(sender);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeUInt64(struct ADBusMessage* m, uint64_t* data)
+struct ADBusMarshaller* ADBusArgumentMarshaller(struct ADBusMessage* m)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusUInt64Field);
-  if (data)
-    *data = f.data.u64;
-  return err;
+    return m->argumentMarshaller;
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeDouble(struct ADBusMessage* m, double* data)
+void ADBusArgumentIterator(struct ADBusMessage* m, struct ADBusIterator* iterator)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusDoubleField);
-  if (data)
-    *data = f.data.d;
-  return err;
+    const char* signature;
+    size_t sigsize;
+    const uint8_t* data;
+    size_t datasize;
+    if (m->argumentOffset > 0 && m->nativeEndian) {
+        ADBusGetMarshalledData(m->marshaller, NULL, NULL, &data, &datasize);
+        signature = m->signature;
+        sigsize = signature ? strlen(signature) : 0;
+        data += m->argumentOffset;
+        datasize -= m->argumentOffset;
+
+    } else {
+        ADBusGetMarshalledData(m->argumentMarshaller, &signature, &sigsize, &data, &datasize);
+    }
+    ADBusResetIterator(iterator, signature, sigsize, data, datasize);
 }
 
 // ----------------------------------------------------------------------------
 
-int ADBusTakeString(struct ADBusMessage* m, const char** str, int* size)
+static void PrintStringField(
+        str_t* str,
+        const char* field,
+        const char* what)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusStringField);
-  if (str)
-    *str = f.data.string.str;
-  if (size)
-    *size = f.data.string.size;
-  return err;
+    if (field)
+        str_printf(str, "\n%-15s \"%s\"", what, field);
 }
 
-// ----------------------------------------------------------------------------
-
-int ADBusTakeObjectPath(struct ADBusMessage* m, const char** str, int* size)
+static void LogField(str_t* str, struct ADBusIterator* i, struct ADBusField* field);
+static void LogScope(str_t* str, struct ADBusIterator* i, enum ADBusFieldType end)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusObjectPathField);
-  if (str)
-    *str = f.data.objectPath.str;
-  if (size)
-    *size = f.data.objectPath.size;
-  return err;
+    uint first = 1;
+    struct ADBusField field;
+    while (!ADBusIterate(i, &field) && field.type != end && field.type != ADBusEndField) {
+        if (!first)
+            str_printf(str, ", ");
+        first = 0;
+        LogField(str, i, &field);
+    }
 }
 
-// ----------------------------------------------------------------------------
-
-int ADBusTakeSignature(struct ADBusMessage* m, const char** str, int* size)
+static void LogField(str_t* str, struct ADBusIterator* i, struct ADBusField* field)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusSignatureField);
-  if (str)
-    *str = f.data.signature.str;
-  if (size)
-    *size = f.data.signature.size;
-  return err;
+    enum ADBusFieldType type = field->type;
+    switch (type)
+    {
+    case ADBusUInt8Field:
+        str_printf(str, "%d", (int) field->u8);
+        break;
+    case ADBusBooleanField:
+        str_printf(str, "%s", field->b ? "true" : "false");
+        break;
+    case ADBusInt16Field:
+        str_printf(str, "%d", (int) field->i16);
+        break;
+    case ADBusUInt16Field:
+        str_printf(str, "%d", (int) field->u16);
+        break;
+    case ADBusInt32Field:
+        str_printf(str, "%d", (int) field->i32);
+        break;
+    case ADBusUInt32Field:
+        str_printf(str, "%u", (unsigned int) field->u32);
+        break;
+    case ADBusInt64Field:
+        str_printf(str, "%lld", (long long int) field->i64);
+        break;
+    case ADBusUInt64Field:
+        str_printf(str, "%llu", (long long unsigned int) field->u64);
+        break;
+    case ADBusDoubleField:
+        str_printf(str, "%.15g", field->d);
+        break;
+    case ADBusStringField:
+    case ADBusObjectPathField:
+    case ADBusSignatureField:
+        str_printf(str, "\"%s\"", field->string);
+        break;
+    case ADBusArrayBeginField:
+        str_printf(str, "[ ");
+        LogScope(str, i, ADBusArrayEndField);
+        str_printf(str, " ]");
+        break;
+    case ADBusStructBeginField:
+        str_printf(str, "( ");
+        LogScope(str, i, ADBusStructEndField);
+        str_printf(str, " )");
+        break;
+    case ADBusDictEntryBeginField:
+        str_printf(str, "{ ");
+        LogScope(str, i, ADBusDictEntryEndField);
+        str_printf(str, " }");
+        break;
+    case ADBusVariantBeginField:
+        str_printf(str, "<%s>{ ", field->string);
+        LogScope(str, i, ADBusVariantEndField);
+        str_printf(str, " }");
+        break;
+    default:
+        assert(0);
+    }
 }
 
-// ----------------------------------------------------------------------------
-
-int ADBusTakeArrayBegin(struct ADBusMessage* m, uint* scope, int* arrayDataSize)
+char* ADBusNewMessageSummary(struct ADBusMessage* m, size_t* size)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusArrayBeginField);
-  if (scope)
-    *scope = (uint) stackSize(m);
-  if (arrayDataSize)
-    *arrayDataSize = f.data.arrayDataSize;
-  return err;
+    str_t str = NULL;
+    size_t messageSize;
+    ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &messageSize);
+    messageSize -= m->argumentOffset;
+    str_printf(&str, "Type %d, Flags %d, Length %d, Serial %d",
+            (int) ADBusGetMessageType(m),
+            (int) ADBusGetFlags(m),
+            (int) messageSize,
+            (int) ADBusGetSerial(m));
+    PrintStringField(&str, m->path, "Path");
+    PrintStringField(&str, m->interface, "Interface");
+    PrintStringField(&str, m->member, "Member");
+    PrintStringField(&str, m->errorName, "Error name");
+    if (m->hasReplySerial)
+        str_printf(&str, "\n%-15s %d", "Reply serial", m->replySerial);
+    PrintStringField(&str, m->destination, "Destination");
+    PrintStringField(&str, m->sender, "Sender");
+    PrintStringField(&str, m->signature, "Signature");
+
+    int argnum = 0;
+    struct ADBusIterator* iter = m->headerIterator;
+    ADBusArgumentIterator(m, iter);
+    struct ADBusField field;
+    while (!ADBusIterate(iter, &field) && field.type != ADBusEndField) {
+        str_printf(&str, "\nArgument %2d     ", argnum++);
+        LogField(&str, iter, &field);
+    }
+    if (size)
+        *size = str_size(&str);
+    return str;
 }
 
-// ----------------------------------------------------------------------------
-
-int ADBusTakeArrayEnd(struct ADBusMessage* m)
+void ADBusFreeMessageSummary(char* str)
 {
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusArrayEndField);
-  return err;
+    str_free(&str);
 }
 
-// ----------------------------------------------------------------------------
-
-int ADBusTakeStructBegin(struct ADBusMessage* m, uint* scope)
-{
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusStructBeginField);
-  if (scope)
-    *scope = (uint) stackSize(m);
-  return err;
-}
-
-// ----------------------------------------------------------------------------
-
-int ADBusTakeStructEnd(struct ADBusMessage* m)
-{
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusStructEndField);
-  return err;
-}
-
-// ----------------------------------------------------------------------------
-
-int ADBusTakeDictEntryBegin(struct ADBusMessage* m, uint* scope)
-{
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusDictEntryBeginField);
-  if (scope)
-    *scope = (uint) stackSize(m);
-  return err;
-}
-
-// ----------------------------------------------------------------------------
-
-int ADBusTakeDictEntryEnd(struct ADBusMessage* m)
-{
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusDictEntryEndField);
-  return err;
-}
-
-// ----------------------------------------------------------------------------
-
-int ADBusTakeVariantBegin(struct ADBusMessage* m,
-    uint* scope,
-    const char** variantType,
-    int* variantTypeSize)
-{
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusVariantBeginField);
-  if (scope)
-    *scope = (uint) stackSize(m);
-  if (variantType)
-    *variantType = f.data.variantType.str;
-  if (variantTypeSize)
-    *variantTypeSize = f.data.variantType.size;
-  return err;
-}
-
-// ----------------------------------------------------------------------------
-
-int ADBusTakeVariantEnd(struct ADBusMessage* m)
-{
-  struct ADBusField f;
-  int err = takeSpecificField(m, &f, ADBusVariantEndField);
-  return err;
-}
-
-// ----------------------------------------------------------------------------
 

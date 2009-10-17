@@ -20,7 +20,7 @@ end
 local function echo(object, message)
     print_table(object)
     print_table(message)
-    adbuslua.send_reply(message, {message[1]})
+    return adbuslua.send_reply(message, message[1])
 end
 
 local interface = adbuslua.interface.new("nz.co.foobar.adbuslua.Test", { 

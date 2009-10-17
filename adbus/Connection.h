@@ -1,33 +1,34 @@
-// vim: ts=4 sw=4 sts=4 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #pragma once
 
 #include "Common.h"
+#include "Interface.h"
 #include "Marshaller.h"
 #include "Message.h"
-#include "Parser.h"
 #include "User.h"
 
 #ifdef __cplusplus
@@ -35,73 +36,126 @@ extern "C" {
 #endif
 
 struct ADBusConnection;
+struct ADBusStreamUnpacker;
 struct ADBusInterface;
 struct ADBusMember;
 struct ADBusObject;
 
+typedef void (*ADBusSendCallback)(
+        const struct ADBusUser*     user,
+        const uint8_t*              data,
+        size_t                      size);
 
+typedef void (*ADBusConnectionCallback)(
+        struct ADBusConnection*     connection,
+        const struct ADBusUser*     user);
+
+typedef void (*ADBusServiceCallback)(
+        struct ADBusConnection*         connection,
+        const struct ADBusUser*         user,
+        enum ADBusServiceCode           success);
+
+// ----------------------------------------------------------------------------
 // Connection management
+// ----------------------------------------------------------------------------
 
 ADBUS_API struct ADBusConnection* ADBusCreateConnection();
+ADBUS_API void ADBusFreeConnection(struct ADBusConnection* connection);
 
-ADBUS_API void ADBusFreeConnection(
-        struct ADBusConnection*     connection);
+// ----------------------------------------------------------------------------
+// Message
+// ----------------------------------------------------------------------------
 
-typedef void (*ADBusConnectionSendCallback)(
+ADBUS_API void ADBusSetSendCallback(
         struct ADBusConnection*     connection,
-        struct ADBusUser*           user,
-        const uint8_t*              data,
-        size_t                      size);
-
-ADBUS_API void ADBusSetConnectionSendCallback(
-        struct ADBusConnection*     connection,
-        ADBusConnectionSendCallback callback,
+        ADBusSendCallback           callback,
         struct ADBusUser*           data);
 
-ADBUS_API int ADBusConnectionParse(
+ADBUS_API void ADBusSetSendMessageCallback(
         struct ADBusConnection*     connection,
-        const uint8_t*              data,
-        size_t                      size);
+        ADBusMessageCallback        callback,
+        struct ADBusUser*           data);
 
+ADBUS_API void ADBusSetReceiveMessageCallback(
+        struct ADBusConnection*     connection,
+        ADBusMessageCallback        callback,
+        struct ADBusUser*           data);
+
+ADBUS_API void ADBusSendMessage(
+        struct ADBusConnection*     connection,
+        struct ADBusMessage*        message);
+
+ADBUS_API uint32_t ADBusNextSerial(struct ADBusConnection* c);
+
+// ----------------------------------------------------------------------------
+// Parsing and dispatch
+// ----------------------------------------------------------------------------
+
+ADBUS_API struct ADBusStreamUnpacker* ADBusCreateStreamUnpacker();
+
+ADBUS_API void ADBusFreeStreamUnpacker(struct ADBusStreamUnpacker* s);
+
+ADBUS_API int ADBusDispatchData(
+        struct ADBusStreamUnpacker*     stream,
+        struct ADBusConnection*         connection,
+        const uint8_t*                  data,
+        size_t                          size);
+
+ADBUS_API int ADBusDispatchMessage(
+        struct ADBusConnection*         connection,
+        const uint8_t*                  data,
+        size_t                          size);
+
+// ----------------------------------------------------------------------------
 // Bus management
-
-typedef void (*ADBusConnectToBusCallback)(
-        struct ADBusConnection*     /*connection*/,
-        struct ADBusUser*           /*user*/);
+// ----------------------------------------------------------------------------
 
 ADBUS_API void ADBusConnectToBus(
         struct ADBusConnection*     connection,
-        ADBusConnectToBusCallback   callback,
+        ADBusConnectionCallback     callback,
         struct ADBusUser*           user);
 
-ADBUS_API uint ADBusIsConnectedToBus(
-        struct ADBusConnection* connection);
-
-//void ADBusAddService(struct ADBusConnection* c, const char* name, int size);
-//void ADBusRemoveService(struct ADBusConnection* c, const char* name, int size);
+ADBUS_API uint ADBusIsConnectedToBus(const struct ADBusConnection* connection);
 
 ADBUS_API const char* ADBusGetUniqueServiceName(
-        struct ADBusConnection*     connection,
-        int*                        size);
+        const struct ADBusConnection*       connection,
+        size_t*                             size);
 
+ADBUS_API void ADBusRequestServiceName(
+        struct ADBusConnection*             connection,
+        const char*                         service,
+        int                                 size,
+        uint32_t                            flags,
+        ADBusServiceCallback                callback,
+        struct ADBusUser*                   user);
 
-// Callback Registrations
+ADBUS_API void ADBusReleaseServiceName(
+        struct ADBusConnection*             connection,
+        const char*                         service,
+        int                                 size,
+        ADBusServiceCallback                callback,
+        struct ADBusUser*                   user);
 
-typedef int (*ADBusMatchCallback)(
-        struct ADBusConnection*     connection,
-        int                         id,
-        struct ADBusUser*           user,
-        struct ADBusMessage*        message);
+// ----------------------------------------------------------------------------
+// Match registrations
+// ----------------------------------------------------------------------------
 
 struct ADBusMatch
 {
+    // The type is checked if it is not ADBusInvalidMessage (0)
     enum ADBusMessageType type;
 
+    // Matches for signals should be added to the bus, but method returns
+    // are automatically routed to us by the daemon
     uint            addMatchToBusDaemon;
     uint            removeOnFirstMatch;
 
+    // The replySerial field is only used if checkReplySerial is true
+    // this is because 0 is a valid serial
     uint32_t        replySerial;
+    uint            checkReplySerial;
 
+    // The strings will all be copied out
     const char*     sender;
     int             senderSize;
     const char*     destination;
@@ -115,165 +169,66 @@ struct ADBusMatch
     const char*     errorName;
     int             errorNameSize;
 
-    ADBusMatchCallback callback;
+    ADBusMessageCallback callback;
 
-    struct ADBusUser user;
+    // The user pointers will be freed using their free function
+    struct ADBusUser* user1;
+    struct ADBusUser* user2;
+
+    // The id is ignored if its not set (0), but can be set with a value
+    // returned from ADBusNextMatchId
+    uint32_t             id;
 };
+#define ADBusMatchInit(pmatch) memset(pmatch, 0, sizeof(struct ADBusMatch))
 
-ADBUS_API uint32_t ADBusNextSerial(
+ADBUS_API uint32_t ADBusNextMatchId(
         struct ADBusConnection*     connection);
 
-ADBUS_API int ADBusAddMatch(
+ADBUS_API uint32_t ADBusAddMatch(
         struct ADBusConnection*     connection,
         const struct ADBusMatch*    match);
 
 ADBUS_API void ADBusRemoveMatch(
         struct ADBusConnection*     connection,
-        int                         id);
+        uint32_t                    id);
 
-
-// Message management
-
-ADBUS_API void ADBusSendError(
-        struct ADBusConnection*     connection,
-        struct ADBusMessage*        message,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
-
-ADBUS_API void ADBusSendErrorExpanded(
-        struct ADBusConnection*     connection,
-        int                         replySerial,
-        const char*                 destination,
-        int                         destinationSize,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
-
-ADBUS_API void ADBusSetupSignalMarshaller(
-        struct ADBusObject*         object,
-        struct ADBusMember*         signal,
-        struct ADBusMarshaller*     marshaller);
-
-ADBUS_API void ADBusSetupReturnMarshaller(
-        struct ADBusConnection*     connection,
-        struct ADBusMessage*        message,
-        struct ADBusMarshaller*     marshaller);
-
-ADBUS_API void ADBusSetupReturnMarshallerExpanded(
-        struct ADBusConnection*     connection,
-        int                         replySerial,
-        const char*                 destination,
-        int                         destinationSize,
-        struct ADBusMarshaller*     marshaller);
-
-ADBUS_API void ADBusConnectionSendMessage(
-        struct ADBusConnection*     connection,
-        struct ADBusMarshaller*     marshaller);
-
-
-// Interface management
-
-ADBUS_API struct ADBusInterface* ADBusCreateInterface(
-        const char*                 name,
-        int                         size);
-
-ADBUS_API void ADBusFreeInterface(
-        struct ADBusInterface*      interface);
-
-typedef int (*ADBusMemberCallback)(
-        struct ADBusConnection*     /*connection*/,
-        const struct ADBusUser*     /*bindData*/,
-        const struct ADBusMember*   /*member*/,
-        struct ADBusMessage*        /*message*/);
-
-enum ADBusMemberType
-{
-    ADBusMethodMember,
-    ADBusSignalMember,
-    ADBusPropertyMember,
-};
-
-ADBUS_API struct ADBusMember* ADBusAddMember(
-        struct ADBusInterface*      interface,
-        enum ADBusMemberType        type,
-        const char*                 name,
-        int                         size);
-
-ADBUS_API struct ADBusMember* ADBusGetInterfaceMember(
-        struct ADBusInterface*      interface,
-        enum ADBusMemberType        type,
-        const char*                 name,
-        int                         size);
-
-enum ADBusArgumentDirection
-{
-    ADBusInArgument,
-    ADBusOutArgument,
-};
-
-ADBUS_API void ADBusAddArgument(
-        struct ADBusMember*         member,
-        enum ADBusArgumentDirection direction,
-        const char*                 name,
-        int                         nameSize,
-        const char*                 type,
-        int                         typeSize);
-
-ADBUS_API const char* ADBusFullMemberSignature(
-        const struct ADBusMember*   member,
-        enum ADBusArgumentDirection direction,
-        int*                        size);
-
-ADBUS_API void ADBusAddAnnotation(
-        struct ADBusMember*         member,
-        const char*                 name,
-        int                         nameSize,
-        const char*                 value,
-        int                         valueSize);
-
-ADBUS_API void ADBusSetMemberUserData(
-        struct ADBusMember*         member,
-        struct ADBusUser*           user);
-
-ADBUS_API const struct ADBusUser* ADBusMemberUserData(
-        const struct ADBusMember*   member);
-
-ADBUS_API void ADBusSetMethodCallback(
-        struct ADBusMember*         member,
-        ADBusMemberCallback         callback);
-
-ADBUS_API void ADBusSetPropertyType(
-        struct ADBusMember*         member,
-        const char*                 type,
-        int                         typeSize);
-
-ADBUS_API void ADBusSetPropertyGetCallback(
-        struct ADBusMember*         member,
-        ADBusMemberCallback         callback);
-
-ADBUS_API void ADBusSetPropertySetCallback(
-        struct ADBusMember*         member,
-        ADBusMemberCallback         callback);
-
-
+// ----------------------------------------------------------------------------
 // Object management
+// ----------------------------------------------------------------------------
 
 ADBUS_API struct ADBusObject* ADBusAddObject(
         struct ADBusConnection*     connection,
-        const char*                 name,
+        const char*                 path,
+        int                         size);
+
+ADBUS_API struct ADBusObject* ADBusGetObject(
+        const struct ADBusConnection*     connection,
+        const char*                 path,
         int                         size);
 
 ADBUS_API void ADBusRemoveObject(
         struct ADBusConnection*     connection,
-        struct ADBusObject*         object);
+        const char*                 path,
+        int                         size);
 
 ADBUS_API void ADBusBindInterface(
         struct ADBusObject*         object,
         struct ADBusInterface*      interface,
-        struct ADBusUser*           bindData);
+        struct ADBusUser*           user2);
+
+ADBUS_API struct ADBusInterface* ADBusGetObjectInterface(
+        struct ADBusObject*         object,
+        const char*                 interface,
+        int                         interfaceSize,
+        const struct ADBusUser**    user2);
+
+ADBUS_API struct ADBusMember* ADBusGetObjectMember(
+        struct ADBusObject*         object,
+        enum ADBusMemberType        type,
+        const char*                 member,
+        int                         memberSize,
+        const struct ADBusUser**    user2);
+
 
 
 #ifdef __cplusplus

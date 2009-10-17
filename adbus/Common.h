@@ -1,26 +1,27 @@
-// vim: ts=2 sw=2 sts=2 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #pragma once
 
@@ -28,7 +29,7 @@
 #include <stdint.h>
 
 #ifdef ADBUS_BUILD_AS_DLL
-#   ifdef ADBUS_BUILDING
+#   ifdef ADBUS_LIBRARY
 #       define ADBUS_API __declspec(dllexport)
 #   else
 #       define ADBUS_API __declspec(dllimport)
@@ -36,6 +37,18 @@
 #else
 #   define ADBUS_API extern
 #endif
+
+#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && \
+    defined(__ELF__)
+
+#   define ADBUSI_FUNC	__attribute__((visibility("hidden"))) extern
+#   define ADBUSI_DATA	ADBUSI_FUNC
+
+#else
+#   define ADBUSI_FUNC	extern
+#   define ADBUSI_DATA	extern
+#endif
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -121,90 +134,128 @@ extern "C" {
 
 typedef unsigned int uint;
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 enum
 {
-  ADBusMaximumArrayLength   = 67108864,
-  ADBusMaximumMessageLength = 134217728,
+    ADBusMaximumArrayLength   = 67108864,
+    ADBusMaximumMessageLength = 134217728,
 };
 
 // ----------------------------------------------------------------------------
 
 enum ADBusMessageType
 {
-  ADBusInvalidMessage       = 0,
-  ADBusMethodCallMessage    = 1,
-  ADBusMethodReturnMessage  = 2,
-  ADBusErrorMessage         = 3,
-  ADBusSignalMessage        = 4,
-  ADBusMessageTypeMax       = 4,
+    ADBusInvalidMessage       = 0,
+    ADBusMethodCallMessage    = 1,
+    ADBusMethodReturnMessage  = 2,
+    ADBusErrorMessage         = 3,
+    ADBusSignalMessage        = 4,
+    ADBusMessageTypeMax       = 4,
 };
 
 // ----------------------------------------------------------------------------
 
 enum
 {
-  ADBusNoReplyExpectedFlag   = 1,
-  ADBusNoAutoStartFlag       = 2,
+    ADBusNoReplyExpectedFlag   = 1,
+    ADBusNoAutoStartFlag       = 2,
 };
 
 // ----------------------------------------------------------------------------
 
 enum ADBusHeaderFieldCode
 {
-  ADBusInvalidCode      = 0,
-  ADBusPathCode         = 1,
-  ADBusInterfaceCode    = 2,
-  ADBusMemberCode       = 3,
-  ADBusErrorNameCode    = 4,
-  ADBusReplySerialCode  = 5,
-  ADBusDestinationCode  = 6,
-  ADBusSenderCode       = 7,
-  ADBusSignatureCode    = 8,
+    ADBusInvalidCode      = 0,
+    ADBusPathCode         = 1,
+    ADBusInterfaceCode    = 2,
+    ADBusMemberCode       = 3,
+    ADBusErrorNameCode    = 4,
+    ADBusReplySerialCode  = 5,
+    ADBusDestinationCode  = 6,
+    ADBusSenderCode       = 7,
+    ADBusSignatureCode    = 8,
 };
 
 // ----------------------------------------------------------------------------
 
 enum ADBusFieldType
 {
-  ADBusInvalidField          = 0,
-  ADBusMessageEndField       = 0,
-  ADBusUInt8Field            = 'y',
-  ADBusBooleanField          = 'b',
-  ADBusInt16Field            = 'n',
-  ADBusUInt16Field           = 'q',
-  ADBusInt32Field            = 'i',
-  ADBusUInt32Field           = 'u',
-  ADBusInt64Field            = 'x',
-  ADBusUInt64Field           = 't',
-  ADBusDoubleField           = 'd',
-  ADBusStringField           = 's',
-  ADBusObjectPathField       = 'o',
-  ADBusSignatureField        = 'g',
-  ADBusArrayBeginField       = 'a',
-  ADBusArrayEndField         = 1,
-  ADBusStructBeginField      = '(',
-  ADBusStructEndField        = ')',
-  ADBusDictEntryBeginField   = '{',
-  ADBusDictEntryEndField     = '}',
-  ADBusVariantBeginField     = 'v',
-  ADBusVariantEndField       = 2,
+    ADBusInvalidField          = 0,
+    ADBusEndField              = 0,
+    ADBusUInt8Field            = 'y',
+    ADBusBooleanField          = 'b',
+    ADBusInt16Field            = 'n',
+    ADBusUInt16Field           = 'q',
+    ADBusInt32Field            = 'i',
+    ADBusUInt32Field           = 'u',
+    ADBusInt64Field            = 'x',
+    ADBusUInt64Field           = 't',
+    ADBusDoubleField           = 'd',
+    ADBusStringField           = 's',
+    ADBusObjectPathField       = 'o',
+    ADBusSignatureField        = 'g',
+    ADBusArrayBeginField       = 'a',
+    ADBusArrayEndField         = 1,
+    ADBusStructBeginField      = '(',
+    ADBusStructEndField        = ')',
+    ADBusDictEntryBeginField   = '{',
+    ADBusDictEntryEndField     = '}',
+    ADBusVariantBeginField     = 'v',
+    ADBusVariantEndField       = 2,
 };
 
 // ----------------------------------------------------------------------------
 
 enum ADBusParseError
 {
-  ADBusInternalError = -1,
-  ADBusSuccess = 0,
-  ADBusNeedMoreData,
-  ADBusIgnoredData,
-  ADBusInvalidData,
-  ADBusInvalidVersion,
-  ADBusInvalidAlignment,
-  ADBusInvalidArgument,
+    ADBusInternalError = -1,
+    ADBusSuccess = 0,
+    ADBusNeedMoreData,
+    ADBusIgnoredData,
+    ADBusInvalidData,
+    ADBusInvalidVersion,
+    ADBusInvalidAlignment,
+    ADBusInvalidArgument,
 };
+
+// ----------------------------------------------------------------------------
+
+// Flags to be sent to the bus with ADBusRequestServiceName
+enum
+{
+    // Normally when requesting a name, if there already exists an owner,
+    // we get queued waiting for the previous owner to disconnect
+    // The previous can indicate that it will allow replacement via the allow
+    // flag and then we can take it over by using the replace flag.
+    // Alternatively we can indicate that we don't want to be placed in a queue
+    // (rather it should just fail to acquire).
+    ADBusServiceRequestAllowReplacementFlag = 0x01,
+    ADBusServiceRequestReplaceExistingFlag  = 0x02,
+    ADBusServiceRequestDoNotQueueFlag       = 0x04,
+};
+
+// Value returned by the bus with ADBusRequestServiceName and
+// ADBusReleaseServiceName
+enum ADBusServiceCode
+{
+    // ADBusRequestServiceName
+    // The return value can indicate whether we now have the name, are in the
+    // queue to get the name, flat out failed (if we specified not to queue),
+    // or we could already be the owner
+    ADBusServiceRequestPrimaryOwner       = 1,
+    ADBusServiceRequestInQueue            = 2,
+    ADBusServiceRequestFailed             = 3,
+    ADBusServiceRequestAlreadyOwner       = 4,
+
+    // ADBusReleaseServiceName
+    // The return value can indicate if the release succeeded or that it failed
+    // due to the service name being invalid or since we are not the owner
+    ADBusServiceReleaseSuccess            = 1,
+    ADBusServiceReleaseInvalidName        = 2,
+    ADBusServiceReleaseNotOwner           = 3,
+};
+
 
 // ----------------------------------------------------------------------------
 

@@ -1,28 +1,30 @@
-// vim: ts=2 sw=2 sts=2 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #include "Marshaller.h"
+#include "Marshaller_p.h"
 
 #include "Misc_p.h"
 
@@ -31,94 +33,39 @@
 #include <stdint.h>
 #include <string.h>
 
-
-
-
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-enum StackEntryType
+static struct StackEntry* StackTop(struct ADBusMarshaller* m)
 {
-  ArrayStackEntry,
-  StructStackEntry,
-  VariantStackEntry,
-  DictEntryStackEntry,
-};
-
-struct ArrayStackData
-{
-  size_t  dataIndex;
-  size_t  dataBegin;
-  const char* typeBegin;
-};
-
-struct VariantStackData
-{
-  const char* oldType;
-  char        type[257];
-};
-
-struct StackEntry
-{
-  enum StackEntryType type;
-
-  union
-  {
-    struct ArrayStackData array;
-    struct VariantStackData variant;
-  }d;
-};
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-struct ADBusMarshaller
-{
-  uint8_t*            h;
-  size_t              hsize;
-  size_t              halloc;
-  uint8_t*            a;
-  size_t              asize;
-  size_t              aalloc;
-  size_t              typeSizeOffset;
-  const char*         type;
-  struct StackEntry*  stack;
-  size_t              stackSize;
-  size_t              stackAlloc;
-};
-
-
-#define GROW_HEADER(marshaller, newsize)  \
-  ALLOC_GROW(uint8_t, m->h, newsize, m->halloc); \
-  memset(&m->h[m->hsize], 0, newsize - m->hsize); \
-  m->hsize = newsize
-
-#define GROW_ARGUMENTS(m, newsize)  \
-  ALLOC_GROW(uint8_t, m->a, newsize, m->aalloc); \
-  memset(&m->a[m->asize], 0, newsize - m->asize); \
-  m->asize = newsize
-
-#define HEADER(marshaller) ((struct _ADBusMessageHeader*)((marshaller)->h))
-#define EXHEADER(marshaller) ((struct _ADBusMessageExtendedHeader*)((marshaller)->h))
-
-static struct StackEntry* stackTop(struct ADBusMarshaller* m)
-{
-  return &m->stack[m->stackSize - 1];
+    return m->stack + stack_vector_size(&m->stack) - 1;
 }
 
-static struct StackEntry* stackPush(struct ADBusMarshaller* m)
+static struct StackEntry* StackPush(struct ADBusMarshaller* m)
 {
-  ALLOC_GROW(struct StackEntry, m->stack, m->stackSize + 1, m->stackAlloc);
-  memset(&m->stack[m->stackSize], 0, sizeof(struct StackEntry));
-  m->stackSize++;
-  return stackTop(m);
+    return stack_vector_insert_end(&m->stack, 1);
 }
 
-static void stackPop(struct ADBusMarshaller* m)
+static void StackPop(struct ADBusMarshaller* m)
 {
-  m->stackSize--;
+    struct StackEntry* s = StackTop(m);
+    if (s->type == VariantStackEntry)
+        free(s->d.variant.signature);
+    stack_vector_remove_end(&m->stack, 1);
+}
+
+static size_t StackSize(struct ADBusMarshaller* m)
+{
+    return stack_vector_size(&m->stack);
+}
+
+static void AlignData(struct ADBusMarshaller* m, size_t align)
+{
+    size_t padding = ADBUS_ALIGN_VALUE_(size_t, u8vector_size(&m->data), align)
+                   - u8vector_size(&m->data);
+    if (padding > 0)
+        u8vector_insert_end(&m->data, padding);
 }
 
 // ----------------------------------------------------------------------------
@@ -127,617 +74,529 @@ static void stackPop(struct ADBusMarshaller* m)
 
 struct ADBusMarshaller* ADBusCreateMarshaller()
 {
-  struct ADBusMarshaller* ret = (struct ADBusMarshaller*)calloc(1, sizeof(struct ADBusMarshaller));
-  ADBusClearMarshaller(ret);
-  return ret;
+    struct ADBusMarshaller* ret = NEW(struct ADBusMarshaller);
+    ADBusResetMarshaller(ret);
+    return ret;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusClearMarshaller(struct ADBusMarshaller* m)
+void ADBusResetMarshaller(struct ADBusMarshaller* m)
 {
-  m->asize = 0;
-  m->hsize = 0;
-  m->stackSize = 0;
+    while(stack_vector_size(&m->stack) > 0)
+        StackPop(m);
 
-  m->typeSizeOffset = 0;
-  m->type = NULL;
-
-  GROW_HEADER(m, sizeof(struct _ADBusMessageExtendedHeader));
-  HEADER(m)->endianness = _ADBusNativeEndianness;
-  HEADER(m)->type = ADBusInvalidMessage;
-  HEADER(m)->flags = 0;
-  HEADER(m)->version = 1;
-  HEADER(m)->length = 0;
-  HEADER(m)->serial = 0;
-  EXHEADER(m)->headerFieldLength = 0;
+    u8vector_clear(&m->data);
+    m->signature[0] = '\0';
+    m->sigp = &m->signature[0];
 }
 
 // ----------------------------------------------------------------------------
 
 void ADBusFreeMarshaller(struct ADBusMarshaller* m)
 {
-  if (!m)
-    return;
+    if (!m)
+        return;
 
-  free(m->a);
-  free(m->h);
-  free(m->stack);
-  free(m);
+    ADBusResetMarshaller(m);
+
+    u8vector_free(&m->data);
+    stack_vector_free(&m->stack);
+
+    free(m);
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusSendMessage(struct ADBusMarshaller* m, ADBusSendCallback callback, void* user)
+void ADBusSetMarshalledData(struct ADBusMarshaller* m,
+                            const char*     sig,
+                            int             sigsize,
+                            const uint8_t*  data,
+                            size_t          dataSize)
 {
-  if (!callback)
-    return;
+    if (sigsize < 0)
+        sigsize = strlen(sig);
 
-  ASSERT_RETURN(m->type == NULL || *m->type == '\0');
-  ASSERT_RETURN(m->stackSize == 0);
+    ASSERT_RETURN(sigsize < 256);
 
-  // Fill out header field size field
-  size_t headerFieldBegin = sizeof(struct _ADBusMessageExtendedHeader);
-  headerFieldBegin = _ADBUS_ALIGN_VALUE(headerFieldBegin, 8);
-  size_t headerFieldEnd = m->hsize;
+    ADBusResetMarshaller(m);
 
-  size_t headerFieldSize = 0;
-  // begin can be greater than end if there are no fields since begin would
-  // then be aligned but end is not
-  if (headerFieldEnd > headerFieldBegin)
-    headerFieldSize = headerFieldEnd - headerFieldBegin;
+    strncat(m->signature, sig, sigsize);
+    m->sigp = m->signature;
 
-  EXHEADER(m)->headerFieldLength = headerFieldSize;
-
-
-  // Copy over arguments and fill out arg length
-  size_t headerEnd = m->hsize;
-  headerEnd = _ADBUS_ALIGN_VALUE(headerEnd, 8);
-
-  GROW_HEADER(m, headerEnd + m->asize);
-
-  memcpy(&m->h[headerEnd], m->a, m->asize);
-  HEADER(m)->length = (uint32_t)m->asize;
-
-
-  // Send data off
-  callback(user, m->h, m->hsize);
-
-  ADBusClearMarshaller(m);
+    uint8_t* dest = u8vector_insert_end(&m->data, dataSize);
+    memcpy(dest, data, dataSize);
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetMessageType(struct ADBusMarshaller* m, enum ADBusMessageType type)
+void ADBusGetMarshalledData(const struct ADBusMarshaller* m,
+                            const char**    sig,
+                            size_t*         sigsize,
+                            const uint8_t** data,
+                            size_t*         dataSize)
 {
-  HEADER(m)->type = type;
+    if (sig)
+        *sig = m->signature;
+    if (sigsize)
+        *sigsize = strlen(m->signature);
+    if (data)
+        *data = m->data;
+    if (dataSize)
+        *dataSize = u8vector_size(&m->data);
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetSerial(struct ADBusMarshaller* m, uint32_t serial)
+int ADBusAppendData(struct ADBusMarshaller* m, const uint8_t* data, size_t size)
 {
-  HEADER(m)->serial = serial;
+    if (StackSize(m) != 0)
+    {
+        struct StackEntry* s = StackTop(m);
+        ASSERT_RETURN_ERR(s->type == ArrayStackEntry
+                          || s->type == VariantStackEntry);
+    }
+
+    uint8_t* dest = u8vector_insert_end(&m->data, size);
+    memcpy(dest, data, size);
+
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetFlags(struct ADBusMarshaller* m, int flags)
+enum ADBusFieldType ADBusNextMarshallerField(struct ADBusMarshaller* m)
 {
-  HEADER(m)->flags = (uint8_t) flags;
+    return m->sigp ? *m->sigp : ADBusInvalidField;
 }
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-static void setUInt32HeaderField(struct ADBusMarshaller* m, enum ADBusHeaderFieldCode type, uint32_t data)
+static void AppendField(struct ADBusMarshaller* m);
+
+static uint8_t* AppendFixedField(
+        struct ADBusMarshaller*     m,
+        enum ADBusFieldType         fieldtype,
+        size_t                      size)
 {
-  size_t typei, datai;
+    if (*m->sigp != (char) fieldtype)
+        return NULL;
 
-  size_t needed = m->hsize;
-  needed  = _ADBUS_ALIGN_VALUE(needed, 8);   // pad to structure
-  typei = needed;
-  needed += 1;            // field type
-  needed += 3;            // field variant type
-  needed  = _ADBUS_ALIGN_VALUE(needed, 4);   // pad to data
-  datai = needed;
-  needed += 4;
+    AlignData(m, size);
 
-  GROW_HEADER(m, needed);
+    uint8_t* data = u8vector_insert_end(&m->data, size);
+    m->sigp++;
+    AppendField(m);
 
-  uint8_t* typep = &m->h[typei];
-  uint32_t* datap = (uint32_t*)&m->h[datai];
-
-  typep[0] = type;
-  typep[1] = 1;
-  typep[2] = ADBusUInt32Field;
-  typep[3] = '\0';
-
-  datap[0] = data;
+    return data;
 }
 
-// ----------------------------------------------------------------------------
-
-static void setStringHeaderField(struct ADBusMarshaller* m,
-                                 enum ADBusHeaderFieldCode code,
-                                 enum ADBusFieldType field,
-                                 const char* str, int size)
+static int Append8(
+        struct ADBusMarshaller*     m,
+        enum ADBusFieldType         fieldtype,
+        uint8_t                     data)
 {
-  if (size < 0)
-    size = strlen(str);
-
-  size_t typei, stringi;
-
-  size_t needed = m->hsize;
-  needed  = _ADBUS_ALIGN_VALUE(needed, 8);   // pad to structure
-  typei   = needed;
-  needed += 1;            // field type
-  needed += 3;            // field variant type
-  needed  = _ADBUS_ALIGN_VALUE(needed, 4);   // pad to length
-  stringi = needed;
-  needed += 4 + size + 1; // string len + string + null
-
-  GROW_HEADER(m, needed);
-
-  uint8_t* typep = &m->h[typei];
-  uint32_t* sizep = (uint32_t*)&m->h[stringi];
-  uint8_t* stringp = (uint8_t*)&m->h[stringi + 4];
-
-  typep[0] = code;
-  typep[1] = 1;
-  typep[2] = field;
-  typep[3] = '\0';
-
-  sizep[0] = (uint32_t)size;
-
-  memcpy(stringp, str, size);
-  stringp[size] = '\0';
+    uint8_t* pdata = AppendFixedField(m, fieldtype, sizeof(uint8_t));
+    if (!pdata)
+        return 1;
+    *pdata = data;
+    return 0;
 }
 
-// ----------------------------------------------------------------------------
-
-void ADBusSetReplySerial(struct ADBusMarshaller* m, uint32_t reply)
+static int Append16(
+        struct ADBusMarshaller*     m,
+        enum ADBusFieldType         fieldtype,
+        uint16_t                    data)
 {
-  ASSERT_RETURN(!m->type);
-  setUInt32HeaderField(m, ADBusReplySerialCode, reply);
+    uint16_t* pdata = (uint16_t*) AppendFixedField(m, fieldtype, sizeof(uint16_t));
+    if (!pdata)
+        return 1;
+    *pdata = data;
+    return 0;
 }
 
-// ----------------------------------------------------------------------------
-
-void ADBusSetPath(struct ADBusMarshaller* m, const char* path, int size)
+static int Append32(
+        struct ADBusMarshaller*     m,
+        enum ADBusFieldType         fieldtype,
+        uint32_t                    data)
 {
-  ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ADBusPathCode, ADBusObjectPathField, path, size);
+    uint32_t* pdata = (uint32_t*) AppendFixedField(m, fieldtype, sizeof(uint32_t));
+    if (!pdata)
+        return 1;
+    *pdata = data;
+    return 0;
 }
 
-// ----------------------------------------------------------------------------
-
-void ADBusSetInterface(struct ADBusMarshaller* m, const char* interface, int size)
+static int Append64(
+        struct ADBusMarshaller*     m,
+        enum ADBusFieldType         fieldtype,
+        uint64_t                    data)
 {
-  ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ADBusInterfaceCode, ADBusStringField, interface, size);
+    uint64_t* pdata = (uint64_t*) AppendFixedField(m, fieldtype, sizeof(uint64_t));
+    if (!pdata)
+        return 1;
+    *pdata = data;
+    return 0;
 }
 
-// ----------------------------------------------------------------------------
+int ADBusAppendBoolean(struct ADBusMarshaller* m, uint32_t data)
+{ return Append32(m, ADBusBooleanField, data ? 1 : 0); }
 
-void ADBusSetMember(struct ADBusMarshaller* m, const char* member, int size)
+int ADBusAppendUInt8(struct ADBusMarshaller* m, uint8_t data)
+{ return Append8(m, ADBusUInt8Field, data); }
+
+int ADBusAppendInt16(struct ADBusMarshaller* m, int16_t data)
+{ return Append16(m, ADBusInt16Field, *(uint16_t*)&data); }
+
+int ADBusAppendUInt16(struct ADBusMarshaller* m, uint16_t data)
+{ return Append16(m, ADBusUInt16Field, data); }
+
+int ADBusAppendInt32(struct ADBusMarshaller* m, int32_t data)
+{ return Append32(m, ADBusInt32Field, *(uint32_t*)&data); }
+
+int ADBusAppendUInt32(struct ADBusMarshaller* m, uint32_t data)
+{ return Append32(m, ADBusUInt32Field, data); }
+
+int ADBusAppendInt64(struct ADBusMarshaller* m, int64_t data)
+{ return Append64(m, ADBusInt64Field, *(uint64_t*)&data); }
+
+int ADBusAppendUInt64(struct ADBusMarshaller* m, uint64_t data)
+{ return Append64(m, ADBusUInt64Field, data); }
+
+int ADBusAppendDouble(struct ADBusMarshaller* m, double data)
 {
-  ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ADBusMemberCode, ADBusStringField, member, size);
+    // Take the safe route to avoid any possible aliasing problems
+    // *(uint64_t*) &data won't compile with strict aliasing on gcc
+    uint64_t d;
+    for (size_t i = 0; i < 8; ++i)
+        ((uint8_t*) &d)[i] = ((uint8_t*) &data)[i];
+
+    return Append64(m, ADBusDoubleField, d);
 }
 
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void ADBusSetErrorName(struct ADBusMarshaller* m, const char* errorName, int size)
+static int AppendShortString(struct ADBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ADBusErrorNameCode, ADBusStringField, errorName, size);
+    if (size < 0)
+        size = (int)strlen(str);
+
+    ASSERT_RETURN_ERR(size < 256);
+
+    uint8_t* psize  = u8vector_insert_end(&m->data, 1 + size + 1);
+    char* pstr      = (char*) psize + 1;
+
+    *psize = size;
+    memcpy(pstr, str, size);
+    pstr[size] = '\0';
+
+    m->sigp++;
+
+    AppendField(m);
+
+    return 0;
 }
 
-// ----------------------------------------------------------------------------
-
-void ADBusSetDestination(struct ADBusMarshaller* m, const char* destination, int size)
+static int AppendLongString(struct ADBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ADBusDestinationCode, ADBusStringField, destination, size);
+    if (size < 0)
+        size = (int)strlen(str);
+
+    AlignData(m, 4);
+
+    uint8_t* pdata  = u8vector_insert_end(&m->data, 4 + size + 1);
+    uint32_t* psize = (uint32_t*) pdata;
+    char* pstr      = (char*) pdata + 4;
+
+    *psize = size;
+    memcpy(pstr, str, size);
+    pstr[size] = '\0';
+
+    m->sigp++;
+
+    AppendField(m);
+
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetSender(struct ADBusMarshaller* m, const char* sender, int size)
+int ADBusAppendString(struct ADBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(!m->type);
-  setStringHeaderField(m, ADBusSenderCode, ADBusStringField, sender, size);
+    ASSERT_RETURN_ERR(*m->sigp == ADBusStringField);
+    return AppendLongString(m, str, size);
 }
 
 // ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
 
-void ADBusSetSignature(struct ADBusMarshaller* m, const char* type, int typeSize)
+int ADBusAppendObjectPath(struct ADBusMarshaller* m, const char* str, int size)
 {
-  ASSERT_RETURN(m->type == NULL || *m->type == '\0');
-  ASSERT_RETURN(m->stackSize == 0);
-
-  if (typeSize < 0)
-    typeSize = (int)strlen(type);
-
-  if (!m->typeSizeOffset)
-  {
-    size_t typei, stringi;
-
-    size_t needed = m->hsize;
-    needed  = _ADBUS_ALIGN_VALUE(needed, 8);   // pad to structure
-    typei = needed;
-    needed += 1;            // field type
-    needed += 3;            // field variant type
-    stringi = needed;
-    needed += 1 + 1;        // string len + null
-
-    GROW_HEADER(m, needed);
-
-    uint8_t* typep = &m->h[typei];
-    uint8_t* sizep = &m->h[stringi];
-    uint8_t* stringp = &m->h[stringi + 1];
-
-    typep[0] = ADBusSignatureCode;
-    typep[1] = 1;
-    typep[2] = 'g';
-    typep[3] = '\0';
-
-    sizep[0] = 0;
-
-    stringp[0] = '\0';
-
-    m->typeSizeOffset = stringi;
-  }
-
-  // Append type onto the end of the header buf
-
-  // First we increment the string size
-  uint8_t* psize = &m->h[m->typeSizeOffset];
-  ASSERT_RETURN(*psize + typeSize <= 256);
-  *psize += typeSize;
-
-
-  size_t needed = m->hsize;
-  needed += typeSize;
-  GROW_HEADER(m, needed);
-
-  size_t stringi = m->hsize - typeSize - 1; //insert before terminating null
-  uint8_t* pstr = &m->h[stringi];
-  memcpy(pstr, type, typeSize);
-  pstr[typeSize] = '\0';
-
-  m->type = (char*)&m->h[stringi];
+    ASSERT_RETURN_ERR(*m->sigp == ADBusObjectPathField);
+    return AppendLongString(m, str, size);
 }
 
 // ----------------------------------------------------------------------------
 
-const char* ADBusMarshallerCurrentSignature(struct ADBusMarshaller* m)
+int ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size)
 {
-  return m->type;
+    ASSERT_RETURN_ERR(*m->sigp == ADBusSignatureField);
+    return AppendShortString(m, str, size);
 }
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-static void appendField(struct ADBusMarshaller* m);
-
-#define APPEND_FIXED_SIZE_FIELD(m, fieldtype, DataType, data) \
-{ \
-  ASSERT_RETURN(*m->type == fieldtype); \
-  size_t index = m->asize;  \
-  index = _ADBUS_ALIGN_VALUE(index, sizeof(data)); \
-  \
-  GROW_ARGUMENTS(m, index + sizeof(data)); \
-  \
-  DataType* pdata = (DataType*)&m->a[index];  \
-  *pdata = data;  \
-  \
-  m->type++;  \
-  \
-  appendField(m); \
-}
-
-void ADBusAppendBoolean(struct ADBusMarshaller* m, uint32_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusBooleanField, uint32_t, data ? 1 : 0); }
-
-void ADBusAppendUInt8(struct ADBusMarshaller* m, uint8_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusUInt8Field, uint8_t, data); }
-
-void ADBusAppendInt16(struct ADBusMarshaller* m, int16_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusInt16Field, int16_t, data); }
-
-void ADBusAppendUInt16(struct ADBusMarshaller* m, uint16_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusUInt16Field, uint16_t, data); }
-
-void ADBusAppendInt32(struct ADBusMarshaller* m, int32_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusInt32Field, int32_t, data); }
-
-void ADBusAppendUInt32(struct ADBusMarshaller* m, uint32_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusUInt32Field, uint32_t, data); }
-
-void ADBusAppendInt64(struct ADBusMarshaller* m, int64_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusInt64Field, int64_t, data); }
-
-void ADBusAppendUInt64(struct ADBusMarshaller* m, uint64_t data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusUInt64Field, uint64_t, data); }
-
-void ADBusAppendDouble(struct ADBusMarshaller* m, double data)
-{ APPEND_FIXED_SIZE_FIELD(m, ADBusDoubleField, double, data); }
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-static void appendLongString(struct ADBusMarshaller* m, const char* str, int size)
+int ADBusBeginArgument(struct ADBusMarshaller* m, const char* sig, int size)
 {
-  if (size < 0)
-    size = (int)strlen(str);
+    if (size < 0)
+        size = strlen(sig);
 
-  size_t index = m->asize;
-  index += _ADBUS_ALIGN_VALUE(index, 4);
+    ASSERT_RETURN_ERR(strlen(m->signature) + size < 256);
+    ASSERT_RETURN_ERR(StackSize(m) == 0);
+    ASSERT_RETURN_ERR(m->sigp == NULL || *m->sigp == '\0');
 
-  GROW_ARGUMENTS(m, index + 4 + size + 1);
+    strncat(m->signature, sig, size);
 
-  uint32_t* psize = (uint32_t*)&m->a[index];
-  char* pstr = (char*)&m->a[index + 4];
-
-  *psize = size;
-  memcpy(pstr, str, size);
-  pstr[size] = '\0';
-
-  m->type++;
-
-  appendField(m);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusAppendString(struct ADBusMarshaller* m, const char* str, int size)
+int ADBusEndArgument(struct ADBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == ADBusStringField);
-  appendLongString(m, str, size);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusAppendObjectPath(struct ADBusMarshaller* m, const char* str, int size)
-{
-  ASSERT_RETURN(*m->type == ADBusObjectPathField);
-  appendLongString(m, str, size);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size)
-{
-  ASSERT_RETURN(*m->type == ADBusSignatureField);
-
-  if (size < 0)
-    size = (int)strlen(str);
-
-  ASSERT_RETURN(size <= 256);
-
-  size_t index = m->asize;
-  GROW_ARGUMENTS(m, index + 1 + size + 1);
-
-  uint8_t* psize = &m->a[index];
-  char* pstr = (char*)(psize + 1);
-
-  *psize = size;
-  memcpy(pstr, str, size);
-  pstr[size] = '\0';
-
-  m->type++;
-
-  appendField(m);
+    ASSERT_RETURN_ERR(StackSize(m) == 0);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-void ADBusBeginArray(struct ADBusMarshaller* m)
+int ADBusBeginArray(struct ADBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == ADBusArrayBeginField);
+    ASSERT_RETURN_ERR(*m->sigp == ADBusArrayBeginField);
 
-  m->type++;
+    m->sigp++;
 
-  size_t dataIndex;
-  size_t needed = m->asize;
-  needed  = _ADBUS_ALIGN_VALUE(needed, 4);
-  dataIndex = needed;
-  needed += 4;
-  needed  = _ADBUS_ALIGN_VALUE(needed, _ADBusRequiredAlignment(*m->type));
+    AlignData(m, 4);
+    size_t isize = u8vector_size(&m->data);
+    u8vector_insert_end(&m->data, 4);
+    AlignData(m, ADBusRequiredAlignment_(*m->sigp));
+    size_t idata = u8vector_size(&m->data);
 
-  GROW_ARGUMENTS(m, needed);
+    struct StackEntry* s = StackPush(m);
+    s->type = ArrayStackEntry;
+    s->d.array.sizeIndex    = isize;
+    s->d.array.dataBegin    = idata;
+    s->d.array.sigBegin     = m->sigp;
 
-  struct StackEntry* s = stackPush(m);
-  s->type = ArrayStackEntry;
-  s->d.array.dataIndex = dataIndex;
-  s->d.array.dataBegin = needed;
-  s->d.array.typeBegin = m->type;
-
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-static void appendArrayChild(struct ADBusMarshaller* m)
+static void AppendArrayChild(struct ADBusMarshaller* m)
 {
-  struct StackEntry* s = stackTop(m);
-  m->type = s->d.array.typeBegin;
+    struct StackEntry* s = StackTop(m);
+    m->sigp = s->d.array.sigBegin;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusEndArray(struct ADBusMarshaller* m)
+int ADBusEndArray(struct ADBusMarshaller* m)
 {
-  struct StackEntry* s = stackTop(m);
-  uint32_t* psize = (uint32_t*)&m->a[s->d.array.dataIndex];
-  *psize = (uint32_t)(m->asize - s->d.array.dataBegin);
-  ASSERT_RETURN(*psize < ADBusMaximumArrayLength);
+    struct StackEntry* s = StackTop(m);
+    uint32_t* psize = (uint32_t*)&m->data[s->d.array.sizeIndex];
+    *psize = (uint32_t)(u8vector_size(&m->data) - s->d.array.dataBegin);
 
-  stackPop(m);
+    ASSERT_RETURN_ERR(*psize < ADBusMaximumArrayLength);
 
-  appendField(m);
-}
+    m->sigp = ADBusFindArrayEnd_(s->d.array.sigBegin);
+    assert(m->sigp);
 
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
+    StackPop(m);
 
-void ADBusBeginStruct(struct ADBusMarshaller* m)
-{
-  ASSERT_RETURN(*m->type == ADBusStructBeginField);
-
-  m->type++;
-
-  size_t needed = m->asize;
-  needed = _ADBUS_ALIGN_VALUE(needed, 8);
-  GROW_ARGUMENTS(m, needed);
-
-  struct StackEntry* s = stackPush(m);
-  s->type = StructStackEntry;
-}
-
-// ----------------------------------------------------------------------------
-
-static void appendStructChild(struct ADBusMarshaller* m)
-{
-  // Nothing to do
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusEndStruct(struct ADBusMarshaller* m)
-{
-  ASSERT_RETURN(*m->type == ADBusStructEndField);
-
-  m->type++;
-
-  stackPop(m);
-
-  appendField(m);
+    AppendField(m);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-void ADBusBeginDictEntry(struct ADBusMarshaller* m)
+int ADBusBeginStruct(struct ADBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == ADBusDictEntryBeginField);
+    ASSERT_RETURN_ERR(*m->sigp == ADBusStructBeginField);
 
-  m->type++;
+    m->sigp++;
 
-  size_t needed = m->asize;
-  needed = _ADBUS_ALIGN_VALUE(needed, 8);
-  GROW_ARGUMENTS(m, needed);
+    AlignData(m, 8);
 
-  struct StackEntry* s = stackPush(m);
-  s->type = DictEntryStackEntry;
+    struct StackEntry* s = StackPush(m);
+    s->type = StructStackEntry;
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-static void appendDictEntryChild(struct ADBusMarshaller* m)
+static void AppendStructChild(struct ADBusMarshaller* m)
 {
-  // Nothing to do
+    // Nothing to do
+    (void) m;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusEndDictEntry(struct ADBusMarshaller* m)
+int ADBusEndStruct(struct ADBusMarshaller* m)
 {
-  ASSERT_RETURN(*m->type == ADBusDictEntryEndField);
+    ASSERT_RETURN_ERR(*m->sigp == ADBusStructEndField);
 
-  m->type++;
+    m->sigp++;
 
-  stackPop(m);
+    StackPop(m);
 
-  appendField(m);
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-void ADBusBeginVariant(struct ADBusMarshaller* m, const char* type, int typeSize)
-{
-  ASSERT_RETURN(*m->type == ADBusVariantBeginField);
-
-  if (typeSize < 0)
-    typeSize = strlen(type);
-
-  ASSERT_RETURN(typeSize <= 256);
-  if (typeSize > 256)
-    return;
-
-  m->type++;
-
-  // Set the variant type in the output buffer
-  size_t index = m->asize;
-  GROW_ARGUMENTS(m, index + 1 + typeSize + 1);
-
-  uint8_t* psize = &m->a[index];
-  char* pstr = (char*)(psize + 1);
-
-  *psize = (uint8_t)typeSize;
-  memcpy(pstr, type, typeSize);
-  pstr[typeSize] = '\0';
-
-  // Setup stack entry
-  struct StackEntry* s = stackPush(m);
-  s->type = VariantStackEntry;
-  s->d.variant.oldType = m->type;
-
-  m->type = type;
-}
-
-// ----------------------------------------------------------------------------
-
-static void appendVariantChild(struct ADBusMarshaller* m)
-{
-  // Nothing to do
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusEndVariant(struct ADBusMarshaller* m)
-{
-  ASSERT_RETURN(*m->type == '\0');
-  struct StackEntry* s = stackTop(m);
-  m->type = s->d.variant.oldType;
-
-  stackPop(m);
-
-  appendField(m);
+    AppendField(m);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-static void appendField(struct ADBusMarshaller* m)
+int ADBusBeginDictEntry(struct ADBusMarshaller* m)
 {
-  if (m->stackSize == 0)
-    return;
+    ASSERT_RETURN_ERR(*m->sigp == ADBusDictEntryBeginField);
 
-  switch(stackTop(m)->type)
-  {
-  case ArrayStackEntry:
-    return appendArrayChild(m);
-  case VariantStackEntry:
-    return appendVariantChild(m);
-  case DictEntryStackEntry:
-    return appendDictEntryChild(m);
-  case StructStackEntry:
-    return appendStructChild(m);
-  }
+    m->sigp++;
+    AlignData(m, 8);
+
+    struct StackEntry* s = StackPush(m);
+    s->type = DictEntryStackEntry;
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+static void AppendDictEntryChild(struct ADBusMarshaller* m)
+{
+    // Nothing to do
+    (void) m;
+}
+
+// ----------------------------------------------------------------------------
+
+int ADBusEndDictEntry(struct ADBusMarshaller* m)
+{
+    ASSERT_RETURN_ERR(*m->sigp == ADBusDictEntryEndField);
+
+    m->sigp++;
+
+    StackPop(m);
+
+    AppendField(m);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+int ADBusBeginVariant(struct ADBusMarshaller* m, const char* type, int typeSize)
+{
+    ASSERT_RETURN_ERR(*m->sigp == ADBusVariantBeginField);
+
+    if (typeSize < 0)
+        typeSize = strlen(type);
+
+    ASSERT_RETURN_ERR(typeSize < 256);
+
+    // Set the variant type in the output buffer
+    AppendShortString(m, type, typeSize);
+
+    // Setup stack entry
+    struct StackEntry* s = StackPush(m);
+    s->type = VariantStackEntry;
+    s->d.variant.oldSigp = m->sigp;
+
+    m->sigp = type;
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+static void AppendVariantChild(struct ADBusMarshaller* m)
+{
+    // Nothing to do
+    (void) m;
+}
+
+// ----------------------------------------------------------------------------
+
+int ADBusEndVariant(struct ADBusMarshaller* m)
+{
+    ASSERT_RETURN_ERR(*m->sigp == '\0');
+    struct StackEntry* s = StackTop(m);
+    m->sigp = s->d.variant.oldSigp;
+
+    StackPop(m);
+
+    AppendField(m);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+int ADBusAppendVariant(struct ADBusMarshaller* m,
+                       const char* sig,
+                       int         sigsize,
+                       const uint8_t* data,
+                       size_t datasize)
+{
+    if (sigsize < 0)
+        sigsize = strlen(sig);
+
+    ASSERT_RETURN_ERR(*m->sigp == ADBusVariantBeginField);
+    ASSERT_RETURN_ERR(sigsize < 256);
+
+    m->sigp++;
+
+    // Set the variant type in the output buffer
+    AppendShortString(m, sig, sigsize);
+
+    // Append the data
+    AlignData(m, ADBusRequiredAlignment_(*sig));
+    uint8_t* dest = u8vector_insert_end(&m->data, datasize);
+    memcpy(dest, data, datasize);
+
+    AppendField(m);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+static void AppendField(struct ADBusMarshaller* m)
+{
+    if (StackSize(m) == 0)
+        return;
+
+    switch(StackTop(m)->type)
+    {
+    case ArrayStackEntry:
+        return AppendArrayChild(m);
+    case VariantStackEntry:
+        return AppendVariantChild(m);
+    case DictEntryStackEntry:
+        return AppendDictEntryChild(m);
+    case StructStackEntry:
+        return AppendStructChild(m);
+    }
 }
 
 // ----------------------------------------------------------------------------

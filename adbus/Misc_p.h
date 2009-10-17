@@ -1,30 +1,33 @@
-// vim: ts=2 sw=2 sts=2 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #pragma once
 
 #include "Common.h"
+
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,24 +36,25 @@ extern "C" {
 // ----------------------------------------------------------------------------
 
 #ifndef NDEBUG
-#   define LOGD _ADBusPrintDebug
+#   define LOGD ADBusPrintDebug_
 #else
-#   define LOGD if(0) {} else _ADBusPrintDebug
+#   define LOGD if(0) {} else ADBusPrintDebug_
 #endif
 
-void _ADBusPrintDebug(const char* format, ...);
+ADBUSI_FUNC void ADBusPrintDebug_(const char* format, ...);
 
 // ----------------------------------------------------------------------------
 
-extern const char _ADBusNativeEndianness;
+ADBUSI_DATA const char ADBusNativeEndianness_;
+ADBUSI_DATA const uint8_t ADBusMajorProtocolVersion_;
 
-int _ADBusRequiredAlignment(char type);
+ADBUSI_FUNC int ADBusRequiredAlignment_(char type);
 
 // ----------------------------------------------------------------------------
 
 #pragma pack(push)
 #pragma pack(1)
-struct _ADBusMessageHeader
+struct ADBusHeader_
 {
   // 8 byte begin padding
   uint8_t   endianness;
@@ -61,9 +65,15 @@ struct _ADBusMessageHeader
   uint32_t  serial;
 };
 
-struct _ADBusMessageExtendedHeader
+struct ADBusExtendedHeader_
 {
-  struct _ADBusMessageHeader header;
+  // 8 byte begin padding
+  uint8_t   endianness;
+  uint8_t   type;
+  uint8_t   flags;
+  uint8_t   version;
+  uint32_t  length;
+  uint32_t  serial;
 
   // HeaderFields are a(yv)
   uint32_t  headerFieldLength;
@@ -79,25 +89,17 @@ struct _ADBusMessageExtendedHeader
 
 
 #define ASSERT_RETURN(x) assert(x); if (!(x)) return;
+#define ASSERT_RETURN_ERR(x) assert(x); if (!(x)) return -1;
 
-/*
- * Realloc the buffer pointed at by variable 'x' so that it can hold
- * at least 'nr' entries; the number of entries currently allocated
- * is 'alloc', using the standard growing factor alloc_nr() macro.
- *
- * DO NOT USE any expression with side-effect for 'x' or 'alloc'.
- */
-#define alloc_nr(x) (((x)+16)*3/2)
-#define ALLOC_GROW(Type, x, nr, alloc) \
-	do { \
-		if ((nr) > alloc) { \
-			if (alloc_nr(alloc) < (nr)) \
-				alloc = (nr); \
-			else \
-				alloc = alloc_nr(alloc); \
-			x = (Type*)realloc((x), alloc * sizeof(*(x))); \
-		} \
-	} while(0)
+#define NEW(STRUCT) ((STRUCT*) calloc(1, sizeof(STRUCT)))
+
+static inline char* strndup(const char* string, size_t n)
+{
+    char* s = (char*) malloc(n + 1);
+    memcpy(s, string, n);
+    s[n] = '\0';
+    return s;
+}
 
 // ----------------------------------------------------------------------------
 
@@ -112,17 +114,40 @@ struct _ADBusMessageExtendedHeader
  *    ~(boundary - 1)
  */
 
-#define _ADBUS_ALIGN_VALUE(this, boundary) \
-  (( ((unsigned long)(this)) + (((unsigned long)(boundary)) -1)) & (~(((unsigned long)(boundary))-1)))
+#define ADBUS_ALIGN_VALUE_(TYPE, PTR, BOUNDARY)                       \
+  ((TYPE) ( (((uintptr_t) (PTR)) + (((uintptr_t) (BOUNDARY)) - 1))    \
+                 & (~(((uintptr_t)(BOUNDARY))-1))                     \
+                 )                                                    \
+  )
+// ----------------------------------------------------------------------------
+
+// where b0 is the lowest byte
+#define MAKE16(b1,b0) \
+  (((uint16_t)(b1) << 8) | (b0))
+#define MAKE32(b3,b2,b1,b0) \
+  (((uint32_t)(MAKE16((b3),(b2))) << 16) | MAKE16((b1),(b0)))
+#define MAKE64(b7,b6,b5,b4,b3,b2,b1,b0)  \
+  (((uint64_t)(MAKE32((b7),(b6),(b5),(b4))) << 32) | MAKE32((b3),(b2),(b1),(b0)))
+
+#define ENDIAN_CONVERT16(val) MAKE16( (val)        & 0xFF, ((val) >> 8)  & 0xFF)
+
+#define ENDIAN_CONVERT32(val) MAKE32( (val)        & 0xFF, ((val) >> 8)  & 0xFF,\
+                                     ((val) >> 16) & 0xFF, ((val) >> 24) & 0xFF)
+
+#define ENDIAN_CONVERT64(val) MAKE64( (val)        & 0xFF, ((val) >> 8)  & 0xFF,\
+                                     ((val) >> 16) & 0xFF, ((val) >> 24) & 0xFF,\
+                                     ((val) >> 32) & 0xFF, ((val) >> 40) & 0xFF,\
+                                     ((val) >> 48) & 0xFF, ((val) >> 56) & 0xFF)
 
 // ----------------------------------------------------------------------------
 
-unsigned int _ADBusIsValidObjectPath(const char* str, size_t len);
-unsigned int _ADBusIsValidInterfaceName(const char* str, size_t len);
-unsigned int _ADBusIsValidBusName(const char* str, size_t len);
-unsigned int _ADBusIsValidMemberName(const char* str, size_t len);
-unsigned int _ADBusHasNullByte(const char* str, size_t len);
-unsigned int _ADBusIsValidUtf8(const char* str, size_t len);
+ADBUSI_FUNC uint ADBusIsValidObjectPath_(const char* str, size_t len);
+ADBUSI_FUNC uint ADBusIsValidInterfaceName_(const char* str, size_t len);
+ADBUSI_FUNC uint ADBusIsValidBusName_(const char* str, size_t len);
+ADBUSI_FUNC uint ADBusIsValidMemberName_(const char* str, size_t len);
+ADBUSI_FUNC uint ADBusHasNullByte_(const uint8_t* str, size_t len);
+ADBUSI_FUNC uint ADBusIsValidUtf8_(const uint8_t* str, size_t len);
+ADBUSI_FUNC const char* ADBusFindArrayEnd_(const char* arrayBegin);
 
 // ----------------------------------------------------------------------------
 

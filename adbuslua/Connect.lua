@@ -19,7 +19,6 @@ math.randomseed(os.time())
 
 getlocalid = adbuslua_core.getlocalid
 
-
 function _hex_encode(str)
     local ret = ""
     for i = 1, str:len() do
@@ -55,6 +54,7 @@ end
 function connect_dbus_cookie_sha1(host, port, id)
 
     local sock = socket.connect(host, port)
+    assert(sock, string.format("Failed to connect to %s:%s", host, port))
     sock:send("\0")
 
     local sendauthline = "AUTH DBUS_COOKIE_SHA1 " .. _hex_encode(tostring(id)) .. "\r\n"
@@ -105,5 +105,40 @@ function connect_external(host, port, id)
     _printf("Connected to tcp:host=%s,port=%d with id %s and bus guid %s", host, port, tostring(id), guid)
     return sock
 end
+
+local function sock_send(sock, sendbuf, data)
+end
+
+local function sock_receive(sock, sendbuf)
+end
+
+function new_tcp_connection(host, port)
+    local sock = adbus.socket.new(host, port)
+    local win32 = getlocalid():sub(1,1) == "S"
+    local sock
+    if win32 then
+        sock = connect_external(host, port, getlocalid())
+    else
+        sock = connect_dbus_cookie_sha1(host, port, getlocalid())
+    end
+
+    local sendbuf = {}
+    sock:settimeout(0)
+
+    local conn = connection.new(function(data)
+        sock_send(sock, sendbuf, data) 
+    end)
+
+    conn:set_send_callback(function()
+        return sock_receive(sock, sendbuf)
+    end)
+
+    return conn
+end
+
+adbus.connection.new(adbus.new_tcp_socket("localhost", 12345))
+
+sock:receive()
+sock:send("foo")
 
 

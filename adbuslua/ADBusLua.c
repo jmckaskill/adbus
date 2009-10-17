@@ -1,26 +1,27 @@
-// vim: ts=4 sw=4 sts=4 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #ifdef WIN32
 #define WINVER 0x500
@@ -35,12 +36,15 @@
 #include "Match.h"
 #include "Message.h"
 #include "Object.h"
+#include "Socket.h"
+
+#include "adbus/Interface.h"
 
 #include <assert.h>
 
 #define LADBUSCONNECTION_HANDLE "LADBusConnection"
-#define LADBUSOBJECT_HANDLE     "LADBusObject"
-#define LADBUSINTERFACE_HANDLE  "LADBusInterface"
+#define LADBUSINTERFACE_HANDLE  "ADBusInterface*"
+#define LADBUSSOCKET_HANDLE "LADBusSocket"
 
 // ----------------------------------------------------------------------------
 
@@ -56,11 +60,79 @@ void LADBusPrintDebug(const char* format, ...)
 
 // ----------------------------------------------------------------------------
 
+static int CheckFields(
+        lua_State*         L,
+        int                table,
+        uint               allowNumbers,
+        const char*        valid[])
+{
+    lua_pushnil(L);
+    while (lua_next(L, table) != 0) {
+        // Key is at keyIndex -- leave between loops
+        // Value is at valueIndex -- pop after loop
+        int keyIndex   = lua_gettop(L) - 1;
+#ifndef NDEBUG
+        int valueIndex = keyIndex + 1;
+#endif
+
+        if (lua_type(L, keyIndex) == LUA_TNUMBER) {
+            if (allowNumbers) {
+                assert(lua_gettop(L) == valueIndex);
+                lua_settop(L, keyIndex);
+                continue;
+            } else {
+                return -1;
+            }
+        }
+
+        // lua_next doesn't like lua_tolstring if the type is in fact a number
+        if (lua_type(L, keyIndex) != LUA_TSTRING) {
+            return -1;
+        }
+
+        size_t keySize;
+        const char* key = lua_tolstring(L, keyIndex, &keySize);
+
+        int i = 0;
+        while (valid[i] != NULL) {
+            if (strncmp(key, valid[i], keySize) == 0)
+                break;
+            i++;
+        }
+
+        if (valid[i] == NULL) {
+            return -1;
+        }
+
+        assert(lua_gettop(L) == valueIndex);
+        lua_settop(L, keyIndex);
+    }
+    return 0;
+}
+
+int LADBusCheckFields(
+        lua_State*         L,
+        int                table,
+        const char*        valid[])
+{
+    return CheckFields(L, table, 0, valid);
+}
+
+int LADBusCheckFieldsAllowNumbers(
+        lua_State*         L,
+        int                table,
+        const char*        valid[])
+{
+    return CheckFields(L, table, 1, valid);
+}
+
+// ----------------------------------------------------------------------------
+
 LADBUS_API void LADBusPushExistingConnection(lua_State* L, struct ADBusConnection* connection)
 {
   struct LADBusConnection* c = LADBusPushNewConnection(L);
   c->connection = connection;
-  c->marshaller = ADBusCreateMarshaller();
+  c->message = ADBusCreateMessage();
   c->existing_connection = 1;
 }
 
@@ -76,27 +148,30 @@ struct LADBusConnection* LADBusPushNewConnection(lua_State* L)
 
 // ----------------------------------------------------------------------------
 
-struct LADBusObject* LADBusPushNewObject(lua_State* L)
+struct LADBusSocket* LADBusPushNewSocket(lua_State* L)
 {
-    void* udata = lua_newuserdata(L, sizeof(struct LADBusObject));
-    luaL_getmetatable(L, LADBUSOBJECT_HANDLE);
+    void* udata = lua_newuserdata(L, sizeof(struct LADBusSocket));
+    luaL_getmetatable(L, LADBUSSOCKET_HANDLE);
     lua_setmetatable(L, -2);
-    return (struct LADBusObject*) udata;
+    return (struct LADBusSocket*) udata;
 }
 
 // ----------------------------------------------------------------------------
 
-struct LADBusInterface* LADBusPushNewInterface(lua_State* L)
+void LADBusPushNewInterface(
+        lua_State*             L,
+        struct ADBusInterface* interface)
 {
-    void* udata = lua_newuserdata(L, sizeof(struct LADBusInterface));
+    void* udata = lua_newuserdata(L, sizeof(struct ADBusInterface*));
     luaL_getmetatable(L, LADBUSINTERFACE_HANDLE);
     lua_setmetatable(L, -2);
-    return (struct LADBusInterface*) udata;
+    struct ADBusInterface** pinterface = (struct ADBusInterface**) udata;
+    *pinterface = interface;
 }
 
 // ----------------------------------------------------------------------------
 
-struct LADBusConnection*    LADBusCheckConnection(lua_State* L, int index)
+struct LADBusConnection* LADBusCheckConnection(lua_State* L, int index)
 {
     void* udata = luaL_checkudata(L, index, LADBUSCONNECTION_HANDLE);
     return (struct LADBusConnection*) udata;
@@ -104,18 +179,35 @@ struct LADBusConnection*    LADBusCheckConnection(lua_State* L, int index)
 
 // ----------------------------------------------------------------------------
 
-struct LADBusObject* LADBusCheckObject(lua_State* L, int index)
+struct LADBusSocket* LADBusCheckSocket(lua_State* L, int index)
 {
-    void* udata = luaL_checkudata(L, index, LADBUSOBJECT_HANDLE);
-    return (struct LADBusObject*) udata;
+    void* udata = luaL_checkudata(L, index, LADBUSSOCKET_HANDLE);
+    return (struct LADBusSocket*) udata;
 }
 
 // ----------------------------------------------------------------------------
 
-struct LADBusInterface* LADBusCheckInterface(lua_State* L, int index)
+struct ADBusObject* LADBusCheckObject(
+        lua_State*               L,
+        struct LADBusConnection* connection,
+        int                      index)
+{
+    size_t pathSize;
+    const char* path = luaL_checklstring(L, index, &pathSize);
+    struct ADBusObject* object = ADBusGetObject(connection->connection, path, pathSize);
+    if (!object) {
+        luaL_error(L, "The path given does not refer to a valid object");
+        return NULL;
+    }
+    return object;
+}
+
+// ----------------------------------------------------------------------------
+
+struct ADBusInterface* LADBusCheckInterface(lua_State* L, int index)
 {
     void* udata = luaL_checkudata(L, index, LADBUSINTERFACE_HANDLE);
-    return (struct LADBusInterface*) udata;
+    return *(struct ADBusInterface**) udata;
 }
 
 // ----------------------------------------------------------------------------
@@ -125,7 +217,7 @@ struct LADBusInterface* LADBusCheckInterface(lua_State* L, int index)
 #include <windows.h>
 #include <sddl.h>
 
-int LADBusGetSid(lua_State* L)
+static int GetSid(lua_State* L)
 {
   HANDLE process_token = NULL;
   TOKEN_USER *token_user = NULL;
@@ -180,7 +272,7 @@ failed:
 #include <unistd.h>
 #include <sys/types.h>
 
-int LADBusGetEuid(lua_State* L)
+static int GetEuid(lua_State* L)
 {
     uid_t id = geteuid();
     char buf[32];
@@ -205,12 +297,13 @@ static const luaL_Reg kConnectionReg[] = {
     {"is_connected_to_bus", &LADBusIsConnectedToBus},
     {"unique_service_name", &LADBusUniqueServiceName},
     {"next_serial", &LADBusNextSerial},
-    {"add_bus_match", &LADBusAddBusMatch},
-    {"remove_bus_match", &LADBusRemoveMatch},
+    {"next_match_id", &LADBusNextMatchId},
     {"add_match", &LADBusAddMatch},
     {"remove_match", &LADBusRemoveMatch},
     {"add_object", &LADBusAddObject},
     {"send_message", &LADBusSendMessage},
+    {"bind_interface", &LADBusBindInterface},
+    {"emit", &LADBusEmit},
     {NULL, NULL},
 };
 
@@ -218,26 +311,24 @@ static const luaL_Reg kConnectionReg[] = {
 static const luaL_Reg kInterfaceReg[] = {
     {"new", &LADBusCreateInterface},
     {"__gc", &LADBusFreeInterface},
-    {"name", &LADBusInterfaceName},
     {NULL, NULL},
 };
 
-// Reg for adbuslua_core.object
-static const luaL_Reg kObjectReg[] = {
-    {"__gc", &LADBusRemoveObject},
-    {"bind_interface", &LADBusBindInterface},
-    {"emit", &LADBusEmit},
-    {NULL, NULL},
+// Reg for adbuslua_core.socket
+static const luaL_Reg kSocketReg[] = {
+    {"new_tcp", &LADBusNewTcpSocket},
+    {"__gc", &LADBusCloseSocket},
+    {"send", &LADBusSocketSend},
+    {"receive", &LADBusSocketRecv},
+    {NULL, NULL}
 };
 
 // Reg for adbuslua_core
 static const luaL_Reg kCoreReg[] = {
-    {"send_error", &LADBusSendError},
-    {"send_reply", &LADBusSendReply},
 #ifdef WIN32
-    {"getlocalid", &LADBusGetSid},
+    {"getlocalid", &GetSid},
 #else
-    {"getlocalid", &LADBusGetEuid},
+    {"getlocalid", &GetEuid},
 #endif
     {NULL, NULL},
 };
@@ -261,11 +352,17 @@ static void CreateMetatable(
 
 LADBUS_API int luaopen_adbuslua_core(lua_State* L)
 {
+#ifdef WIN32
+    WSADATA wsadata;
+    int err = WSAStartup(MAKEWORD(2,2), &wsadata);
+    if (err)
+        return luaL_error(L, "WSAStartup error %d", err);
+#endif
     luaL_register(L, "adbuslua_core", kCoreReg);
     int libTable = lua_gettop(L);
     CreateMetatable(L, libTable, LADBUSCONNECTION_HANDLE, "connection", kConnectionReg);
     CreateMetatable(L, libTable, LADBUSINTERFACE_HANDLE, "interface", kInterfaceReg);
-    CreateMetatable(L, libTable, LADBUSOBJECT_HANDLE, "object", kObjectReg);
+    CreateMetatable(L, libTable, LADBUSSOCKET_HANDLE, "socket", kSocketReg);
     assert(lua_gettop(L) == libTable);
     return 1;
 }

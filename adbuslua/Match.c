@@ -1,26 +1,27 @@
-// vim: ts=4 sw=4 sts=4 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 
 #include "Match.h"
@@ -37,133 +38,172 @@
 
 // ----------------------------------------------------------------------------
 
-static const char* kValidTypes[] = {
-    "invalid",
-    "method_call",
-    "method_return",
-    "error",
-    "signal",
-    NULL,
-};
-
-static const char kTypesString[] 
-    = "'method_call', 'method_return', 'error' and 'signal'";
-
-// ----------------------------------------------------------------------------
-
-static int UnpackEnum(
+static uint UnpackOptionalEnumField(
         lua_State* L,
         int offset,
         const char* fieldName,
         const char** types,
-        const char* typesString)
+        const char* typesString,
+        int*        value)
 {
-    if (!lua_isstring(L, offset)){
-        luaL_error(L, "Value for field %s in the match registration is "
-                "not a string",
-                fieldName);
-        return -1;
-    }
+    uint haveField = 0;
+    lua_getfield(L, offset, fieldName);
+    if (lua_isnil(L, -1)) {
+        // Field is not filled out, but since its optional we ignore it
 
-    size_t valueSize;
-    const char* value = lua_tolstring(L, offset, &valueSize);
-    int i = 0;
-    const char* compareKey = types[i];
-    while (compareKey != NULL){
-        if (strncmp(value, compareKey, valueSize) == 0){
-            return i;
+    } else if (lua_isstring(L, -1)) {
+        int i = 0;
+        const char* string = lua_tostring(L, offset);
+        const char* compareKey = types[i];
+        while (compareKey != NULL || strcmp(string, compareKey) != 0)
+        {
+            compareKey = types[++i];
         }
-        compareKey = types[++i];
+
+        if (compareKey == NULL) {
+            luaL_error(L, "Invalid value for field %s in the match "
+                              "registration. Valid values are %s.",
+                              fieldName, typesString);
+            return 0;
+        }
+
+        *value = i;
+        haveField = 1;
+
+    } else {
+        luaL_error(L, "Invalid value for field %s in the match "
+                          "registration. Valid values are %s.",
+                          fieldName, typesString);
+        return 0;
+
     }
-    luaL_error(L, "Invalid value for field %s in the match registration."
-            " Valid values are %s.",
-            fieldName, typesString);
-    return -1;
+    lua_pop(L, 1);
+    return haveField;
 }
 
 // ----------------------------------------------------------------------------
 
-static unsigned int UnpackBoolean(
+static uint UnpackOptionalUInt32Field(
         lua_State* L,
         int offset,
-        const char* fieldName)
+        const char* fieldName,
+        uint32_t* u)
 {
-    if (!lua_isboolean(L, offset)){
+    uint haveField = 0;
+    lua_getfield(L, offset, fieldName);
+    if (lua_isnil(L, -1)) {
+        // Field is not filled out, but since its optional we ignore it
+
+    } else if (lua_isnumber(L, -1)) {
+        *u = (uint32_t) lua_tonumber(L, -1);
+        haveField = 1;
+
+    } else {
+        luaL_error(L, "Value for field %s in the match registration is "
+                "not a number",
+                fieldName);
+    }
+    lua_pop(L, 1);
+    return haveField;
+}
+
+// ----------------------------------------------------------------------------
+
+static uint UnpackOptionalBooleanField(
+        lua_State* L,
+        int offset,
+        const char* fieldName,
+        uint* b)
+{
+    uint haveField = 0;
+    lua_getfield(L, offset, fieldName);
+    if (lua_isnil(L, -1)) {
+        // Field is not filled out, but since its optional we ignore it
+
+    } else if (lua_isboolean(L, -1)) {
+        *b = lua_toboolean(L, -1);
+        haveField = 1;
+
+    } else {
         luaL_error(L, "Value for field %s in the match registration is "
                 "not a boolean",
                 fieldName);
         return 0;
     }
-
-    return lua_toboolean(L, offset);
+    lua_pop(L, 1);
+    return haveField;
 }
 
 // ----------------------------------------------------------------------------
 
-static void UnpackString(
+static uint UnpackOptionalStringField(
         lua_State* L,
         int offset,
         const char* fieldName,
         const char** string,
         int* size)
 {
-    if (!lua_isstring(L, offset)) {
-        luaL_error(L, "Value for field %s in the match registration is "
-                "not a string",
-                fieldName);
-        return;
-    }
+    uint haveField = 0;
+    lua_getfield(L, offset, fieldName);
+    if (lua_isnil(L, -1)) {
+        // Field is not filled out, but since its optional we ignore it
 
-    size_t s;
-    *string = lua_tolstring(L, offset, &s);
-    *size = s;
+    } else if (lua_isstring(L, -1)) {
+        size_t size2;
+        *string = lua_tolstring(L, -1, &size2);
+        *size = (int) size2;
+        haveField = 1;
+
+    } else {
+        luaL_error(L, "Value for field %s in the match registration is "
+                   "not a string",
+                   fieldName);
+        return 0;
+    }
+    lua_pop(L, 1);
+    return haveField;
 }
 
 // ----------------------------------------------------------------------------
 
-static void UnpackCallback(
-        lua_State* L,
-        int offset,
-        const char* fieldName,
-        struct LADBusData* data)
+static uint UnpackCallbackField(
+        lua_State*          L,
+        int                 offset,
+        const char*         fieldName,
+        int*                callbackRef)
 {
-    if (lua_istable(L, offset)) {
-        if (lua_objlen(L, offset) < 1)
-          lua_pushnil(L);
-        else
-          lua_rawgeti(L, offset, 1);
-
-        if (lua_objlen(L, offset) < 2)
-          lua_pushnil(L);
-        else
-          lua_rawgeti(L, offset, 2);
-
-        if (!lua_isfunction(L, -2)) {
-            luaL_error(L, "Value for field %s in the match registration "
-                    "is not a function or table with a function as key 1",
-                    fieldName);
-            return;
-        }
-
-        lua_pushvalue(L, -2);
-        data->ref[0] = luaL_ref(L, LUA_REGISTRYINDEX);
-        if (!lua_isnil(L, -1)) {
-            lua_pushvalue(L, -1);
-            data->ref[1] = luaL_ref(L, LUA_REGISTRYINDEX);
-        }
-
-        lua_pop(L, 2);
-
-    } else if (lua_isfunction(L, offset)) {
-        lua_pushvalue(L, offset);
-        data->ref[0] = luaL_ref(L, LUA_REGISTRYINDEX);
+    uint haveField = 0;
+    lua_getfield(L, offset, fieldName);
+    if (lua_isfunction(L, -1)) {
+        *callbackRef = LADBusGetRef(L, -1);
+        haveField = 1;
 
     } else {
-        luaL_error(L, "Value for field %s in the match registration is "
-                "not a function or table with a function as key 1",
+        luaL_error(L, "Value for the required field %s in the match registration is "
+                "missing or not a function",
                 fieldName);
-        return;
+        return 0;
     }
+    lua_pop(L, 1);
+    return haveField;
+}
+
+// ----------------------------------------------------------------------------
+
+static uint UnpackOptionalObjectField(
+        lua_State*            L,
+        int                   offset,
+        const char*           fieldName,
+        int*                  ref)
+{
+  uint haveField = 0;
+  lua_getfield(L, offset, fieldName);
+  if (!lua_isnil(L, -1)) {
+      *ref = LADBusGetRef(L, -1);
+      haveField = 1;
+  }
+  lua_pop(L, 1);
+  return haveField;
 }
 
 // ----------------------------------------------------------------------------
@@ -178,162 +218,141 @@ static const char* kMatchFields[] = {
   "member",
   "error_name",
   "remove_on_first_match",
+  "add_match_to_bus_daemon",
   "callback",
+  "object",
+  "id",
   NULL
 };
 
-static void UnpackMatch(
+static const char* kValidTypes[] = {
+    "invalid",
+    "method_call",
+    "method_return",
+    "error",
+    "signal",
+    NULL,
+};
+
+static const char kTypesString[]
+    = "'method_call', 'method_return', 'error' and 'signal'";
+
+
+static int UnpackMatch(
         lua_State* L,
         int offset,
         struct ADBusMatch* match,
-        struct LADBusData* data,
-        unsigned int allowRemove)
+        struct LADBusData* data)
 {
     if (!lua_istable(L, offset)){
-        luaL_error(L, "Invalid argument %d - must be a table detailing "
+        return luaL_error(L, "Invalid argument %d - must be a table detailing "
                 "the match registration.",
                 offset);
-        return;
     }
 
-    LADBusCheckFields(L, offset, 0, kMatchFields);
-
-
-    lua_getfield(L, offset, "type");
-    if (!lua_isnil(L, -1)) {
-        int i = UnpackEnum(L,
-                           lua_gettop(L),
-                           "type",
-                           kValidTypes,
-                           kTypesString);
-        match->type = (enum ADBusMessageType) i;
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "reply_serial");
-    if (!lua_isnil(L, -1)) {
-        if (!lua_isnumber(L, -1)) {
-            luaL_error(L, "Value for field reply_serial in the match registration is "
-                    "not a number");
-            return;
-        }
-
-        match->replySerial = (uint32_t) lua_tonumber(L, -1);
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "sender");
-    if (!lua_isnil(L, -1)) {
-        UnpackString(L,
-                     lua_gettop(L),
-                     "sender",
-                     &match->sender,
-                     &match->senderSize);
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "destination");
-    if (!lua_isnil(L, -1)) {
-        UnpackString(L,
-                     lua_gettop(L),
-                     "destination",
-                     &match->destination,
-                     &match->destinationSize);
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "path");
-    if (!lua_isnil(L, -1)) {
-        UnpackString(L,
-                     lua_gettop(L),
-                     "path",
-                     &match->path,
-                     &match->pathSize);
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "member");
-    if (!lua_isnil(L, -1)) {
-        UnpackString(L,
-                     lua_gettop(L),
-                     "member",
-                     &match->member,
-                     &match->memberSize);
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "error_name");
-    if (!lua_isnil(L, -1)) {
-        UnpackString(L,
-                     lua_gettop(L),
-                     "error_name",
-                     &match->errorName,
-                     &match->errorNameSize);
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "remove_on_first_match");
-    if (!lua_isnil(L, -1)) {
-        if (!allowRemove) {
-          luaL_error(L, "The remove_on_first_match field is not supported for bus matches");
-          return;
-        }
-
-        match->removeOnFirstMatch 
-            = UnpackBoolean(L,
-                            lua_gettop(L),
-                            "remove_on_first_match");
-    }
-    lua_pop(L, 1);
-
-
-    lua_getfield(L, offset, "callback");
-    if (!lua_isnil(L, -1)) {
-        UnpackCallback(L,
-                       lua_gettop(L),
-                       "callback",
-                       data);
-    }
-    lua_pop(L, 1);
-
-
-
-
-    if (!data->ref[0]) {
-        luaL_error(L, "Missing required 'callback' field in match "
-                "registration");
-        return;
+    int err = LADBusCheckFields(L, offset, kMatchFields);
+    if (err) {
+        return luaL_error(L, "Invalid field in match table. Supported fields "
+                          "are 'type', 'id', 'sender', 'destination', 'interface', "
+                          "'reply_serial', 'path', 'member', 'error_name', "
+                          "'remove_on_first_match', 'add_match_to_bus_daemon', "
+                          "'object', and 'callback'.");
     }
 
+    int type = -1;
+    UnpackOptionalEnumField(L,
+                            offset,
+                            "type",
+                            kValidTypes,
+                            kTypesString,
+                            &type);
+    if (type > 0)
+        match->type = (enum ADBusMessageType) type;
+
+    UnpackOptionalUInt32Field(L,
+                              offset,
+                              "id",
+                              &match->id);
+
+    match->checkReplySerial = UnpackOptionalUInt32Field(L,
+                              offset,
+                              "reply_serial",
+                              &match->replySerial);
+
+    UnpackOptionalStringField(L,
+                              offset,
+                              "sender",
+                              &match->sender,
+                              &match->senderSize);
+
+    UnpackOptionalStringField(L,
+                              offset,
+                              "destination",
+                              &match->destination,
+                              &match->destinationSize);
+
+    UnpackOptionalStringField(L,
+                              offset,
+                              "path",
+                              &match->path,
+                              &match->pathSize);
+
+    UnpackOptionalStringField(L,
+                              offset,
+                              "member",
+                              &match->member,
+                              &match->memberSize);
+
+    UnpackOptionalStringField(L,
+                              offset,
+                              "error_name",
+                              &match->errorName,
+                              &match->errorNameSize);
+
+    UnpackOptionalBooleanField(L,
+                               offset,
+                               "add_match_to_bus_daemon",
+                               &match->addMatchToBusDaemon);
+
+    UnpackOptionalBooleanField(L,
+                               offset,
+                               "remove_on_first_match",
+                               &match->removeOnFirstMatch);
+
+    UnpackOptionalObjectField(L,
+                              offset,
+                              "object",
+                              &data->argument);
+
+    UnpackCallbackField(L,
+                        offset,
+                        "callback",
+                        &data->callback);
+
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-int LADBusAddBusMatch(lua_State* L)
+static void MatchCallback(struct ADBusCallDetails* details)
 {
-    struct LADBusConnection* c = LADBusCheckConnection(L, 1);
-    struct ADBusMatch match;
-    struct LADBusData data;
-    memset(&match, 0, sizeof(struct ADBusMatch));
-    memset(&data, 0, sizeof(struct LADBusData));
+    const struct LADBusData* data = (const struct LADBusData*) details->user1;
 
-    UnpackMatch(L, 2, &match, &data, 0);
-    match.addMatchToBusDaemon = 1;
-    match.callback = &LADBusMatchCallback;
+    lua_State* L = data->L;
+    int top = lua_gettop(L);
 
-    data.L = L;
-    LADBusSetupData(&data, &match.user);
+    LADBusPushRef(L, data->callback);
+    if (data->argument)
+        LADBusPushRef(L, data->argument);
 
-    int id = ADBusAddMatch(c->connection, &match);
-    lua_pushinteger(L, id);
-    return 1;
+    int err = LADBusPushMessage(L, details->message, details->arguments);
+    if (err) {
+        lua_settop(L, top);
+        return;
+    }
+
+    // function itself is not included in the arg count
+    lua_call(L, lua_gettop(L) - top - 1, 0);
 }
 
 // ----------------------------------------------------------------------------
@@ -341,19 +360,18 @@ int LADBusAddBusMatch(lua_State* L)
 int LADBusAddMatch(lua_State* L)
 {
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
+    struct LADBusData* data = LADBusCreateData();
+    data->L = L;
+
     struct ADBusMatch match;
-    struct LADBusData data;
-    memset(&match, 0, sizeof(struct ADBusMatch));
-    memset(&data, 0, sizeof(struct LADBusData));
+    ADBusMatchInit(&match);
 
-    UnpackMatch(L, 2, &match, &data, 1);
-    match.callback = &LADBusMatchCallback;
+    UnpackMatch(L, 2, &match, data);
+    match.callback = &MatchCallback;
+    match.user1 = &data->header;
 
-    data.L = L;
-    LADBusSetupData(&data, &match.user);
-
-    int id = ADBusAddMatch(c->connection, &match);
-    lua_pushinteger(L, id);
+    uint32_t id = ADBusAddMatch(c->connection, &match);
+    lua_pushnumber(L, id);
     return 1;
 }
 
@@ -362,7 +380,7 @@ int LADBusAddMatch(lua_State* L)
 int LADBusRemoveMatch(lua_State* L)
 {
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
-    int id = luaL_checkint(L, 2);
+    uint32_t id = (uint32_t) luaL_checknumber(L, 2);
 
     ADBusRemoveMatch(c->connection, id);
     return 0;
@@ -370,37 +388,14 @@ int LADBusRemoveMatch(lua_State* L)
 
 // ----------------------------------------------------------------------------
 
-int LADBusMatchCallback(
-        struct ADBusConnection*     connection,
-        int                         id,
-        struct ADBusUser*           user,
-        struct ADBusMessage*        message)
+int LADBusNextMatchId(lua_State* L)
 {
-    const struct LADBusData* data = LADBusCheckData(user);
+    struct LADBusConnection* c = LADBusCheckConnection(L, 1);
+    int id = ADBusNextMatchId(c->connection);
 
-    int top = lua_gettop(data->L);
-
-    int err = LADBusConvertMessageToLua(message, data->L);
-    if (err) return err;
-
-    lua_rawgeti(data->L, LUA_REGISTRYINDEX, data->ref[0]);
-    lua_insert(data->L, top + 1);
-    if (data->ref[1]) {
-        lua_rawgeti(data->L, LUA_REGISTRYINDEX, data->ref[1]);
-        lua_insert(data->L, top + 2);
-    }
-
-    lua_pushnumber(data->L, id);
-
-    // function itself is not included in the arg count
-    lua_call(data->L, lua_gettop(data->L) - top - 1, 0); 
-
-    return 0;
+    lua_pushinteger(L, id);
+    return 1;
 }
-
-// ----------------------------------------------------------------------------
-
-
 
 
 

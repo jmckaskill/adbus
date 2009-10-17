@@ -1,32 +1,36 @@
-// vim: ts=4 sw=4 sts=4 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #include "Object.h"
 
 #include "Data.h"
 #include "Interface.h"
 #include "Message.h"
+
+#include "adbus/Interface.h"
+#include "adbus/CommonMessages.h"
 
 #include <assert.h>
 
@@ -35,36 +39,26 @@
 
 int LADBusAddObject(lua_State* L)
 {
-    int argnum = lua_gettop(L);
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
     size_t nameSize;
     const char* name = luaL_checklstring(L, 2, &nameSize);
 
     struct ADBusObject* object = ADBusAddObject(c->connection, name, nameSize);
+    if (!object)
+        return luaL_error(L, "Failed to add object");
 
-    struct LADBusObject* lobject = LADBusPushNewObject(L);
-
-    lobject->object = object;
-    lobject->connection = c->connection;
-
-    lua_pushvalue(L, 1);
-    lobject->connectionRef = luaL_ref(L, LUA_REGISTRYINDEX);
-    lua_newtable(L);
-    lobject->interfaceRefTable = luaL_ref(L, LUA_REGISTRYINDEX);
-
-    assert(lua_gettop(L) == argnum + 1);
-    return 1;
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
 int LADBusRemoveObject(lua_State* L)
 {
-    struct LADBusObject* object = LADBusCheckObject(L, 1);
-    ADBusRemoveObject(object->connection, object->object);
+    struct LADBusConnection* c = LADBusCheckConnection(L, 1);
+    size_t nameSize;
+    const char* name = luaL_checklstring(L, 2, &nameSize);
+    ADBusRemoveObject(c->connection, name, nameSize);
 
-    luaL_unref(L, LUA_REGISTRYINDEX, object->connectionRef);
-    luaL_unref(L, LUA_REGISTRYINDEX, object->interfaceRefTable);
     return 0;
 }
 
@@ -72,39 +66,26 @@ int LADBusRemoveObject(lua_State* L)
 
 int LADBusBindInterface(lua_State* L)
 {
-    struct LADBusObject* object       = LADBusCheckObject(L, 1);
-    struct LADBusInterface* interface = LADBusCheckInterface(L, 2);
+    struct LADBusConnection* connection = LADBusCheckConnection(L, 1);
+    struct ADBusObject* object = LADBusCheckObject(L, connection, 2);
+    struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
 
-    struct LADBusData data;
-    memset(&data, 0, sizeof(struct LADBusData));
-    data.L = L;
+    struct LADBusData* data = LADBusCreateData();
+    data->L = L;
+    // If the user provides an object/argument then we need to add that as well
+    if (!lua_isnoneornil(L, 4))
+        data->argument = LADBusGetRef(L, 4);
 
     // We need a handle on the connection so that we can fill out
-    // _connectiondata in the message (so we can send replies)
-    lua_rawgeti(L, LUA_REGISTRYINDEX, object->connectionRef);
-    data.ref[LADBusConnectionBindRef] = luaL_ref(L, LUA_REGISTRYINDEX);
+    // _connectiondata in the message (so we can send delayed replies)
+    data->connection = LADBusGetRef(L, 1);
     
-    // We also need a handle on the interface to fill out _interfacedata (for
-    // replies as well)
-    lua_pushvalue(L, 2);
-    data.ref[LADBusInterfaceBindRef] = luaL_ref(L, LUA_REGISTRYINDEX);
+    // We also need a handle on the interface so that the interface is not
+    // destroyed until all objects that use the interface have been removed
+    data->interface = LADBusGetRef(L, 3);
 
-    if (!lua_isnoneornil(L, 3)){
-        // If the user provides an object then we need to add that as well
-        lua_pushvalue(L, 3);
-        data.ref[LADBusObjectBindRef] = luaL_ref(L, LUA_REGISTRYINDEX);
-    }
 
-    struct ADBusUser user;
-    LADBusSetupData(&data, &user);
-    ADBusBindInterface(object->object, interface->interface, &user);
-
-    // Store a copy of the interface object in our interfaceRefTable so the
-    // interface doesn't get collected until after the object is
-    lua_rawgeti(L, LUA_REGISTRYINDEX, object->interfaceRefTable);
-    lua_pushvalue(L, 2);
-    luaL_ref(L, -2);
-
+    ADBusBindInterface(object, interface, &data->header);
 
     return 0;
 }
@@ -114,38 +95,62 @@ int LADBusBindInterface(lua_State* L)
 int LADBusEmit(lua_State* L)
 {
     struct LADBusConnection* c  = LADBusCheckConnection(L, 1);
-    struct LADBusObject* o      = LADBusCheckObject(L, 2);
-    struct LADBusInterface* i   = LADBusCheckInterface(L, 3);
+    struct ADBusObject* object  = LADBusCheckObject(L, c, 2);
+    struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
     size_t signalSize;
     const char* signalstr = luaL_checklstring(L, 4, &signalSize);
 
     struct ADBusMember* signal = ADBusGetInterfaceMember(
-                i->interface,
+                interface,
                 ADBusSignalMember,
                 signalstr,
                 signalSize);
 
-    ADBusSetupSignalMarshaller(o->object, signal, c->marshaller);
+    if (!signal) {
+        return luaL_error(L, "Signal %s does not exist on the interface",
+                          signalstr);
+    }
 
-    if (lua_istable(L, 5)) {
+    ADBusSetupSignal(c->message, c->connection, object, signal);
 
-        int signatureSize;
-        const char* signature = 
-            ADBusFullMemberSignature(signal, ADBusOutArgument, &signatureSize);
+    uint haveargs = lua_istable(L, 5) && lua_objlen(L, 5) > 0;
+    uint havesig  = lua_istable(L, 6) && lua_objlen(L, 6) > 0;
+    if (haveargs && havesig) {
+        // Check the signature table
+        int argnum = lua_objlen(L, 5);
+        int signum = lua_objlen(L, 6);
+        if (argnum != signum) {
+            return luaL_error(L, "Mismatch between signature and arguments");
+        }
 
-        LADBusConvertLuaToMessage(
-                L,
-                5,
-                c->marshaller,
-                signature,
-                signatureSize);
+        struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(c->message);
+        for (int i = 1; i <= argnum; ++i) {
+            // Get the argument signature
+            lua_rawgeti(L, 5, i);
+            size_t sigsize;
+            const char* signature = luaL_checklstring(L, -1, &sigsize);
+
+            // Marshall the argument
+            lua_rawgeti(L, 6, i);
+            int err = LADBusMarshallArgument(L,
+                                             lua_gettop(L),
+                                             signature,
+                                             sigsize,
+                                             marshaller);
+            if (err) {
+                return luaL_error(L, "Error on marshalling argument %d", i);
+            }
+
+            // Pop the argument and signature
+            lua_pop(L, 2);
+        }
         
-    } else if (!lua_isnoneornil(L, 5)) {
+    } else if (haveargs || havesig) {
         return luaL_error(L, "The fifth argument must be nil or a table "
                 "comprising the arguments");
     }
 
-    ADBusConnectionSendMessage(c->connection, c->marshaller);
+    ADBusSendMessage(c->connection, c->message);
 
     return 0;
 }
@@ -155,66 +160,123 @@ int LADBusEmit(lua_State* L)
 // For the callbacks, we get the function to call from the member data and the
 // first argument from the bind data if its valid
 
-static int CallCallback(
-        struct ADBusConnection*     connection,
-        const struct ADBusUser*     bindData,
-        const struct ADBusMember*   member,
-        struct ADBusMessage*        message,
-        int                         refIndex)
+void LADBusMethodCallback(struct ADBusCallDetails* details)
 {
-    
-    const struct ADBusUser* memberData = ADBusMemberUserData(member);
+    const struct LADBusData* method_data = (const struct LADBusData*) details->user1;
+    const struct LADBusData* bind_data = (const struct LADBusData*) details->user2;
 
-    const struct LADBusData* mdata = LADBusCheckData(memberData);
-    const struct LADBusData* bdata = LADBusCheckData(bindData);
+    assert(method_data
+        && bind_data
+        && method_data->L == bind_data->L
+        && method_data->callback);
 
-    assert(mdata);
-
-    lua_State* L = mdata->L;
+    lua_State* L = method_data->L;
     int top = lua_gettop(L);
 
-    lua_rawgeti(L, LUA_REGISTRYINDEX, mdata->ref[refIndex]);
+    LADBusPushRef(L, method_data->callback);
     assert(lua_isfunction(L, -1));
-    if (bdata->ref[LADBusObjectBindRef]) {
-        lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[LADBusObjectBindRef]);
-    }
+    if (bind_data->argument)
+        LADBusPushRef(L, bind_data->argument);
 
-    int err = LADBusConvertMessageToLua(message, L);
+
+    int err = LADBusPushMessage(L, details->message, details->arguments);
     if (err) {
         lua_settop(L, top);
-        return err;
+        return;
     }
+
     // Now we need to set a few fields in the message for use with replies
     int messageIndex = lua_gettop(L);
-    lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[LADBusConnectionBindRef]);
-    lua_setfield(L, messageIndex, "_connectiondata");
+    LADBusPushRef(L, bind_data->connection);
+    lua_setfield(L, messageIndex, "_connection");
 
-    lua_rawgeti(L, LUA_REGISTRYINDEX, bdata->ref[LADBusInterfaceBindRef]);
-    lua_setfield(L, messageIndex, "_interfacedata");
+    LADBusPushRef(L, bind_data->returnSignature);
+    lua_setfield(L, messageIndex, "_return_signature");
+
+    // function itself is not included in arg count
+    lua_call(L, lua_gettop(L) - top - 1, 1);
+
+    // If the function returns a message, we pack it off and send it back
+    // via the call details mechanism
+    if (lua_istable(L, top + 1) && details->returnMessage) {
+        LADBusMarshallMessage(L, top + 1, details->returnMessage);
+        details->manualReply = 0;
+    } else {
+        details->manualReply = 1;
+    }
+    lua_pop(L, 1);
+
+}
+
+// ----------------------------------------------------------------------------
+
+void LADBusGetPropertyCallback(struct ADBusCallDetails* details)
+{
+    const struct LADBusData* method_data = (const struct LADBusData*) details->user1;
+    const struct LADBusData* bind_data = (const struct LADBusData*) details->user2;
+
+    assert(method_data
+        && bind_data
+        && method_data->L == bind_data->L
+        && method_data->callback);
+
+    lua_State* L = method_data->L;
+    int top = lua_gettop(L);
+
+    LADBusPushRef(L, method_data->callback);
+    assert(lua_isfunction(L, -1));
+    if (bind_data->argument)
+        LADBusPushRef(L, bind_data->argument);
+
+    // function itself is not included in arg count
+    lua_call(L, lua_gettop(L) - top - 1, 1);
+
+    LADBusPushRef(L, method_data->propertyType);
+    assert(lua_isstring(L, -1));
+    size_t sigsize;
+    const char* signature = lua_tolstring(L, -1, &sigsize);
+
+    LADBusMarshallArgument(
+            L,
+            -2,
+            signature,
+            (int) sigsize,
+            details->propertyMarshaller);
+
+    lua_pop(L, 2); // pop the signature and value
+}
+
+// ----------------------------------------------------------------------------
+
+void LADBusSetPropertyCallback(struct ADBusCallDetails* details)
+{
+    const struct LADBusData* method_data = (const struct LADBusData*) details->user1;
+    const struct LADBusData* bind_data = (const struct LADBusData*) details->user2;
+
+    assert(method_data
+        && bind_data
+        && method_data->L == bind_data->L
+        && method_data->callback);
+
+    lua_State* L = method_data->L;
+    int top = lua_gettop(L);
+
+    LADBusPushRef(L, method_data->callback);
+    assert(lua_isfunction(L, -1));
+    if (bind_data->argument)
+        LADBusPushRef(L, bind_data->argument);
+
+    int err = LADBusPushArgument(L, details->propertyIterator);
+    if (err) {
+        lua_settop(L, top);
+        return;
+    }
 
     // function itself is not included in arg count
     lua_call(L, lua_gettop(L) - top - 1, 0);
-
-    return 0;
 }
 
-// ----------------------------------------------------------------------------
 
-int LADBusMethodCallback(
-        struct ADBusConnection*     connection,
-        const struct ADBusUser*     bindData,
-        const struct ADBusMember*   member,
-        struct ADBusMessage*        message)
-{
-    return CallCallback(
-            connection,
-            bindData,
-            member,
-            message,
-            LADBusMethodRef);
-}
-
-// ----------------------------------------------------------------------------
 
 
 

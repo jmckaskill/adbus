@@ -1,26 +1,27 @@
-// vim: ts=4 sw=4 sts=4 et
-//
-// Copyright (c) 2009 James R. McKaskill
-//
-// Permission is hereby granted, free of charge, to any person obtaining a
-// copy of this software and associated documentation files (the "Software"),
-// to deal in the Software without restriction, including without limitation
-// the rights to use, copy, modify, merge, publish, distribute, sublicense,
-// and/or sell copies of the Software, and to permit persons to whom the
-// Software is furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-// DEALINGS IN THE SOFTWARE.
-//
-// ----------------------------------------------------------------------------
+/* vim: ts=4 sw=4 sts=4 et
+ *
+ * Copyright (c) 2009 James R. McKaskill
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * ----------------------------------------------------------------------------
+ */
 
 #include "Data.h"
 
@@ -29,66 +30,65 @@
 #include <assert.h>
 #include <stdlib.h>
 
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
 
-void LADBusSetupData(const struct LADBusData* data, struct ADBusUser* user)
+static void Unref(lua_State* L, int ref)
 {
-    ADBusUserInit(user);
-    user->data = malloc(sizeof(struct LADBusData));
-    user->size = sizeof(struct LADBusData);
-    user->clone = &LADBusCloneData;
-    user->free  = &LADBusFreeData;
-    memcpy(user->data, data, sizeof(struct LADBusData));
+    if (!L || !ref)
+        return;
+    luaL_unref(L, LUA_REGISTRYINDEX, ref);
+}
+
+static void FreeData(struct ADBusUser* user)
+{
+    if (!user)
+        return;
+    struct LADBusData* u = (struct LADBusData*) user;
+    Unref(u->L, u->callback);
+    Unref(u->L, u->argument);
+    Unref(u->L, u->connection);
+    Unref(u->L, u->interface);
+    Unref(u->L, u->propertyType);
+    Unref(u->L, u->returnSignature);
+    free(u);
 }
 
 // ----------------------------------------------------------------------------
 
-void LADBusCloneData(const struct ADBusUser* from, struct ADBusUser* to)
+#define NEW(STRUCT) ((STRUCT*) calloc(1, sizeof(STRUCT)))
+
+struct LADBusData* LADBusCreateData()
 {
-    const struct LADBusData* dfrom = LADBusCheckData(from);
-    LADBusSetupData(dfrom, to); 
-    struct LADBusData* dto = (struct LADBusData*) to->data;
-    if (dfrom->L) {
-        for (int i = 0; i < LADBUSDATA_REF_NUMBER; ++i) {
-            if (!dfrom->ref[i])
-                continue;
-            lua_rawgeti(dfrom->L, LUA_REGISTRYINDEX, dfrom->ref[i]);
-            dto->ref[i] = luaL_ref(dfrom->L, LUA_REGISTRYINDEX);
-            assert(dto->ref[i] != dfrom->ref[i]);
-            lua_rawgeti(dfrom->L, LUA_REGISTRYINDEX, dfrom->ref[i]);
-            lua_rawgeti(dto->L, LUA_REGISTRYINDEX, dto->ref[i]);
-            assert(dto->L == dfrom->L);
-            assert(lua_type(dto->L, -1) == lua_type(dto->L, -2));
-            assert(lua_rawequal(dto->L, -1, -2));
-            lua_pop(dto->L, 2);
-        }
-    }
+    struct LADBusData* data = NEW(struct LADBusData);
+    data->header.free  = &FreeData;
+    return data;
 }
 
 // ----------------------------------------------------------------------------
 
-void LADBusFreeData(struct ADBusUser* user)
+void LADBusPushRef(lua_State* L, int ref)
 {
-    const struct LADBusData* u = LADBusCheckData(user);
-    if (u->L) {
-        for (int i = 0; i < LADBUSDATA_REF_NUMBER; ++i) {
-            if (u->ref[i])
-                luaL_unref(u->L, LUA_REGISTRYINDEX, u->ref[i]);
-        }
-    }
-
-    free(user->data);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
 }
 
 // ----------------------------------------------------------------------------
 
-const struct LADBusData* LADBusCheckData(const struct ADBusUser* user)
+int LADBusGetRef(lua_State* L, int index)
 {
-    if (!user || !user->data)
-        return NULL;
-
-    assert(user->size == sizeof(struct LADBusData) && user->data);
-    return (struct LADBusData*) user->data;
+    lua_pushvalue(L, index);
+    return luaL_ref(L, LUA_REGISTRYINDEX);
 }
 
 // ----------------------------------------------------------------------------
+
+int LADBusCopyRef(lua_State* L, int ref)
+{
+    LADBusPushRef(L, ref);
+    int new_ref = LADBusGetRef(L, -1);
+    lua_pop(L, 1);
+    return new_ref;
+}
+
 

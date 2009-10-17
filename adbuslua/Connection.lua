@@ -3,40 +3,45 @@
 
 local adbuslua_core = require("adbuslua_core")
 local string        = require("string")
-local socket        = require("socket")
+local table         = require("table")
 local print         = _G.print
 local unpack        = _G.unpack
 local setmetatable  = _G.setmetatable
+local assert        = _G.assert
 
 module("adbuslua")
 
 interface     = adbuslua_core.interface
 object        = adbuslua_core.object
-send_reply    = adbuslua_core.send_reply
-send_error    = adbuslua_core.send_error
 
 connection = {}
 connection.__index = connection
 
-
-
-
-function connection.new(socket)
+object = {}
+object.__index = object
+function connection.new(socket, debug)
     local self = {}
     setmetatable(self, connection)
-    self._socket = socket
-    self._connection = adbuslua_core.connection.new()
 
-    self._connection:set_send_callback(function(data) self:_send(data) end)
-    self._socket:settimeout(0)
-    self._tosend = ""
+    self._connection = adbuslua_core.connection.new(debug)
+    self._socket     = socket;
+
+    self._connection:set_send_callback(function(data)
+        self._socket:send(data)
+    end)
 
     return self
 end
 
+function new_tcp_connection(host, port, debug)
+    local sock = adbuslua_core.socket.new_tcp(host, port)
+    local connection = connection.new(sock, debug)
+    return connection
+end
+
 function connection:connect_to_bus()
-    self._connection:connect_to_bus(function() self:_connected_to_bus() end)
-    -- connected callback with pull us out
+    self._connection:connect_to_bus(function() self._yield = true end)
+    -- connected callback will pull us out
     self:process_messages()
 end
 
@@ -52,52 +57,95 @@ function connection:next_serial()
     return self._connection:next_serial()
 end
 
+function object:__gc()
+    self._connection:remove_object(self._path)
+end
+
+function object:bind(interface)
+    self._connection:bind_interface(self._path, interface)
+end
+
+function object:emit(interface, signal_name, ...)
+    self._connection:emit(self._path,
+                          interface,
+                          signal_name,
+                          {...},
+                          interface._signal_signature(signal_name))
+end
+
 function connection:add_object(path)
-    return self._connection:add_object(path)
+    self._connection:add_object(path)
+
+    local object = {}
+    setmetatable(object, object_mt)
+    object._connection = self._connection
+    object._path = path
+    return object
 end
 
 function connection:process_messages()
     self._yield = false
     self._yield_match = nil
-    self:_process_messages()
+    while not self._yield do
+        local data = self._socket:receive()
+        self._connection:parse(data)
+    end
 end
 
 function connection:process_until_match(match)
     self._yield = false
     self._yield_match = match
-    self:_process_messages()
+    while not self._yield do
+        local data = self._socket:receive()
+        self._connection:parse(data)
+    end
 end
 
-function connection:add_match(registration)
-    registration.callback = {
-        connection._match_callback,
-        {self, registration.callback, registration.unpack_message}
-    }
-    registration.unpack_message = nil
-
-    return self._connection:add_match(registration)
+function connection:_check_yield(id)
+    if id == self._yield_match then
+        self._yield = true
+    end
 end
+
+function connection:add_match(reg)
+    local id = self._connection:next_match_id()
+    local func = reg.callback
+    reg.id = id
+
+    if reg.unpack_message or reg.unpack_message == nil then
+        reg.callback = function(object, message)
+            if message.type == "error" then
+                func(object, nil, message.error_name, unpack(message))
+            else
+                func(object, unpack(message))
+            end
+
+            self._check_yield(id)
+        end
+
+    else
+        reg.callback = function(object, message)
+            func(object, message)
+            self:_check_yield(id)
+        end
+
+    end
+
+    -- Get rid of unpack_message as the underlying c library doesn't want to
+    -- know about it
+    reg.unpack_message = nil
+
+    self._connection:add_match(reg)
+    return id
+end
+
 
 function connection:remove_match(match)
     self._connection:remove_match(match)
 end
 
-function connection:add_bus_match(registration)
-    registration.callback = {
-        connection._match_callback,
-        {self, registration.callback, registration.unpack_message}
-    }
-    registration.unpack_message = nil
-
-    return self._connection:add_bus_match(registration)
-end
-
-function connection:remove_bus_match(match)
-    self._connection:remove_bus_match(match)
-end
-
-function connection:new_proxy(registration)
-    return proxy.new(self, registration)
+function connection:new_proxy(reg)
+    return proxy.new(self, reg)
 end
 
 function connection:send_message(message)
@@ -109,30 +157,7 @@ end
 
 
 
-
-
-function connection:_connected_to_bus()
-    _printf("Connected to bus with service %s",
-          self._connection:unique_service_name())
-    self._yield = true
-end
-
-function connection:_send(data)
-    self._tosend = self._tosend .. data
-    self:_trysend()
-end
-
-function connection:_trysend()
-    local _,res,i = self._socket:send(self._tosend)
-    if res == "timeout" then
-        self._tosend = self._tosend:sub(i)
-    else
-        self._tosend = ""
-    end
-end
-
-function connection:_process_messages()
-    while not self._yield do
+--[[
         local to_read = {self._socket}
         local to_write = {}
         if self._tosend:len() > 0 then
@@ -141,19 +166,26 @@ function connection:_process_messages()
         local ready_read, ready_write, err = socket.select(to_read, to_write)
 
         if err ~= nil then
-            print ("Error", err)
-            break
+            assert(nil, err)
         end
 
         if ready_read[1] == self._socket then
-            local data,err,partial = self._socket:receive(4096)
-            if err ~= nil and err ~= "timeout" then
-                print("Error", err)
-                break
-            elseif data ~= nil then
-                self._connection:parse(data)
-            elseif partial ~= nil then
-                self._connection:parse(partial)
+            local alldata,data,err,partial
+            -- loop until we hit a timeout
+            while err == nil do
+                data,err,partial = self._socket:receive(4096)
+                if data ~= nil then
+                    alldata = (alldata or "") .. data
+                elseif partial ~= nil then
+                    alldata = (alldata or "") .. partial
+                end
+            end
+            if alldata ~= nil then
+                --_printf("Received %s", hex_dump(alldata, "         "))
+                self._connection:parse(alldata)
+            end
+            if err ~= "timeout" then
+                assert(nil, err)
             end
         end
 
@@ -163,20 +195,5 @@ function connection:_process_messages()
 
     end
 end
-
-function connection._match_callback(data, message, match)
-    local self      = data[1]
-    local callback  = data[2]
-    local unpack_msg = data[3]
-    local func      = callback[1]
-    local obj       = callback[2]
-    if unpack_msg then
-        func(obj, unpack(message))
-    else
-        func(obj, message, match)
-    end
-    if self._yield_match == match then
-        self._yield = true
-    end
-end
+--]]
 
