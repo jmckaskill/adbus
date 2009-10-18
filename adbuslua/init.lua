@@ -5,4 +5,5 @@ require("adbuslua.Pretty")
 require("adbuslua.Connection")
 require("adbuslua.Proxy")
 require("adbuslua.Interface")
+require("adbuslua.Object")
 

@@ -45,6 +45,7 @@
 #define LADBUSCONNECTION_HANDLE "LADBusConnection"
 #define LADBUSINTERFACE_HANDLE  "ADBusInterface*"
 #define LADBUSSOCKET_HANDLE "LADBusSocket"
+#define LADBUSOBJECT_HANDLE "ADBusObject*"
 
 // ----------------------------------------------------------------------------
 
@@ -157,10 +158,22 @@ struct LADBusSocket* LADBusPushNewSocket(lua_State* L)
 }
 
 // ----------------------------------------------------------------------------
+void LADBusPushNewObject(
+        lua_State*              L,
+        struct ADBusObject*     object)
+{
+    void* udata = lua_newuserdata(L, sizeof(struct ADBusObject*));
+    luaL_getmetatable(L, LADBUSOBJECT_HANDLE);
+    lua_setmetatable(L, -2);
+    struct ADBusObject** pobject = (struct ADBusObject**) udata;
+    *pobject = object;
+}
+
+// ----------------------------------------------------------------------------
 
 void LADBusPushNewInterface(
-        lua_State*             L,
-        struct ADBusInterface* interface)
+        lua_State*              L,
+        struct ADBusInterface*  interface)
 {
     void* udata = lua_newuserdata(L, sizeof(struct ADBusInterface*));
     luaL_getmetatable(L, LADBUSINTERFACE_HANDLE);
@@ -193,13 +206,8 @@ struct ADBusObject* LADBusCheckObject(
         int                      index)
 {
     size_t pathSize;
-    const char* path = luaL_checklstring(L, index, &pathSize);
-    struct ADBusObject* object = ADBusGetObject(connection->connection, path, pathSize);
-    if (!object) {
-        luaL_error(L, "The path given does not refer to a valid object");
-        return NULL;
-    }
-    return object;
+    void* udata = luaL_checkudata(L, index, LADBUSOBJECT_HANDLE);
+    return *(struct ADBusObject**) udata;
 }
 
 // ----------------------------------------------------------------------------

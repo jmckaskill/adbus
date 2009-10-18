@@ -141,6 +141,7 @@ namespace adbus
         Connection*             m_Connection;
         std::string             m_Path;
         std::vector<uint32_t>   m_Matches;
+        std::vector<Interface*> m_Interfaces;
     };
 
     template<class M>

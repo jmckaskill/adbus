@@ -27,6 +27,7 @@
 #include "User.h"
 #include "khash.h"
 #include "vector.h"
+#include "str.h"
 
 // ----------------------------------------------------------------------------
 // Struct definitions
@@ -35,6 +36,17 @@
 VECTOR_INSTANTIATE(struct ADBusMatch, match_)
 VECTOR_INSTANTIATE(uint8_t, u8)
 VECTOR_INSTANTIATE(struct ADBusObject*, pobject_)
+
+// ----------------------------------------------------------------------------
+
+struct ServiceNameMatch
+{
+    uint32_t                match;
+    char*                   serviceName;
+    char*                   uniqueName;
+    int                     refCount;
+};
+KHASH_MAP_INIT_STR(ServiceNameMatch, struct ServiceNameMatch)
 
 // ----------------------------------------------------------------------------
 
@@ -54,8 +66,6 @@ struct ADBusObject
     khash_t(BoundInterface)*    interfaces;
     pobject_vector_t            children;
     struct ADBusObject*         parent;
-    uint                        dummy;
-    int                         addCount;
 };
 typedef struct ADBusObject* ADBusObjectPtr;
 KHASH_MAP_INIT_STR(ADBusObjectPtr, struct ADBusObject*)
@@ -91,6 +101,8 @@ struct ADBusConnection
 
     struct ADBusInterface*      introspectable;
     struct ADBusInterface*      properties;
+
+    khash_t(ServiceNameMatch)   serviceNames;
 };
 
 // ----------------------------------------------------------------------------

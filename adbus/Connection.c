@@ -839,75 +839,29 @@ static void FreeUserPointer(struct ADBusUser* data)
     free(data);
 }
 
-struct UserPointer* CreateUserPointer()
+struct ADBusUser* CreateUserPointer(void* p)
 {
     struct UserPointer* u = NEW(struct UserPointer);
     u->header.free = &FreeUserPointer;
-    return u;
-}
-
-static void BindBuiltinInterface(
-        struct ADBusObject*     o,
-        struct ADBusInterface*  interface)
-{
-    struct UserPointer* user2 = CreateUserPointer();
-    user2->pointer = (void*) o;
-
-    ADBusBindInterface(o, interface, &user2->header);
+    u->pointer = p;
+    return &u->header;
 }
 
 // ----------------------------------------------------------------------------
-
-static struct ADBusObject* AddNewObject(
-        struct ADBusConnection* c,
-        const char*             path,
-        size_t                  size,
-        uint                    dummy)
-{
-    struct ADBusObject* o = NEW(struct ADBusObject);
-    o->name         = strndup(path, size);
-    o->connection   = c;
-    o->dummy        = dummy;
-    o->interfaces   = kh_init(BoundInterface);
-
-    BindBuiltinInterface(o, c->introspectable);
-    if (!dummy)
-        BindBuiltinInterface(o, c->properties);
-
-    int ret;
-    khiter_t ki = kh_put(ADBusObjectPtr, c->objects, o->name, &ret);
-    if (!ret) {
-        FreeObject(kh_val(c->objects, ki));
-    }
-
-    kh_key(c->objects, ki) = o->name;
-    kh_val(c->objects, ki) = o;
-
-    return o;
-}
-
-// ----------------------------------------------------------------------------
-
-static void ClearObjectInterface(struct ADBusObject* o)
-{
-    for (khiter_t ki = kh_begin(o->interfaces); ki != kh_end(o->interfaces); ++ki) {
-        if (kh_exist(o->interfaces, ki)) {
-            struct BoundInterface* b = &kh_value(o->interfaces, ki);
-            ADBusUserFree(b->user2);
-        }
-    }
-    kh_clear(BoundInterface, o->interfaces);
-}
 
 static void FreeObject(struct ADBusObject* o)
 {
     if (!o)
         return;
 
-    free(o->name);
-    ClearObjectInterface(o);
+    for (khiter_t ii = kh_begin(o->interfaces); ii != kh_end(o->interfaces); ++ii) {
+        if (kh_exist(o->interfaces, ii)) {
+            ADBusUserFree(kh_val(o->interfaces, ii).user2);
+        }
+    }
     kh_destroy(BoundInterface, o->interfaces);
     pobject_vector_free(&o->children);
+    free(o->name);
     free(o);
 }
 
@@ -942,15 +896,15 @@ static str_t SanitisePath(
 }
 
 static void ParentPath(
-        const char*     path,
+        char*           path,
         size_t          size,
-        const char**    parentPath,
         size_t*         parentSize)
 {
     // Path should have already been sanitised so double /'s should not happen
 #ifndef NDEBUG
     str_t sanitised = SanitisePath(path, size);
-    assert(strncmp(sanitised, path, size) == 0);
+    assert(path[size] == '\0');
+    assert(strcmp(sanitised, path) == 0);
     str_free(&sanitised);
 #endif
 
@@ -960,175 +914,129 @@ static void ParentPath(
         --size;
     }
 
-    if (parentPath)
-        *parentPath = path;
+    path[size] = '\0';
+
     if (parentSize)
         *parentSize = size;
 }
 
-#ifndef NDEBUG
-static uint TestParentPath()
-{
-#define TEST(str, res) \
-    ParentPath(str, strlen(str), &parent, &parentSize); \
-    assert(parentSize == strlen(res) && strncmp(parent, res, parentSize) == 0)
-
-    const char* parent;
-    size_t parentSize;
-    TEST("/", "");
-    TEST("/f", "/");
-    TEST("/foo", "/");
-    TEST("/foo/bar", "/foo");
-    return 1;
-#undef TEST
-}
-#endif
-
 // ----------------------------------------------------------------------------
+
+static struct ADBusObject* DoAddObject(
+        struct ADBusConnection* c,
+        char*                   path,
+        size_t                  size)
+{
+    int added;
+    assert(path[size] == '\0');
+    khiter_t ki = kh_put(ADBusObjectPtr, c->objects, path, &added);
+    if (!added) {
+        return kh_val(c->objects, ki);
+    }
+
+    struct ADBusObject* o = NEW(struct ADBusObject);
+    o->name         = strdup(name);
+    o->connection   = c;
+
+    // Setup the parent-child links
+    if (strcmp(name, "/") != 0) {
+        struct ADBusObject** pchild;
+        size_t parentSize;
+
+        ParentPath(path, size, &parentSize);
+        o->parent = DoAddObject(c, path, parentSize);
+        pchild  = pobject_vector_insert_end(&o->parent->children, 1);
+        *pchild = o;
+    }
+
+    kh_key(c->objects, ki) = o->name;
+    kh_val(c->objects, ki) = o;
+
+    ADBusBindInterface(o, c->introspectable, CreateUserPointer(o));
+    ADBusBindInterface(o, c->properties, CreateUserPointer(o));
+
+    return o;
+}
 
 struct ADBusObject* ADBusAddObject(
         struct ADBusConnection* c,
-        const char*             name,
+        const char*             path,
         int                     size)
 {
-    struct ADBusObject* object = ADBusGetObject(c, name, size);
-    if (object) {
-        // Dummy objects only have the introspectable interface
-        if (object->dummy)
-            BindBuiltinInterface(object, c->properties);
-        object->dummy = 0;
-        object->addCount++;
-        return object;
-    }
-
-    str_t path = SanitisePath(name, size);
-    object = AddNewObject(c, path, str_size(&path), 0);
-    object->addCount++;
-
-    assert(TestParentPath());
-
-    struct ADBusObject* lastparent = object;
-    const char* parentPath = path;
-    size_t parentSize = str_size(&path);
-    while (1)
-    {
-        ParentPath(parentPath, parentSize, &parentPath, &parentSize);
-        if (parentSize == 0)
-            break;
-
-        struct ADBusObject* parent = ADBusGetObject(c, parentPath, parentSize);
-        if (parent) {
-            struct ADBusObject** pchild = pobject_vector_insert_end(&parent->children, 1);
-            *pchild = lastparent;
-            lastparent->parent = parent;
-            break;
-        }
-
-        parent = AddNewObject(c, parentPath, parentSize, 1);
-        struct ADBusObject** pchild = pobject_vector_insert_end(&parent->children, 1);
-        *pchild = lastparent;
-        lastparent->parent = parent;
-        lastparent = parent;
-    }
-
-    str_free(&path);
-
-    return object;
+    str_t name = SanitisePath(path, size);
+    struct ADBusObject* o = DoAddObject(c, name);
+    str_free(&name);
+    return o;
 }
+
 
 // ----------------------------------------------------------------------------
 
-struct ADBusObject* ADBusGetObject(
-        const struct ADBusConnection*   c,
-        const char*                     name,
-        int                             size)
-{
-    str_t path = SanitisePath(name, size);
-
-    khiter_t k = kh_get(ADBusObjectPtr, c->objects, path);
-
-    str_free(&path);
-    return (k != kh_end(c->objects)) ? kh_value(c->objects, k) : NULL;
-}
-
-// ----------------------------------------------------------------------------
-
-static void DoRemoveObject(
-        struct ADBusConnection* c,
-        struct ADBusObject*     o)
-{
-    // Remove all object interfaces
-    ClearObjectInterface(o);
-
-    // If this object has children we need to keep it around as a dummy,
-    // if not we can go ahead and remove it
-
-    if (pobject_vector_size(&o->children) > 0) {
-        // As a dummy it needs the introspectable interface
-        BindBuiltinInterface(o, c->introspectable);
-        o->dummy = 1;
-
-    } else {
-        // Go ahead and remove it
-
-        // Fixup its parent first
-        struct ADBusObject* parent = o->parent;
-        if (parent) {
-            // First we remove it from its parent child list
-            for (size_t i = 0; i < pobject_vector_size(&parent->children); ++i) {
-                if (parent->children[i] == o) {
-                    pobject_vector_remove(&parent->children, i, 1);
-                    break;
-                }
-            }
-
-            // If the parent is a dummy with no other children, we also remove it
-            if (pobject_vector_size(&parent->children) == 0 && parent->dummy)
-                DoRemoveObject(c, parent);
-        }
-
-        khiter_t k = kh_get(ADBusObjectPtr, c->objects, o->name);
-        if (k != kh_end(c->objects))
-            kh_del(ADBusObjectPtr, c->objects, k);
-
-        // Now delete the object
-        FreeObject(o);
-    }
-}
-
-void ADBusRemoveObject(
-        struct ADBusConnection* c,
-        const char*             name,
-        int                     size)
-{
-    struct ADBusObject* object = ADBusGetObject(c, name, size);
-
-    // We shouldn't be trying to remove an object that's already been removed
-    // or has never been added
-    ASSERT_RETURN(object && !object->dummy && object->addCount >= 1);
-
-    if (--object->addCount == 0)
-        DoRemoveObject(c, object);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusBindInterface(
+int ADBusBindInterface(
         struct ADBusObject*     o,
         struct ADBusInterface*  interface,
         struct ADBusUser*       user2)
 {
-    assert(o && interface);
-
-    int ret;
+    int added;
     khiter_t bi = kh_put(BoundInterface, o->interfaces, interface->name, &ret);
-    // If there was already a bound interface, free the old and overwrite
-    if (!ret) {
-        ADBusUserFree(kh_val(o->interfaces, bi).user2);
-    }
+    if (!added)
+        return -1; // there was already an interface with that name
+
     kh_val(o->interfaces, bi).user2      = user2;
     kh_val(o->interfaces, bi).interface  = interface;
     kh_key(o->interfaces, bi)            = interface->name;
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+static void CheckRemoveObject(struct ADBusObject* o)
+{
+    // We have 2 builtin interfaces (introspectable and properties)
+    // If these are the only two left and we have no children then we need
+    // to prune this object
+    if (kh_size(o->interfaces) > 2 || pobject_vector_size(&o->children) > 0)
+        return;
+
+    // Remove it from its parent
+    struct ADBusObject* parent = o->parent;
+    for (size_t i = 0; i < pobject_vector_size(&parent->children); ++i) {
+        if (parent->children[i] == o) {
+            pobject_vector_remove(&parent->children, i, 1);
+            break;
+        }
+    }
+    CheckRemoveObject(o->parent);
+
+    // Remove it from the object lookup table
+    struct ADBusConnection* c = o->connection;
+    khiter_t oi = kh_get(ADBusObjectPtr, c->objects, o->name);
+    if (oi != kh_end(c->objects))
+        kh_del(ADBusObjectPtr, c->objects, oi);
+
+    // Free the object
+    FreeObject(o);
+}
+
+// ----------------------------------------------------------------------------
+
+int ADBusUnbindInterface(
+        struct ADBusObject*     o,
+        struct ADBusInterface*  interface)
+{
+    khiter_t bi = kh_get(BoundInterface, o->interfaces, interface->name);
+    if (bi == kh_end(o->interfaces))
+        return -1;
+    if (interface != kh_val(o->interfaces, bi).interface)
+        return -1;
+
+    ADBusUserFree(kh_val(o->interfaces, bi).user2);
+    kh_del(BoundInterface, o->interfaces, bi);
+
+    CheckRemoveObject(o);
+
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -1139,22 +1047,24 @@ struct ADBusInterface* ADBusGetObjectInterface(
         int                         interfaceSize,
         const struct ADBusUser**    user2)
 {
-    // We can only guarantee that interface is nul terminated if no size was provided
+    // The hash table lookup requires that the interface name is nul terminated
+    // So if we cannot guarentee this (ie interfaceSize >= 0) then copy the
+    // string out and free it after the lookup
     if (interfaceSize >= 0)
         interface = strndup(interface, interfaceSize);
 
     khiter_t ii = kh_get(BoundInterface, o->interfaces, interface);
-    struct BoundInterface* b = (ii != kh_end(o->interfaces)) 
-                             ? &kh_val(o->interfaces, ii) 
-                             : NULL;
-
-    if (user2)
-        *user2 = (b ? b->user2 : NULL);
 
     if (interfaceSize >= 0)
         free((char*) interface);
 
-    return b ? b->interface : NULL;
+    if (ii == kh_end(o->interfaces))
+        return NULL;
+
+    if (user2)
+        *user2 = kh_val(o->interfaces, bi).user2;
+
+    return kh_val(o->interfaces, bi).interface;
 }
 
 // ----------------------------------------------------------------------------
@@ -1345,7 +1255,7 @@ static void IntrospectNode(
 {
     str_append(
             out,
-            "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\" "
+            "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\"\n"
             "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
             "<node>\n");
 

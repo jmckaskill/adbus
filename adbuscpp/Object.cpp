@@ -75,7 +75,9 @@ void Object::deregisterObject()
         ADBusRemoveMatch(connection, m_Matches[i]);
     m_Matches.clear();
 
-    ADBusRemoveObject(connection, m_Path.c_str(), m_Path.size());
+    for (size_t i = 0; i < m_Interfaces.size(); ++i)
+        ADBusUnbindInterface(m_Object, m_Interfaces[i]->m_I);
+    m_Interfaces.clear();
 
     m_Connection = NULL;
     m_Object = NULL;
@@ -140,6 +142,8 @@ void Object::addMatch(
 void Object::doBind(Interface* interface, struct ADBusUser* user2)
 {
     ADBusInterface* adbusinterface = interface->m_I;
-    ADBusBindInterface(m_Object, adbusinterface, user2);
+    int err = ADBusBindInterface(m_Object, adbusinterface, user2);
+    if (!err)
+        m_Interfaces.push_back(interface);
 }
 

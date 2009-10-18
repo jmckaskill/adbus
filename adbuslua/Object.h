@@ -32,10 +32,8 @@
 
 #include "LuaInclude.h"
 
-LADBUSI_FUNC int LADBusAddObject(lua_State* L);
-LADBUSI_FUNC int LADBusRemoveObject(lua_State* L);
-
 LADBUSI_FUNC int LADBusBindInterface(lua_State* L);
+LADBUSI_FUNC int LADBusUnindInterface(lua_State* L);
 LADBUSI_FUNC int LADBusEmit(lua_State* L);
 
 LADBUSI_FUNC void LADBusMethodCallback(struct ADBusCallDetails* details);

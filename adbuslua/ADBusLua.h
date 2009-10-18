@@ -75,24 +75,25 @@ LADBUSI_FUNC int LADBusCheckFieldsAllowNumbers(
 struct ADBusConnection;
 struct LADBusConnection;
 struct ADBusInterface;
+struct ADBusObject;
 struct LADBusSocket;
-struct ADBusInterface;
-
-LADBUSI_FUNC struct LADBusConnection* LADBusPushNewConnection(lua_State* L);
-LADBUSI_FUNC struct LADBusSocket*     LADBusPushNewSocket(lua_State* L);
-LADBUSI_FUNC void LADBusPushNewInterface(lua_State* L, struct ADBusInterface* interface);
 
 LADBUS_API void LADBusPushExistingConnection(lua_State* L, struct ADBusConnection* connection);
 
-LADBUSI_FUNC struct LADBusConnection*    LADBusCheckConnection(lua_State* L, int index);
-LADBUSI_FUNC struct ADBusInterface*      LADBusCheckInterface(lua_State* L, int index);
-LADBUSI_FUNC struct LADBusSocket*        LADBusCheckSocket(lua_State* L, int index);
 
-// Objects are simply referenced by paths in lua
-LADBUSI_FUNC struct ADBusObject* LADBusCheckObject(
-        lua_State*               L,
-        struct LADBusConnection* connection,
-        int                      index);
+LADBUSI_FUNC struct LADBusConnection* LADBusPushNewConnection(lua_State* L);
+LADBUSI_FUNC struct LADBusSocket*     LADBusPushNewSocket(lua_State* L);
+
+LADBUSI_FUNC void LADBusPushNewObject(lua_State* L, struct ADBusObject* object);
+LADBUSI_FUNC void LADBusPushNewInterface(lua_State* L, struct ADBusInterface* interface);
+
+
+LADBUSI_FUNC struct LADBusConnection*   LADBusCheckConnection(lua_State* L, int index);
+LADBUSI_FUNC struct LADBusSocket*       LADBusCheckSocket(lua_State* L, int index);
+
+LADBUSI_FUNC struct ADBusObject*        LADBusCheckObject(lua_State* L, int index);
+LADBUSI_FUNC struct ADBusInterface*     LADBusCheckInterface(lua_State* L, int index);
+
 
 LADBUS_API int luaopen_adbuslua_core(lua_State* L);
 

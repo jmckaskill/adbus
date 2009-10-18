@@ -28,7 +28,7 @@ function interface.new(name, registration)
     local self = {}
     setmetatable(self, interface)
 
-    self._signal_sig = {}
+    self._signal_signature = {}
 
     for _,reg in ipairs(registration) do
         if reg.type == "method" then
@@ -45,17 +45,15 @@ function interface.new(name, registration)
             for _,arg in ipairs(reg.arguments) do
                 table.insert(sig, arg.type)
             end
-            self._signal_sig[reg.name] = sig
+            self._signal_signature[reg.name] = sig
 
         end
     end
 
     self._interface = adbuslua_core.interface.new(name, registration)
+    self.name = name
+    return self
 end
 
-
-function interface:_signal_signature(signal)
-    return self._signal_sig[signal]
-end
 
 

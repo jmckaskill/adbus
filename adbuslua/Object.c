@@ -34,32 +34,14 @@
 
 #include <assert.h>
 
-
 // ----------------------------------------------------------------------------
 
-int LADBusAddObject(lua_State* L)
+static struct ADBusObject* GetObject(lua_State* L, struct LADBusConnection* c, int pathIndex)
 {
-    struct LADBusConnection* c = LADBusCheckConnection(L, 1);
-    size_t nameSize;
-    const char* name = luaL_checklstring(L, 2, &nameSize);
-
-    struct ADBusObject* object = ADBusAddObject(c->connection, name, nameSize);
-    if (!object)
-        return luaL_error(L, "Failed to add object");
-
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-int LADBusRemoveObject(lua_State* L)
-{
-    struct LADBusConnection* c = LADBusCheckConnection(L, 1);
-    size_t nameSize;
-    const char* name = luaL_checklstring(L, 2, &nameSize);
-    ADBusRemoveObject(c->connection, name, nameSize);
-
-    return 0;
+    size_t size;
+    const char* path = luaL_checklstring(L, index, &size);
+    struct ADBusObject* o = ADBusGetObject(c->connection, path, size);
+    return o;
 }
 
 // ----------------------------------------------------------------------------
@@ -67,7 +49,7 @@ int LADBusRemoveObject(lua_State* L)
 int LADBusBindInterface(lua_State* L)
 {
     struct LADBusConnection* connection = LADBusCheckConnection(L, 1);
-    struct ADBusObject* object = LADBusCheckObject(L, connection, 2);
+    struct ADBusObject* object = GetObject(L, connection, 2);
     struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
 
     struct LADBusData* data = LADBusCreateData();
@@ -92,10 +74,23 @@ int LADBusBindInterface(lua_State* L)
 
 // ----------------------------------------------------------------------------
 
+int LADBusUnbindInterface(lua_State* L)
+{
+    struct LADBusConnection* connection = LADBusCheckConnection(L, 1);
+    struct ADBusObject* object = GetObject(L, connection, 2);
+    struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
+
+    ADBusUnbindInterface(object, interface);
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
 int LADBusEmit(lua_State* L)
 {
     struct LADBusConnection* c  = LADBusCheckConnection(L, 1);
-    struct ADBusObject* object  = LADBusCheckObject(L, c, 2);
+    struct ADBusObject* object  = GetObject(L, c, 2);
     struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
     size_t signalSize;
     const char* signalstr = luaL_checklstring(L, 4, &signalSize);
@@ -113,8 +108,8 @@ int LADBusEmit(lua_State* L)
 
     ADBusSetupSignal(c->message, c->connection, object, signal);
 
-    uint haveargs = lua_istable(L, 5) && lua_objlen(L, 5) > 0;
-    uint havesig  = lua_istable(L, 6) && lua_objlen(L, 6) > 0;
+    uint havesig  = lua_istable(L, 5) && lua_objlen(L, 5) > 0;
+    uint haveargs = lua_istable(L, 6) && lua_objlen(L, 6) > 0;
     if (haveargs && havesig) {
         // Check the signature table
         int argnum = lua_objlen(L, 5);

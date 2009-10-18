@@ -14,13 +14,9 @@ local error         = _G.error
 module("adbuslua")
 
 interface     = adbuslua_core.interface
-object        = adbuslua_core.object
 
 connection = {}
 connection.__index = connection
-
-object = {}
-object.__index = object
 
 local function parse_address(address, options, backup)
     local bus = os.getenv(address) or backup
@@ -77,32 +73,6 @@ end
 
 function connection:next_serial()
     return self._connection:next_serial()
-end
-
-function object:__gc()
-    self._connection:remove_object(self._path)
-end
-
-function object:bind(interface)
-    self._connection:bind_interface(self._path, interface)
-end
-
-function object:emit(interface, signal_name, ...)
-    self._connection:emit(self._path,
-                          interface,
-                          signal_name,
-                          {...},
-                          interface._signal_signature(signal_name))
-end
-
-function connection:add_object(path)
-    self._connection:add_object(path)
-
-    local object = {}
-    setmetatable(object, object_mt)
-    object._connection = self._connection
-    object._path = path
-    return object
 end
 
 function connection:process_messages()
