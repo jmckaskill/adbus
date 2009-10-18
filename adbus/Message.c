@@ -442,7 +442,7 @@ static void BuildMessage(struct ADBusMessage* m)
     struct ADBusHeader_ header;
 
     header.endianness   = ADBusNativeEndianness_;
-    header.type         = m->messageType;
+    header.type         = (uint8_t) m->messageType;
     header.flags        = m->flags;
     header.version      = ADBusMajorProtocolVersion_;
     header.length       = argumentSize;

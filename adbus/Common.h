@@ -45,7 +45,7 @@
 #   define ADBUSI_DATA	ADBUSI_FUNC
 
 #else
-#   define ADBUSI_FUNC	extern
+#   define ADBUSI_FUNC
 #   define ADBUSI_DATA	extern
 #endif
 

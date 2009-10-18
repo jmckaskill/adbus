@@ -325,7 +325,9 @@ static const luaL_Reg kInterfaceReg[] = {
 // Reg for adbuslua_core.socket
 static const luaL_Reg kSocketReg[] = {
     {"new_tcp", &LADBusNewTcpSocket},
+#ifndef WIN32
     {"new_unix", &LADBusNewUnixSocket},
+#endif
     {"__gc", &LADBusCloseSocket},
     {"send", &LADBusSocketSend},
     {"receive", &LADBusSocketRecv},

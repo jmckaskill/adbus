@@ -167,7 +167,10 @@ int ADBusAppendData(struct ADBusMarshaller* m, const uint8_t* data, size_t size)
 
 enum ADBusFieldType ADBusNextMarshallerField(struct ADBusMarshaller* m)
 {
-    return m->sigp ? *m->sigp : ADBusInvalidField;
+    if (m->sigp)
+        return (enum ADBusFieldType) *m->sigp;
+    else
+        return ADBusInvalidField;
 }
 
 // ----------------------------------------------------------------------------
@@ -269,7 +272,7 @@ int ADBusAppendDouble(struct ADBusMarshaller* m, double data)
 {
     // Take the safe route to avoid any possible aliasing problems
     // *(uint64_t*) &data won't compile with strict aliasing on gcc
-    uint64_t d;
+    uint64_t d = 0;
     for (size_t i = 0; i < 8; ++i)
         ((uint8_t*) &d)[i] = ((uint8_t*) &data)[i];
 
@@ -290,7 +293,7 @@ static int AppendShortString(struct ADBusMarshaller* m, const char* str, int siz
     uint8_t* psize  = u8vector_insert_end(&m->data, 1 + size + 1);
     char* pstr      = (char*) psize + 1;
 
-    *psize = size;
+    *psize = (uint8_t) size;
     memcpy(pstr, str, size);
     pstr[size] = '\0';
 

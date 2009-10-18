@@ -78,7 +78,7 @@ void str_append(str_t* pstring, const char* str)
 
 void str_append_char(str_t* pstring, int ch)
 {
-    uint8_t u8 = ch;
+    uint8_t u8 = (uint8_t) ch;
     str_append_n(pstring, (const char*) &u8, 1);
 }
 

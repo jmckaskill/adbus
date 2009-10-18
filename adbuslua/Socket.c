@@ -157,7 +157,7 @@ int LADBusNewTcpSocket(lua_State* L)
 
     socket_t s = TcpConnect(L, address, service);
 
-    srand(time(NULL));
+    srand((unsigned int) time(NULL));
 
     ADBusAuthDBusCookieSha1(&Send, &Recv, &Rand, (void*) &s);
 
@@ -169,13 +169,8 @@ int LADBusNewTcpSocket(lua_State* L)
 
 // ----------------------------------------------------------------------------
 
-struct cmsg
-{
-    struct cmsghdr  hdr;
-    struct ucred    cred;
-};
-
 #ifndef WIN32
+
 int LADBusNewUnixSocket(lua_State* L)
 {
     const char* path = luaL_checkstring(L, 1);
@@ -190,6 +185,7 @@ int LADBusNewUnixSocket(lua_State* L)
 
     return 1;
 }
+
 #endif
 
 // ----------------------------------------------------------------------------

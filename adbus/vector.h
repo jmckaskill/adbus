@@ -28,7 +28,6 @@
 #include "Common.h"
 
 
-
 ADBUSI_FUNC size_t  vector_size(const uint8_t** pvec);
 ADBUSI_FUNC void    vector_require(uint8_t** pvec, size_t member_size, size_t min_size);
 ADBUSI_FUNC uint8_t*   vector_insert_end(uint8_t** pvec, size_t member_size, size_t number);
@@ -37,6 +36,7 @@ ADBUSI_FUNC void    vector_remove_end(uint8_t** pvec, size_t number);
 ADBUSI_FUNC void    vector_remove(uint8_t** pvec, size_t member_size, size_t index, size_t number);
 ADBUSI_FUNC void    vector_clear(uint8_t** pvec);
 ADBUSI_FUNC void    vector_free(uint8_t** pvec);
+
 
 
 #define VECTOR_CAT2(x,y) x ## y

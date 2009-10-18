@@ -244,7 +244,7 @@ static void TestIteratorLittleEndian()
 
     RESET("yi", 0x11, FILL, FILL, FILL, 0x12, 0x34, 0x56, 0xC8);
     TestUInt8(0x11);
-    TestInt32(-(0xFFFFFFFF - 0xC8563412 + 1));
+    TestInt32(-(int32_t)(0xFFFFFFFF - 0xC8563412 + 1));
     TestEnd();
 
     RESET("t", 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88);
@@ -264,7 +264,7 @@ static void TestIteratorLittleEndian()
     RESET("yx", 0x99, FILL, FILL, FILL, FILL, FILL, FILL, FILL,
                 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0xE8);
     TestUInt8(0x99);
-    TestInt64(-(UINT64_C(0xFFFFFFFFFFFFFFFF) - UINT64_C(0xE877665544332211) + 1));
+    TestInt64(-(int64_t)(UINT64_C(0xFFFFFFFFFFFFFFFF) - UINT64_C(0xE877665544332211) + 1));
     TestEnd();
 
     RESET("d", 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88);
@@ -363,7 +363,7 @@ static void TestIteratorLittleEndian()
     TestStructEnd();
     TestArrayEnd();
     TestEnd();
-    
+
     RESET("a(yq)", 0x0C, 0x00, 0x00, 0x00, FILL, FILL, FILL, FILL,
                    0x11, FILL, 0x11, 0x22, FILL, FILL, FILL, FILL,
                    0x99, FILL, 0x99, 0xAA);

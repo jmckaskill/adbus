@@ -399,7 +399,7 @@ int LADBusMarshallMessage(
 
 
     // Flags
-    int flags = 0;
+    uint8_t flags = 0;
     lua_getfield(L, messageIndex, "no_reply_expected");
     if (!lua_isnil(L, -1)) {
         flags |= luaL_checkint(L, -1) ? ADBusNoReplyExpectedFlag : 0;
@@ -706,7 +706,7 @@ int LADBusPushMessage(
     int table = lua_gettop(L);
 
     enum ADBusMessageType type = ADBusGetMessageType(message);
-    if (type >= kMessageTypeNum || type <= ADBusInvalidMessage)
+    if (type >= (enum ADBusMessageType) kMessageTypeNum || type <= ADBusInvalidMessage)
         return ADBusInternalError;
 
     size_t pathLen, interfaceLen, senderLen, destinationLen, memberLen, errorLen, sigLen;
