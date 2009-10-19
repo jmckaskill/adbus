@@ -49,22 +49,6 @@ namespace adbus{
 
     // ----------------------------------------------------------------------------
 
-    class StreamUnpacker
-    {
-        ADBUSCPP_NON_COPYABLE(StreamUnpacker);
-    public:
-        StreamUnpacker(Connection* connection);
-        ~StreamUnpacker();
-
-        void dispatchData(const uint8_t* data, size_t size);
-
-    private:
-        ADBusStreamUnpacker*  m_Stream;
-        ADBusConnection*      m_Connection;
-    };
-
-    // ----------------------------------------------------------------------------
-
     class Connection
     {
         ADBUSCPP_NON_COPYABLE(Connection);
@@ -74,7 +58,8 @@ namespace adbus{
         ~Connection();
 
         void setSendCallback(ADBusSendCallback callback, ADBusUser* user);
-        void dispatchMessage(const uint8_t* data, size_t size);
+        void parse(const uint8_t* data, size_t size);
+        void dispatch(struct ADBusMessage* message);
 
         void connectToBus() { connectToBus(NULL, NULL); }
         void connectToBus(ADBusConnectionCallback callback, ADBusUser* user);
@@ -97,8 +82,10 @@ namespace adbus{
     private:
         friend class Object;
         friend class BoundSignalBase;
-        ADBusConnection*   m_C;
-        bool               m_FreeConnection; 
+        ADBusConnection*    m_C;
+        ADBusStreamBuffer*  m_Buf;
+        ADBusMessage*       m_Message;
+        bool                m_FreeConnection;
     };
 
     // ----------------------------------------------------------------------------

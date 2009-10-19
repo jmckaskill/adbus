@@ -124,7 +124,6 @@ struct ADBusConnection* ADBusCreateConnection()
     c->nextMatchId  = 1;
     c->connected    = 0;
 
-    c->dispatchMessage = ADBusCreateMessage();
     c->returnMessage   = ADBusCreateMessage();
     c->outgoingMessage = ADBusCreateMessage();
 
@@ -176,7 +175,6 @@ void ADBusFreeConnection(struct ADBusConnection* c)
     ADBusFreeInterface(c->introspectable);
     ADBusFreeInterface(c->properties);
 
-    ADBusFreeMessage(c->dispatchMessage);
     ADBusFreeMessage(c->returnMessage);
     ADBusFreeMessage(c->outgoingMessage);
 
@@ -249,20 +247,8 @@ void ADBusSendMessage(
         struct ADBusConnection* c,
         struct ADBusMessage*    message)
 {
-    const uint8_t* data;
-    size_t size;
-    ADBusGetMessageData(message, &data, &size);
     if (c->sendCallback)
-        c->sendCallback(c->sendCallbackData, data, size);
-
-    struct ADBusCallDetails details;
-    ADBusInitCallDetails(&details);
-    details.connection = c;
-    details.message    = message;
-    details.user1      = c->sendMessageData;
-
-    if (c->sendMessageCallback)
-        c->sendMessageCallback(&details);
+        c->sendCallback(message, c->sendCallbackData);
 }
 
 // ----------------------------------------------------------------------------
@@ -285,6 +271,7 @@ static void DispatchMethodCall(
 {
     size_t pathSize, interfaceSize, memberSize;
     struct ADBusMessage* message = details->message;
+    struct ADBusConnection* c = details->connection;
     const char* path = ADBusGetPath(message, &pathSize);
     const char* interfaceName = ADBusGetInterface(message, &interfaceSize);
     const char* memberName = ADBusGetMember(message, &memberSize);
@@ -294,22 +281,19 @@ static void DispatchMethodCall(
     assert(path);
 
     // Find the object
-    struct ADBusObject* object = ADBusGetObject(
-            details->connection,
-            path,
-            pathSize);
-
-    if (!object) {
+    khiter_t oi = kh_get(ADBusObjectPtr, c->objects, path);
+    if (oi == kh_end(c->objects)) {
         SetupInvalidPath(details);
         return;
     }
+    struct ADBusObject* object = kh_val(c->objects, oi);
 
     // Find the member
     struct ADBusMember* member = NULL;
     if (interfaceName) {
         // If we know the interface, then we try and find the method on that
         // interface
-        struct ADBusInterface* interface = ADBusGetObjectInterface(
+        struct ADBusInterface* interface = ADBusGetBoundInterface(
                 object,
                 interfaceName,
                 interfaceSize,
@@ -329,7 +313,7 @@ static void DispatchMethodCall(
     } else {
         // We don't know the interface, try and find the first method on any
         // interface with the member name
-        member = ADBusGetObjectMember(
+        member = ADBusGetBoundMember(
                 object,
                 ADBusMethodMember,
                 memberName,
@@ -432,21 +416,10 @@ static void DispatchMatch(
 
 // ----------------------------------------------------------------------------
 
-int ADBusDispatchMessage(
+void ADBusDispatch(
         struct ADBusConnection* c,
-        const uint8_t*          data,
-        size_t                  size)
+        struct ADBusMessage*    message)
 {
-    // Parse message data
-    struct ADBusMessage* message = c->dispatchMessage;
-    int err = ADBusSetMessageData(message, data, size);
-    if (err == ADBusIgnoredData) {
-        return 0;
-    } else if (err) {
-        ADBusResetMessage(message);
-        return err;
-    }
-
     struct ADBusIterator* arguments = c->dispatchIterator;
     ADBusArgumentIterator(message, arguments);
 
@@ -483,46 +456,44 @@ int ADBusDispatchMessage(
 
     // Dispatch match
     DispatchMatch(c, message, arguments);
-
-    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-struct ADBusStreamUnpacker* ADBusCreateStreamUnpacker()
+struct ADBusStreamBuffer* ADBusCreateStreamBuffer()
 {
-    return NEW(struct ADBusStreamUnpacker);
+    return NEW(struct ADBusStreamBuffer);
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusFreeStreamUnpacker(struct ADBusStreamUnpacker* s)
+void ADBusFreeStreamBuffer(struct ADBusStreamBuffer* buffer)
 {
-    if (!s)
+    if (!buffer)
         return;
 
-    u8vector_free(&s->buf);
-    free(s);
+    u8vector_free(&buffer->buf);
+    free(buffer);
 }
 
 // ----------------------------------------------------------------------------
 
 static uint RequireDataInParseBuffer(
-        struct ADBusStreamUnpacker* s,
+        struct ADBusStreamBuffer*   b,
         size_t                      needed,
         const uint8_t**             data,
         size_t*                     size)
 {
-    int toAdd = needed - u8vector_size(&s->buf);
+    int toAdd = needed - u8vector_size(&b->buf);
     if (toAdd > (int) *size) {
         // Don't have enough data
-        uint8_t* dest = u8vector_insert_end(&s->buf, *size);
+        uint8_t* dest = u8vector_insert_end(&b->buf, *size);
         memcpy(dest, *data, *size);
         return 0;
 
     } else if (toAdd > 0) {
         // Need to push data into the buffer, but we have enough
-        uint8_t* dest = u8vector_insert_end(&s->buf, toAdd);
+        uint8_t* dest = u8vector_insert_end(&b->buf, toAdd);
         memcpy(dest, *data, toAdd);
         *data += toAdd;
         *size -= toAdd;
@@ -534,51 +505,47 @@ static uint RequireDataInParseBuffer(
     }
 }
 
-int ADBusDispatchData(
-        struct ADBusStreamUnpacker* s,
-        struct ADBusConnection*     c,
-        const uint8_t*              data,
-        size_t                      size)
+int ADBusParse(
+        struct ADBusStreamBuffer*   b,
+        struct ADBusMessage*        message,
+        const uint8_t**             data,
+        size_t*                     size)
 {
-    while(u8vector_size(&s->buf) > 0 && size > 0)
+    int err = 0;
+    if (u8vector_size(&b->buf) > 0)
     {
         // Use up message from the stream buffer
         
         // We need to add enough so we can figure out how big the next message is
-        if (!RequireDataInParseBuffer(s, sizeof(struct ADBusHeader_), &data, &size))
-            return 0;
+        if (!RequireDataInParseBuffer(b, sizeof(struct ADBusExtendedHeader_), data, size))
+            return ADBusNeedMoreData;
 
         // Now we add enough to the buffer to be able to parse the message
-        size_t messageSize = ADBusNextMessageSize(s->buf, u8vector_size(&s->buf));
-        if (!RequireDataInParseBuffer(s, messageSize, &data, &size))
-            return 0;
+        size_t messageSize = ADBusNextMessageSize(b->buf, u8vector_size(&b->buf));
+        assert(messageSize > 0);
+        if (!RequireDataInParseBuffer(b, messageSize, data, size))
+            return ADBusNeedMoreData;
 
-        int err = ADBusDispatchMessage(c, s->buf, messageSize);;
-        if (err)
-            return err;
-
-        u8vector_remove(&s->buf, 0, messageSize);
+        err = ADBusSetMessageData(message, b->buf, messageSize);
+        u8vector_remove(&b->buf, 0, messageSize);
     }
-
-    while(size > 0)
+    else
     {
-        size_t messageSize = ADBusNextMessageSize(data, size);
-        if (messageSize == 0 || messageSize > size)
+        size_t messageSize = ADBusNextMessageSize(*data, *size);
+        if (messageSize == 0 || messageSize > *size)
         {
             // We don't have enough to parse the message
-            uint8_t* dest = u8vector_insert_end(&s->buf, size);
-            memcpy(dest, data, size);
-            return 0;
+            uint8_t* dest = u8vector_insert_end(&b->buf, *size);
+            memcpy(dest, *data, *size);
+            return ADBusNeedMoreData;
         }
 
-        int err = ADBusDispatchMessage(c, data, messageSize);
-        if (err)
-            return err;
+        err = ADBusSetMessageData(message, *data, messageSize);
 
-        data += messageSize;
-        size -= messageSize;
+        *data += messageSize;
+        *size -= messageSize;
     }
-    return 0;
+    return err;
 }
 
 
@@ -935,11 +902,18 @@ static struct ADBusObject* DoAddObject(
     }
 
     struct ADBusObject* o = NEW(struct ADBusObject);
-    o->name         = strdup(name);
+    o->name         = strdup(path);
     o->connection   = c;
+    o->interfaces   = kh_init(BoundInterface);
+
+    kh_key(c->objects, ki) = o->name;
+    kh_val(c->objects, ki) = o;
+
+    ADBusBindInterface(o, c->introspectable, CreateUserPointer(o));
+    ADBusBindInterface(o, c->properties, CreateUserPointer(o));
 
     // Setup the parent-child links
-    if (strcmp(name, "/") != 0) {
+    if (strcmp(path, "/") != 0) {
         struct ADBusObject** pchild;
         size_t parentSize;
 
@@ -948,12 +922,6 @@ static struct ADBusObject* DoAddObject(
         pchild  = pobject_vector_insert_end(&o->parent->children, 1);
         *pchild = o;
     }
-
-    kh_key(c->objects, ki) = o->name;
-    kh_val(c->objects, ki) = o;
-
-    ADBusBindInterface(o, c->introspectable, CreateUserPointer(o));
-    ADBusBindInterface(o, c->properties, CreateUserPointer(o));
 
     return o;
 }
@@ -964,7 +932,7 @@ struct ADBusObject* ADBusAddObject(
         int                     size)
 {
     str_t name = SanitisePath(path, size);
-    struct ADBusObject* o = DoAddObject(c, name);
+    struct ADBusObject* o = DoAddObject(c, name, str_size(&name));
     str_free(&name);
     return o;
 }
@@ -978,7 +946,7 @@ int ADBusBindInterface(
         struct ADBusUser*       user2)
 {
     int added;
-    khiter_t bi = kh_put(BoundInterface, o->interfaces, interface->name, &ret);
+    khiter_t bi = kh_put(BoundInterface, o->interfaces, interface->name, &added);
     if (!added)
         return -1; // there was already an interface with that name
 
@@ -1041,7 +1009,7 @@ int ADBusUnbindInterface(
 
 // ----------------------------------------------------------------------------
 
-struct ADBusInterface* ADBusGetObjectInterface(
+struct ADBusInterface* ADBusGetBoundInterface(
         struct ADBusObject*         o,
         const char*                 interface,
         int                         interfaceSize,
@@ -1053,12 +1021,12 @@ struct ADBusInterface* ADBusGetObjectInterface(
     if (interfaceSize >= 0)
         interface = strndup(interface, interfaceSize);
 
-    khiter_t ii = kh_get(BoundInterface, o->interfaces, interface);
+    khiter_t bi = kh_get(BoundInterface, o->interfaces, interface);
 
     if (interfaceSize >= 0)
         free((char*) interface);
 
-    if (ii == kh_end(o->interfaces))
+    if (bi == kh_end(o->interfaces))
         return NULL;
 
     if (user2)
@@ -1069,7 +1037,7 @@ struct ADBusInterface* ADBusGetObjectInterface(
 
 // ----------------------------------------------------------------------------
 
-struct ADBusMember* ADBusGetObjectMember(
+struct ADBusMember* ADBusGetBoundMember(
         struct ADBusObject*         o,
         enum ADBusMemberType        type,
         const char*                 member,
@@ -1325,7 +1293,7 @@ static void GetPropertyCallback(
         return;
     }
 
-    struct ADBusInterface* interface = ADBusGetObjectInterface(
+    struct ADBusInterface* interface = ADBusGetBoundInterface(
             object,
             field.string,
             field.size,
@@ -1398,7 +1366,7 @@ static void GetAllPropertiesCallback(
         return;
     }
 
-    struct ADBusInterface* interface = ADBusGetObjectInterface(
+    struct ADBusInterface* interface = ADBusGetBoundInterface(
             object,
             field.string,
             field.size,
@@ -1467,7 +1435,7 @@ static void SetPropertyCallback(
         return;
     }
 
-    struct ADBusInterface* interface = ADBusGetObjectInterface(
+    struct ADBusInterface* interface = ADBusGetBoundInterface(
             object,
             field.string,
             field.size,

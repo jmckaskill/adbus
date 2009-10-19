@@ -1,7 +1,9 @@
 #!/usr/bin/lua
 -- vim: ts=4 sw=4 sts=4 et
 
-require('adbuslua_core')
+local adbuslua_core = require("adbuslua_core")
+local type          = _G.type
+local setmetatable  = _G.setmetatable
 
 module("adbuslua")
 

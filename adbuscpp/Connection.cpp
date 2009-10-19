@@ -31,36 +31,12 @@ using namespace adbus;
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-StreamUnpacker::StreamUnpacker(Connection* connection)
-{
-    m_Stream = ADBusCreateStreamUnpacker();
-    m_Connection = connection->connection();
-}
-
-// ----------------------------------------------------------------------------
-
-StreamUnpacker::~StreamUnpacker()
-{
-    ADBusFreeStreamUnpacker(m_Stream);
-}
-
-// ----------------------------------------------------------------------------
-
-void StreamUnpacker::dispatchData(const uint8_t* data, size_t size)
-{
-    int err = ADBusDispatchData(m_Stream, m_Connection, data, size);
-    if (err)
-        throw ParseError();
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
 Connection::Connection()
 {
     m_FreeConnection = true;
     m_C = ADBusCreateConnection();
+    m_Buf = ADBusCreateStreamBuffer();
+    m_Message = ADBusCreateMessage();
 }
 
 // ----------------------------------------------------------------------------
@@ -77,6 +53,7 @@ Connection::~Connection()
 {
     if (m_FreeConnection)
         ADBusFreeConnection(m_C);
+    ADBusFreeStreamBuffer(m_Buf);
 }
 
 // ----------------------------------------------------------------------------
@@ -88,11 +65,26 @@ void Connection::setSendCallback(ADBusSendCallback callback, ADBusUser* data)
 
 // ----------------------------------------------------------------------------
 
-void Connection::dispatchMessage(const uint8_t* data, size_t size)
+void Connection::dispatch(struct ADBusMessage* message)
 {
-    int err = ADBusDispatchMessage(m_C, data, size);
-    if (err)
-        throw ParseError();
+    ADBusDispatch(m_C, message);
+}
+
+// ----------------------------------------------------------------------------
+
+void Connection::parse(const uint8_t* data, size_t size)
+{
+    while (size > 0) {
+        int err = ADBusParse(m_Buf, m_Message, &data, &size);
+        if (err == ADBusNeedMoreData)
+            break;
+        else if (err == ADBusIgnoredData)
+            continue;
+        else if (err)
+            throw ParseError();
+
+        ADBusDispatch(m_C, m_Message);
+    }
 }
 
 // ----------------------------------------------------------------------------

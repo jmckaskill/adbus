@@ -39,8 +39,8 @@
 static struct ADBusObject* GetObject(lua_State* L, struct LADBusConnection* c, int pathIndex)
 {
     size_t size;
-    const char* path = luaL_checklstring(L, index, &size);
-    struct ADBusObject* o = ADBusGetObject(c->connection, path, size);
+    const char* path = luaL_checklstring(L, pathIndex, &size);
+    struct ADBusObject* o = ADBusAddObject(c->connection, path, size);
     return o;
 }
 

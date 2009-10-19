@@ -38,33 +38,14 @@
 
 // ----------------------------------------------------------------------------
 
-static void DebugSend(struct ADBusCallDetails* details)
-{
-    char* msg = ADBusNewMessageSummary(details->message, NULL);
-    fprintf(stderr, "Sending: %s\n\n", msg);
-    ADBusFreeMessageSummary(msg);
-}
-
-static void DebugReceive(struct ADBusCallDetails* details)
-{
-    char* msg = ADBusNewMessageSummary(details->message, NULL);
-    fprintf(stderr, "Received: %s\n\n", msg);
-    ADBusFreeMessageSummary(msg);
-}
-
 int LADBusCreateConnection(lua_State* L)
 {
     int argnum = lua_gettop(L);
-    uint debug = (argnum >= 1) ? lua_toboolean(L, 1) : 0;
     struct LADBusConnection* c = LADBusPushNewConnection(L);
     c->connection = ADBusCreateConnection();
-    c->unpacker   = ADBusCreateStreamUnpacker();
     c->message    = ADBusCreateMessage();
+    c->buffer     = ADBusCreateStreamBuffer();
     c->existing_connection = 0;
-    if (debug) {
-        ADBusSetSendMessageCallback(c->connection, &DebugSend, NULL);
-        ADBusSetReceiveMessageCallback(c->connection, &DebugReceive, NULL);
-    }
 
     assert(lua_gettop(L) == argnum + 1);
     return 1;
@@ -77,8 +58,8 @@ int LADBusFreeConnection(lua_State* L)
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
     if (!c->existing_connection)
       ADBusFreeConnection(c->connection);
-    ADBusFreeStreamUnpacker(c->unpacker);
     ADBusFreeMessage(c->message);
+    ADBusFreeStreamBuffer(c->buffer);
     return 0;
 }
 
@@ -88,22 +69,36 @@ int LADBusParse(lua_State* L)
 {
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
     size_t size;
-    const char* data = luaL_checklstring(L, 2, &size);
+    const uint8_t* data = (const uint8_t*) luaL_checklstring(L, 2, &size);
 
-    ADBusDispatchData(c->unpacker, c->connection, (const uint8_t*) data, size);
+    while (size > 0) {
+        int err = ADBusParse(c->buffer, c->message, &data, &size);
+        if (err == ADBusNeedMoreData)
+            break;
+        else if (err == ADBusIgnoredData)
+            continue;
+        else if (err)
+            return luaL_error(L, "Parse error");
+
+        ADBusDispatch(c->connection, c->message);
+    }
     return 0;
 }
 
 // ----------------------------------------------------------------------------
 
 static void SendCallback(
-        const struct ADBusUser* user,
-        const uint8_t* data,
-        size_t len)
+        struct ADBusMessage* message,
+        const struct ADBusUser* user)
 {
     const struct LADBusData* d = (const struct LADBusData*) user;
+
+    const uint8_t* data;
+    size_t size;
+    ADBusGetMessageData(message, &data, &size);
+
     LADBusPushRef(d->L, d->callback);
-    lua_pushlstring(d->L, (const char*) data, len);
+    lua_pushlstring(d->L, (const char*) data, size);
     lua_call(d->L, 1, 0);
 }
 

@@ -93,7 +93,6 @@ struct ADBusConnection
     ADBusMessageCallback        sendMessageCallback;
     struct ADBusUser*           sendMessageData;
 
-    struct ADBusMessage*        dispatchMessage;
     struct ADBusMessage*        returnMessage;
     struct ADBusMessage*        outgoingMessage;
 
@@ -107,10 +106,9 @@ struct ADBusConnection
 
 // ----------------------------------------------------------------------------
 
-struct ADBusStreamUnpacker
+struct ADBusStreamBuffer
 {
     u8vector_t                  buf;
 };
-
 
 

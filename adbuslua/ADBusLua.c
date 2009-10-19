@@ -158,18 +158,6 @@ struct LADBusSocket* LADBusPushNewSocket(lua_State* L)
 }
 
 // ----------------------------------------------------------------------------
-void LADBusPushNewObject(
-        lua_State*              L,
-        struct ADBusObject*     object)
-{
-    void* udata = lua_newuserdata(L, sizeof(struct ADBusObject*));
-    luaL_getmetatable(L, LADBUSOBJECT_HANDLE);
-    lua_setmetatable(L, -2);
-    struct ADBusObject** pobject = (struct ADBusObject**) udata;
-    *pobject = object;
-}
-
-// ----------------------------------------------------------------------------
 
 void LADBusPushNewInterface(
         lua_State*              L,
@@ -196,18 +184,6 @@ struct LADBusSocket* LADBusCheckSocket(lua_State* L, int index)
 {
     void* udata = luaL_checkudata(L, index, LADBUSSOCKET_HANDLE);
     return (struct LADBusSocket*) udata;
-}
-
-// ----------------------------------------------------------------------------
-
-struct ADBusObject* LADBusCheckObject(
-        lua_State*               L,
-        struct LADBusConnection* connection,
-        int                      index)
-{
-    size_t pathSize;
-    void* udata = luaL_checkudata(L, index, LADBUSOBJECT_HANDLE);
-    return *(struct ADBusObject**) udata;
 }
 
 // ----------------------------------------------------------------------------
@@ -308,10 +284,7 @@ static const luaL_Reg kConnectionReg[] = {
     {"next_match_id", &LADBusNextMatchId},
     {"add_match", &LADBusAddMatch},
     {"remove_match", &LADBusRemoveMatch},
-    {"add_object", &LADBusAddObject},
     {"send_message", &LADBusSendMessage},
-    {"bind_interface", &LADBusBindInterface},
-    {"emit", &LADBusEmit},
     {NULL, NULL},
 };
 
@@ -332,6 +305,14 @@ static const luaL_Reg kSocketReg[] = {
     {"send", &LADBusSocketSend},
     {"receive", &LADBusSocketRecv},
     {NULL, NULL}
+};
+
+// Reg for adbuslua_core.object
+static const luaL_Reg kObjectReg[] = {
+  {"bind", &LADBusBindInterface},
+  {"unbind", &LADBusUnbindInterface},
+  {"emit", &LADBusEmit},
+  {NULL, NULL}
 };
 
 // Reg for adbuslua_core
@@ -371,6 +352,11 @@ LADBUS_API int luaopen_adbuslua_core(lua_State* L)
 #endif
     luaL_register(L, "adbuslua_core", kCoreReg);
     int libTable = lua_gettop(L);
+
+    lua_newtable(L);
+    luaL_register(L, NULL, kObjectReg);
+    lua_setfield(L, libTable, "object");
+
     CreateMetatable(L, libTable, LADBUSCONNECTION_HANDLE, "connection", kConnectionReg);
     CreateMetatable(L, libTable, LADBUSINTERFACE_HANDLE, "interface", kInterfaceReg);
     CreateMetatable(L, libTable, LADBUSSOCKET_HANDLE, "socket", kSocketReg);

@@ -83,15 +83,11 @@ LADBUS_API void LADBusPushExistingConnection(lua_State* L, struct ADBusConnectio
 
 LADBUSI_FUNC struct LADBusConnection* LADBusPushNewConnection(lua_State* L);
 LADBUSI_FUNC struct LADBusSocket*     LADBusPushNewSocket(lua_State* L);
-
-LADBUSI_FUNC void LADBusPushNewObject(lua_State* L, struct ADBusObject* object);
 LADBUSI_FUNC void LADBusPushNewInterface(lua_State* L, struct ADBusInterface* interface);
 
 
 LADBUSI_FUNC struct LADBusConnection*   LADBusCheckConnection(lua_State* L, int index);
 LADBUSI_FUNC struct LADBusSocket*       LADBusCheckSocket(lua_State* L, int index);
-
-LADBUSI_FUNC struct ADBusObject*        LADBusCheckObject(lua_State* L, int index);
 LADBUSI_FUNC struct ADBusInterface*     LADBusCheckInterface(lua_State* L, int index);
 
 

@@ -36,8 +36,8 @@
 struct LADBusConnection
 {
     struct ADBusConnection*       connection;
-    struct ADBusStreamUnpacker*   unpacker;
     struct ADBusMessage*          message;
+    struct ADBusStreamBuffer*     buffer;
     uint                          existing_connection;
 };
 

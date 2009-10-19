@@ -36,7 +36,6 @@ extern "C" {
 #endif
 
 struct ADBusConnection;
-struct ADBusStream;
 struct ADBusInterface;
 struct ADBusMember;
 struct ADBusObject;
@@ -80,22 +79,19 @@ ADBUS_API uint32_t ADBusNextSerial(struct ADBusConnection* c);
 // Parsing and dispatch
 // ----------------------------------------------------------------------------
 
-ADBUS_API struct ADBusStream* ADBusCreateStream();
+struct ADBusStreamBuffer;
 
-ADBUS_API void ADBusFreeStream(struct ADBusStream* s);
+ADBUS_API struct ADBusStreamBuffer* ADBusCreateStreamBuffer();
 
-ADBUS_API void ADBusUnpackStream(
-        struct ADBusStream*             stream,
+ADBUS_API void ADBusFreeStreamBuffer(struct ADBusStreamBuffer* buffer);
+
+ADBUS_API int ADBusParse(
+        struct ADBusStreamBuffer*       buffer,
         struct ADBusMessage*            message,
-        const uint8_t**                 data,
+        const uint8_t**                 pdata,
         size_t*                         size);
 
-ADBUS_API int ADBusDispatchData(
-        struct ADBusConnection*         connection,
-        const uint8_t*                  data,
-        size_t                          size);
-
-ADBUS_API int ADBusDispatchMessage(
+ADBUS_API void ADBusDispatch(
         struct ADBusConnection*         connection,
         struct ADBusMessage*            message);
 
@@ -209,7 +205,7 @@ ADBUS_API int ADBusBindInterface(
         struct ADBusInterface*      interface,
         struct ADBusUser*           user2);
 
-ADBUS_API void ADBusUnbindInterface(
+ADBUS_API int ADBusUnbindInterface(
         struct ADBusObject*         object,
         struct ADBusInterface*      interface);
 
