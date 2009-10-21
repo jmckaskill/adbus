@@ -12,17 +12,8 @@ end
 
 solution "adbus"
   configurations {"debug", "release"}
-  includedirs { ".", "lua-5.1.4/src" }
   location(_OPTIONS.to)
-  targetdir "build"
-  configuration {"windows"}
-    defines {"_CRT_SECURE_NO_WARNINGS",
-             "WIN32",
-             "LUA_BUILD_AS_DLL",
-             "ADBUS_BUILD_AS_DLL"}
-  configuration {"linux"}
-    defines {"PLATFORM_UNIX"}
-    buildoptions {"-fPIC"}
+  targetdir(_OPTIONS.to)
   configuration {"debug"}
     defines {"DEBUG"}
     flags {"Symbols"}
