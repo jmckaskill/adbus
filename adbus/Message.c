@@ -92,6 +92,7 @@ void ADBusFreeMessage(struct ADBusMessage* m)
     ADBusFreeMarshaller(m->argumentMarshaller);
     ADBusFreeIterator(m->headerIterator);
     free(m->path);
+    free(m->interface);
     free(m->member);
     free(m->errorName);
     free(m->destination);
@@ -182,8 +183,10 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
     m->argumentOffset = messageSize - length;
 
     // Should we parse this?
-    if (header->type > ADBusMessageTypeMax)
-        return ADBusIgnoredData;
+    if (header->type > ADBusMessageTypeMax) {
+        ADBusResetMessage(m);
+        return ADBusSuccess;
+    }
 
     // Parse the header fields
     const uint8_t* fieldBegin = data + sizeof(struct ADBusHeader_);
@@ -298,80 +301,13 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
         // the iterator doesn't return begin and end argument fields
         ADBusBeginArgument(mar, m->signature, -1);
 
-        struct ADBusField field;
         ADBusArgumentIterator(m, iterator);
         ADBusSetIteratorEndianness(iterator, (enum ADBusEndianness) header->endianness);
-        while (!ADBusIsScopeAtEnd(iterator, 0))
-        {
-            int err = ADBusIterate(iterator, &field);
-            if (err)
-                return err;
-            switch (field.type)
-            {
-            case ADBusUInt8Field:
-                ADBusAppendUInt8(mar, field.u8);
-                break;
-            case ADBusBooleanField:
-                ADBusAppendBoolean(mar, field.b);
-                break;
-            case ADBusInt16Field:
-                ADBusAppendInt16(mar, field.i16);
-                break;
-            case ADBusUInt16Field:
-                ADBusAppendUInt16(mar, field.u16);
-                break;
-            case ADBusInt32Field:
-                ADBusAppendInt32(mar, field.i32);
-                break;
-            case ADBusUInt32Field:
-                ADBusAppendUInt32(mar, field.u32);
-                break;
-            case ADBusInt64Field:
-                ADBusAppendInt64(mar, field.i64);
-                break;
-            case ADBusUInt64Field:
-                ADBusAppendUInt64(mar, field.u64);
-                break;
-            case ADBusDoubleField:
-                ADBusAppendDouble(mar, field.d);
-                break;
-            case ADBusStringField:
-                ADBusAppendString(mar, field.string, field.size);
-                break;
-            case ADBusObjectPathField:
-                ADBusAppendObjectPath(mar, field.string, field.size);
-                break;
-            case ADBusSignatureField:
-                ADBusAppendSignature(mar, field.string, field.size);
-                break;
-            case ADBusArrayBeginField:
-                ADBusBeginArray(mar);
-                break;
-            case ADBusArrayEndField:
-                ADBusEndArray(mar);
-                break;
-            case ADBusStructBeginField:
-                ADBusBeginStruct(mar);
-                break;
-            case ADBusStructEndField:
-                ADBusEndStruct(mar);
-                break;
-            case ADBusDictEntryBeginField:
-                ADBusBeginDictEntry(mar);
-                break;
-            case ADBusDictEntryEndField:
-                ADBusEndDictEntry(mar);
-                break;
-            case ADBusVariantBeginField:
-                ADBusBeginVariant(mar, field.string, field.size);
-                break;
-            case ADBusVariantEndField:
-                ADBusEndVariant(mar);
-                break;
-            default:
-                return -1;
-            }
-        }
+
+        int err = ADBusAppendIteratorData(mar, iterator, 0);
+        if (err)
+            return err;
+
         ADBusEndArgument(mar);
     }
 
@@ -809,8 +745,20 @@ char* ADBusNewMessageSummary(struct ADBusMessage* m, size_t* size)
     size_t messageSize;
     ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &messageSize);
     messageSize -= m->argumentOffset;
-    str_printf(&str, "Type %d, Flags %d, Length %d, Serial %d",
-            (int) ADBusGetMessageType(m),
+
+    enum ADBusMessageType type = ADBusGetMessageType(m);
+    if (type == ADBusMethodCallMessage)
+      str_printf(&str, "Type method_call (1), ");
+    else if (type == ADBusMethodReturnMessage)
+      str_printf(&str, "Type method_return (2), ");
+    else if (type == ADBusErrorMessage)
+      str_printf(&str, "Type error (3), ");
+    else if (type == ADBusSignalMessage)
+      str_printf(&str, "Type signal (4), ");
+    else
+      str_printf(&str, "Type unknown (%d), ", (int) type);
+
+    str_printf(&str, "Flags %d, Length %d, Serial %d",
             (int) ADBusGetFlags(m),
             (int) messageSize,
             (int) ADBusGetSerial(m));

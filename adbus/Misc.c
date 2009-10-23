@@ -30,6 +30,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef WIN32
+#include <windows.h>
+#include <crtdbg.h>
+#endif
 
 // ----------------------------------------------------------------------------
 
@@ -41,6 +45,27 @@ void ADBusPrintDebug_(const char* format, ...)
     vfprintf(stderr, format, ap);
     fprintf(stderr, "\n");
     va_end(ap);
+}
+
+// ----------------------------------------------------------------------------
+
+void TimerBegin(struct Timer* ctx)
+{
+  LARGE_INTEGER freq, begin;
+  QueryPerformanceFrequency(&freq);
+  ctx->frequency = freq.QuadPart;
+  QueryPerformanceCounter(&begin);
+  ctx->begin = begin.QuadPart;
+}
+
+// ----------------------------------------------------------------------------
+
+void TimerEnd(struct Timer* ctx, const char* what)
+{
+  LARGE_INTEGER end;
+  QueryPerformanceCounter(&end);
+  uint64_t us = (end.QuadPart - ctx->begin) * 1000000 / ctx->frequency;
+  _CrtDbgReport(_CRT_WARN, NULL, -1, "", "%s %u us\n", what, (uint) us);
 }
 
 // ----------------------------------------------------------------------------

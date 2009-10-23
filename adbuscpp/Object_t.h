@@ -45,14 +45,15 @@
 
     template<CLASS_DECL_TRAILING_COMMA
              class MemFun, class M>
-    void CAT(addMatch,NUM) (Match* match, MemFun f, M* m)
+    void CAT(addMatch,NUM) (ADBusConnection* connection, Match* match, MemFun f, M* m)
     { 
         UserData<M*>* objectData = new UserData<M*>(m);
         UserData<MemFun>* functionData = new UserData<MemFun>(f);
         functionData->chainedFunction
             = & CAT(adbus::detail::MemberFunction,NUM) <MemFun, M CLASS_LIST_LEADING_COMMA>;
 
-        addMatch(match,
+        addMatch(connection,
+                 match,
                  &CallMethod,
                  functionData,
                  objectData);

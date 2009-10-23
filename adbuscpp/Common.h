@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include "adbus/Common.h"
+
 #define ADBUSCPP_NON_COPYABLE(CLASSNAME)    \
   CLASSNAME(const CLASSNAME& r);            \
   CLASSNAME& operator=(const CLASSNAME& r)

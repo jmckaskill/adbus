@@ -105,6 +105,14 @@ static inline char* strndup(const char* string, size_t n)
 extern char* strndup(const char* string, size_t n);
 #endif
 
+struct Timer
+{
+    uint64_t begin;
+    uint64_t frequency;
+};
+ADBUSI_FUNC void TimerBegin(struct Timer* ctx);
+ADBUSI_FUNC void TimerEnd(struct Timer* ctx, const char* what);
+
 // ----------------------------------------------------------------------------
 
 /* This alignment thing is from ORBit2 */

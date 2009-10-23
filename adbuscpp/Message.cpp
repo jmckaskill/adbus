@@ -32,8 +32,8 @@ using namespace adbus;
 void adbus::CheckForMarshallError(
     int                   err)
 {
-  if (err)
-    throw MarshallError();
+    if (err)
+        throw MarshallError();
 }
 
 // ----------------------------------------------------------------------------
@@ -42,8 +42,8 @@ void adbus::CheckForDemarshallError(
     struct ADBusField*    field,
     enum ADBusFieldType   expectedType)
 {
-  if (field->type != expectedType)
-    throw DemarshallError();
+    if (field->type != expectedType)
+        throw DemarshallError();
 }
 
 // ----------------------------------------------------------------------------
@@ -153,4 +153,11 @@ void operator<<(std::string& str, ADBusIterator& i)
     str.insert(str.end(), field.string, field.string + field.size);
 }
 
+void operator<<(adbus::MessageEnd& end, ADBusIterator& i)
+{
+    (void) end;
+    struct ADBusField field;
+    ADBusIterate(&i, &field);
+    adbus::CheckForDemarshallError(&field, ADBusEndField);
+}
 

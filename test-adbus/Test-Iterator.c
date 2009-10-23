@@ -22,6 +22,8 @@
 //
 // ----------------------------------------------------------------------------
 
+#ifndef NDEBUG
+
 #include "Tests.h"
 
 #include "adbus/Iterator.h"
@@ -390,3 +392,5 @@ void TestIterator()
 {
     TestIteratorLittleEndian();
 }
+
+#endif

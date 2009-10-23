@@ -287,7 +287,7 @@ int Xml_eval(lua_State *L) {
 	int firstStatement = 1;
 	while((token=Tokenizer_next(tok))!=0) if(token[0]=='<') { // new tag found
 		if(lua_gettop(L)) {
-			int newIndex=lua_objlen(L,-1)+1;
+      int newIndex=(int)(lua_objlen(L,-1)+1);
 			lua_pushnumber(L,newIndex);
 			lua_newtable(L);
 			lua_settable(L, -3);
@@ -304,11 +304,11 @@ int Xml_eval(lua_State *L) {
 		// set metatable:    
 		lua_newtable(L);
 		lua_pushliteral(L, "__index");
-		lua_getglobal(L, "xml");
+		lua_getglobal(L, "luaxml");
 		lua_settable(L, -3);
 			
 		lua_pushliteral(L, "__tostring"); // set __tostring metamethod
-		lua_getglobal(L, "xml");
+		lua_getglobal(L, "luaxml");
 		lua_pushliteral(L,"str");
 		lua_gettable(L, -2);
 		lua_remove(L, -2);
@@ -413,7 +413,7 @@ _EXPORT int luaopen_LuaXML_lib (lua_State* L) {
 		{"registerCode", Xml_registerCode},
 		{NULL, NULL}
 	};
-	luaL_register(L, "xml", funcs);
+	luaL_register(L, "luaxml", funcs);
 	// register default codes:
 	if(!sv_code) {
 		sv_code=(char**)malloc(sv_code_capacity*sizeof(char*));

@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include "adbus/Connection.h"
 #include "adbus/Iterator.h"
 #include "adbus/Marshaller.h"
 #include "adbus/User.h"
@@ -119,6 +118,20 @@ namespace adbus
 
     // ----------------------------------------------------------------------------
 
+    template<class T>
+    struct ArrayReference
+    {
+      size_t    size;
+      const T*  data;
+    };
+
+    // ----------------------------------------------------------------------------
+
+    struct MessageEnd
+    {
+    };
+
+    // ----------------------------------------------------------------------------
 }
 
 // ----------------------------------------------------------------------------
@@ -149,6 +162,10 @@ std::string ADBusTypeString(std::vector<T>*)
 template<class K, class V>
 std::string ADBusTypeString(std::map<K,V>*)
 { return "a{" + ADBusTypeString((K*) NULL) + ADBusTypeString((V*) NULL) + "}"; }
+
+template<class T>
+std::string ADBusTypeString(adbus::ArrayReference<T>*)
+{ return "a" + ADBusTypeString((T*) NULL); }
 
 // ----------------------------------------------------------------------------
 // Marshallers
@@ -190,28 +207,36 @@ inline void operator>>(const std::string& str, ADBusMarshaller& m)
 template<class T>
 void operator>>(const std::vector<T>& vec, ADBusMarshaller& m)
 {
-  adbus::CheckForMarshallError(ADBusBeginArray(&m));
-  for (size_t i = 0; i < vec.size(); ++i)
-  {
-    vec[i] >> m;
-  }
-  adbus::CheckForMarshallError(ADBusEndArray(&m));
+    adbus::CheckForMarshallError(ADBusBeginArray(&m));
+    for (size_t i = 0; i < vec.size(); ++i)
+    {
+        vec[i] >> m;
+    }
+    adbus::CheckForMarshallError(ADBusEndArray(&m));
 }
 
 template<class K, class V>
 void operator>>(const std::map<K,V>& Map, ADBusMarshaller& m)
 {
-  adbus::CheckForMarshallError(ADBusBeginArray(&m));
-  typedef typename std::map<K,V>::const_iterator iterator;
-  iterator mi;
-  for (mi = Map.begin(); mi != Map.end(); ++mi)
-  {
-    adbus::CheckForMarshallError(ADBusBeginDictEntry(&m));
-    mi->first >> m;
-    mi->second >> m;
-    adbus::CheckForMarshallError(ADBusEndDictEntry(&m));
-  }
-  adbus::CheckForMarshallError(ADBusEndArray(&m));
+    adbus::CheckForMarshallError(ADBusBeginArray(&m));
+    typedef typename std::map<K,V>::const_iterator iterator;
+    iterator mi;
+    for (mi = Map.begin(); mi != Map.end(); ++mi)
+    {
+        adbus::CheckForMarshallError(ADBusBeginDictEntry(&m));
+        mi->first >> m;
+        mi->second >> m;
+        adbus::CheckForMarshallError(ADBusEndDictEntry(&m));
+    }
+    adbus::CheckForMarshallError(ADBusEndArray(&m));
+}
+
+template<class T>
+void operator>>(const adbus::ArrayReference<T>& array, ADBusMarshaller& m)
+{
+    adbus::CheckForMarshallError(ADBusBeginArray(&m));
+    ADBusAppendData(&m, (const uint8_t*) array.data, array.size * sizeof(T));
+    adbus::CheckForMarshallError(ADBusEndArray(&m));
 }
 
 
@@ -230,6 +255,7 @@ void operator<<(uint64_t& data, ADBusIterator& i);
 void operator<<(double& data, ADBusIterator& i);
 void operator<<(const char*& str, ADBusIterator& i);
 void operator<<(std::string& str, ADBusIterator& i);
+void operator<<(adbus::MessageEnd& end, ADBusIterator& i);
 
 template<class T>
 void operator<<(std::vector<T>& vector, ADBusIterator& i)
@@ -244,6 +270,24 @@ void operator<<(std::vector<T>& vector, ADBusIterator& i)
         vector.resize(vector.size() + 1);
         vector[vector.size() - 1] << i;
     }
+
+    ADBusIterate(&i, &field);
+    adbus::CheckForDemarshallError(&field, ADBusArrayEndField);
+}
+
+template<class T>
+void operator<<(adbus::ArrayReference<T>& array, ADBusIterator& i)
+{
+    struct ADBusField field;
+    ADBusIterate(&i, &field);
+    adbus::CheckForDemarshallError(&field, ADBusArrayBeginField);
+
+    array.size = field.size / sizeof(T);
+    array.data = ADBusCurrentIteratorData(&i, NULL);
+
+    int err = ADBusJumpToEndOfArray(&i, field.scope);
+    if (err)
+        throw adbus::DemarshallError();
 
     ADBusIterate(&i, &field);
     adbus::CheckForDemarshallError(&field, ADBusArrayEndField);

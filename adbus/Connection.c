@@ -247,14 +247,19 @@ void ADBusSendMessage(
         struct ADBusConnection* c,
         struct ADBusMessage*    message)
 {
+    //struct Timer timer;
+    //TimerBegin(&timer);
     if (c->sendCallback)
         c->sendCallback(message, c->sendCallbackData);
+    //TimerEnd(&timer, "Send");
 }
 
 // ----------------------------------------------------------------------------
 
 uint32_t ADBusNextSerial(struct ADBusConnection* c)
 {
+    if (c->nextSerial == UINT32_MAX)
+        c->nextSerial = 1;
     return c->nextSerial++;
 }
 
@@ -355,24 +360,24 @@ static uint ReplySerialMatches(struct ADBusMatch* r, struct ADBusMessage* messag
 }
 
 static void DispatchMatch(
-        struct ADBusConnection* c,
-        struct ADBusMessage* message,
-        struct ADBusIterator* arguments)
+        struct ADBusCallDetails*  details)
 {
-    enum ADBusMessageType type  = ADBusGetMessageType(message);
-    const char* sender          = ADBusGetSender(message, NULL);
-    const char* destination     = ADBusGetDestination(message, NULL);
-    const char* path            = ADBusGetPath(message, NULL);
-    const char* interface       = ADBusGetInterface(message, NULL);
-    const char* member          = ADBusGetMember(message, NULL);
-    const char* errorName       = ADBusGetErrorName(message, NULL);
+    struct ADBusConnection* c   = details->connection;
+    struct ADBusMessage* m      = details->message;
+    enum ADBusMessageType type  = ADBusGetMessageType(m);
+    const char* sender          = ADBusGetSender(m, NULL);
+    const char* destination     = ADBusGetDestination(m, NULL);
+    const char* path            = ADBusGetPath(m, NULL);
+    const char* interface       = ADBusGetInterface(m, NULL);
+    const char* member          = ADBusGetMember(m, NULL);
+    const char* errorName       = ADBusGetErrorName(m, NULL);
 
     for (size_t i = 0; i < match_vector_size(&c->registrations);)
     {
         struct ADBusMatch* r = &c->registrations[i];
         if (r->type && r->type != type) {
             ++i;
-        } else if (!ReplySerialMatches(r, message)) {
+        } else if (!ReplySerialMatches(r, m)) {
             ++i;
         } else if (!Matches(r->sender, sender)) {
             ++i;
@@ -389,18 +394,12 @@ static void DispatchMatch(
         } else {
             if (r->callback) {
                 // We want to reset the argument iterator for every match
-                ADBusArgumentIterator(message, arguments);
+                ADBusArgumentIterator(m, details->arguments);
 
-                struct ADBusCallDetails details;
-                ADBusInitCallDetails(&details);
-                details.arguments   = arguments;
-                details.connection  = c;
-                details.manualReply = 1;
-                details.message     = message;
-                details.user1       = r->user1;
-                details.user2       = r->user2;
+                details->user1 = r->user1;
+                details->user2 = r->user2;
 
-                r->callback(&details);
+                r->callback(details);
             }
 
             if (r->removeOnFirstMatch) {
@@ -416,46 +415,68 @@ static void DispatchMatch(
 
 // ----------------------------------------------------------------------------
 
+void ADBusRawDispatch(struct ADBusCallDetails*    details)
+{
+    size_t sz;
+    ADBusGetMessageData(details->message, NULL, &sz);
+    if (sz == 0)
+        return;
+
+    // Dispatch the method call
+    if (ADBusGetMessageType(details->message) == ADBusMethodCallMessage) {
+        ADBusArgumentIterator(details->message, details->arguments);
+        ADBusSetupReturn(details->returnMessage, details->connection, details->message);
+        DispatchMethodCall(details);
+    }
+
+    // Reset the returnMessage field for the dispatch match so that matches 
+    // don't try and use it
+    struct ADBusMessage* returnMessage = details->returnMessage;
+    details->returnMessage = NULL;
+
+    // Dispatch match
+    ADBusArgumentIterator(details->message, details->arguments);
+    DispatchMatch(details);
+
+    details->returnMessage = returnMessage;
+}
+
+// ----------------------------------------------------------------------------
+
 void ADBusDispatch(
         struct ADBusConnection* c,
         struct ADBusMessage*    message)
 {
-    struct ADBusIterator* arguments = c->dispatchIterator;
-    ADBusArgumentIterator(message, arguments);
+    size_t sz;
+    ADBusGetMessageData(message, NULL, &sz);
+    if (sz == 0)
+        return;
+
+    ADBusArgumentIterator(message, c->dispatchIterator);
 
     struct ADBusCallDetails details;
     ADBusInitCallDetails(&details);
     details.connection  = c;
     details.message     = message;
-    details.arguments   = arguments;
-    details.manualReply = 0;
-    details.user1       = c->receiveMessageData;
+    details.arguments   = c->dispatchIterator;
 
-    if (c->receiveMessageCallback)
-        c->receiveMessageCallback(&details);
 
-    details.user1 = NULL;
-
-    // Dispatch the method call
-    if (ADBusGetMessageType(message) == ADBusMethodCallMessage) {
-        // Set up returnMessage if source wants reply
-        if (!(ADBusGetFlags(message) & ADBusNoReplyExpectedFlag)) {
-            details.returnMessage = c->returnMessage;
-            ADBusSetupReturn(details.returnMessage, c, message);
-        }
-
-        DispatchMethodCall(&details);
-
-        // Send off reply if needed
-        if ( details.returnMessage != NULL
-          && !details.manualReply)
-        {
-            ADBusSendMessage(c, details.returnMessage);
-        }
+    // Set up returnMessage if source wants reply for a method call
+    if ( ADBusGetMessageType(message) == ADBusMethodCallMessage
+      && !(ADBusGetFlags(message) & ADBusNoReplyExpectedFlag)) 
+    {
+        details.returnMessage = c->returnMessage;
+        ADBusSetupReturn(details.returnMessage, c, message);
     }
 
-    // Dispatch match
-    DispatchMatch(c, message, arguments);
+    ADBusRawDispatch(&details);
+      
+    // Send off reply if needed
+    if ( details.returnMessage != NULL
+      && !details.manualReply)
+    {
+        ADBusSendMessage(c, details.returnMessage);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -489,6 +510,8 @@ static uint RequireDataInParseBuffer(
         // Don't have enough data
         uint8_t* dest = u8vector_insert_end(&b->buf, *size);
         memcpy(dest, *data, *size);
+        *data += *size;
+        *size = 0;
         return 0;
 
     } else if (toAdd > 0) {
@@ -511,23 +534,24 @@ int ADBusParse(
         const uint8_t**             data,
         size_t*                     size)
 {
-    int err = 0;
+    ADBusResetMessage(message);
     if (u8vector_size(&b->buf) > 0)
     {
         // Use up message from the stream buffer
         
         // We need to add enough so we can figure out how big the next message is
         if (!RequireDataInParseBuffer(b, sizeof(struct ADBusExtendedHeader_), data, size))
-            return ADBusNeedMoreData;
+            return 0;
 
         // Now we add enough to the buffer to be able to parse the message
         size_t messageSize = ADBusNextMessageSize(b->buf, u8vector_size(&b->buf));
         assert(messageSize > 0);
         if (!RequireDataInParseBuffer(b, messageSize, data, size))
-            return ADBusNeedMoreData;
+            return 0;
 
-        err = ADBusSetMessageData(message, b->buf, messageSize);
+        int err = ADBusSetMessageData(message, b->buf, messageSize);
         u8vector_remove(&b->buf, 0, messageSize);
+        return err;
     }
     else
     {
@@ -537,15 +561,15 @@ int ADBusParse(
             // We don't have enough to parse the message
             uint8_t* dest = u8vector_insert_end(&b->buf, *size);
             memcpy(dest, *data, *size);
-            return ADBusNeedMoreData;
+            return 0;
         }
 
-        err = ADBusSetMessageData(message, *data, messageSize);
+        int err = ADBusSetMessageData(message, *data, messageSize);
 
         *data += messageSize;
         *size -= messageSize;
+        return err;
     }
-    return err;
 }
 
 
@@ -721,6 +745,8 @@ static void CloneString(const char** str, int* size)
     }
 }
 
+static str_t SanitisePath(const char* path, int size);
+
 static void CloneMatch(const struct ADBusMatch* from,
                        struct ADBusMatch* to)
 {
@@ -728,9 +754,10 @@ static void CloneMatch(const struct ADBusMatch* from,
     CloneString(&to->sender,         &to->senderSize);
     CloneString(&to->destination,    &to->destinationSize);
     CloneString(&to->interface,      &to->interfaceSize);
-    CloneString(&to->path,           &to->pathSize);
     CloneString(&to->member,         &to->memberSize);
     CloneString(&to->errorName,      &to->errorNameSize);
+    if (from->path)
+        to->path = SanitisePath(from->path, from->pathSize);
 }
 
 static void FreeMatchData(struct ADBusMatch* match)
@@ -740,9 +767,9 @@ static void FreeMatchData(struct ADBusMatch* match)
     free((char*) match->sender);
     free((char*) match->destination);
     free((char*) match->interface);
-    free((char*) match->path);
     free((char*) match->member);
     free((char*) match->errorName);
+    str_free((str_t*) &match->path);
     ADBusUserFree(match->user1);
     ADBusUserFree(match->user2);
 }
@@ -784,6 +811,8 @@ void ADBusRemoveMatch(struct ADBusConnection* c, uint32_t id)
 
 uint32_t ADBusNextMatchId(struct ADBusConnection* c)
 {
+    if (c->nextMatchId == UINT32_MAX)
+        c->nextSerial = 1;
     return c->nextMatchId++;
 }
 
@@ -846,7 +875,8 @@ static str_t SanitisePath(
     // Make sure it starts with a /
     if (size == 0 || path[0] != '/')
         str_append(&ret, "/");
-    str_append_n(&ret, path, size);
+    if (size > 0)
+        str_append_n(&ret, path, size);
 
     // Remove repeating slashes
     for (size_t i = 1; i < str_size(&ret); ++i) {
@@ -937,6 +967,24 @@ struct ADBusObject* ADBusAddObject(
     return o;
 }
 
+
+// ----------------------------------------------------------------------------
+
+struct ADBusObject* ADBusGetObject(
+        struct ADBusConnection* c,
+        const char*             path,
+        int                     size)
+{
+    struct ADBusObject* ret = NULL;
+
+    str_t name = SanitisePath(path, size);
+    khiter_t ki = kh_get(ADBusObjectPtr, c->objects, name);
+    if (ki != kh_end(c->objects))
+        ret = kh_val(c->objects, ki);
+
+    str_free(&name);
+    return ret;
+}
 
 // ----------------------------------------------------------------------------
 

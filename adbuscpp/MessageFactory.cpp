@@ -25,9 +25,8 @@
 
 #include "MessageFactory.h"
 
-#include "Connection.h"
-
 #include "adbus/Marshaller.h"
+#include "adbus/Connection.h"
 
 #include <assert.h>
 
@@ -69,7 +68,7 @@ void MessageFactory::setupMatch(enum ADBusMessageType type)
 {
     assert(m_Connection);
     if (m_Match.replySerial == 0xFFFFFFFF)
-        m_Match.replySerial = m_Connection->nextSerial();
+        m_Match.replySerial = ADBusNextSerial(m_Connection);
 
     m_Match.type = type;
 }
@@ -97,7 +96,7 @@ void MessageFactory::setupMessage()
 
 void MessageFactory::sendMessage()
 {
-    m_Connection->sendMessage(m_Message);
+    ADBusSendMessage(m_Connection, m_Message);
 }
 
 

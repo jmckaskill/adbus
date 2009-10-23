@@ -95,6 +95,9 @@ ADBUS_API void ADBusDispatch(
         struct ADBusConnection*         connection,
         struct ADBusMessage*            message);
 
+ADBUS_API void ADBusRawDispatch(
+        struct ADBusCallDetails*        details);
+
 // ----------------------------------------------------------------------------
 // Bus management
 // ----------------------------------------------------------------------------
@@ -196,6 +199,11 @@ ADBUS_API void ADBusRemoveMatch(
 // ----------------------------------------------------------------------------
 
 ADBUS_API struct ADBusObject* ADBusAddObject(
+        struct ADBusConnection*     connection,
+        const char*                 path,
+        int                         size);
+
+ADBUS_API struct ADBusObject* ADBusGetObject(
         struct ADBusConnection*     connection,
         const char*                 path,
         int                         size);

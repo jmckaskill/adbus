@@ -52,6 +52,7 @@ namespace adbus
     private:
         ADBusMarshaller*    m;
     };
+
 }
 
 

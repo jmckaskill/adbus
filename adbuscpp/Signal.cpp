@@ -23,9 +23,10 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "BoundSignal.h"
+#include "Signal.h"
 
 #include <adbus/CommonMessages.h>
+#include <adbus/Connection.h>
 
 using namespace adbus;
 
@@ -33,41 +34,47 @@ using namespace adbus;
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-BoundSignalBase::BoundSignalBase()
-        :   m_Object(NULL),
-            m_Signal(NULL, ADBusSignalMember)
+SignalBase::SignalBase()
+:   m_Object(NULL),
+    m_Signal(NULL),
+    m_Connection(NULL)
 {
     m_Message = ADBusCreateMessage();
 }
 
 // ----------------------------------------------------------------------------
 
-BoundSignalBase::~BoundSignalBase()
+SignalBase::~SignalBase()
 {
     ADBusFreeMessage(m_Message);
 }
 
 // ----------------------------------------------------------------------------
 
-void BoundSignalBase::bind(Member signal, Object* object)
+void SignalBase::bind(ADBusConnection* connection, const std::string& path, ADBusMember* signal)
 {
-    m_Signal = signal;
+    struct ADBusObject* object = ADBusGetObject(connection, path.c_str(), path.size());
+    if (!object)
+        return;
+
+    m_Connection = connection;
     m_Object = object;
+    m_Signal = signal;
 }
 
 // ----------------------------------------------------------------------------
 
-void BoundSignalBase::setupMessage()
+void SignalBase::setupMessage()
 {
     ADBusSetupSignal(m_Message,
-                     m_Object->connection()->m_C,
-                     m_Object->m_Object,
-                     m_Signal.m);
+                     m_Connection,
+                     m_Object,
+                     m_Signal);
 }
 
 // ----------------------------------------------------------------------------
 
-void BoundSignalBase::sendMessage()
+void SignalBase::sendMessage()
 {
-    ADBusSendMessage(m_Object->connection()->m_C, m_Message);
+    ADBusSendMessage(m_Connection, m_Message);
 }

@@ -22,6 +22,8 @@
 //
 // ----------------------------------------------------------------------------
 
+#ifndef NDEBUG
+
 #include "Tests.h"
 
 #include "adbus/Interface.h"
@@ -99,3 +101,5 @@ void TestInterface()
 
     ADBusFreeInterface(i);
 }
+
+#endif

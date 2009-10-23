@@ -25,6 +25,7 @@
 
 #include "Marshaller.h"
 #include "Marshaller_p.h"
+#include "Iterator.h"
 
 #include "Misc_p.h"
 
@@ -160,6 +161,85 @@ int ADBusAppendData(struct ADBusMarshaller* m, const uint8_t* data, size_t size)
     uint8_t* dest = u8vector_insert_end(&m->data, size);
     memcpy(dest, data, size);
 
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+int ADBusAppendIteratorData(struct ADBusMarshaller* m, struct ADBusIterator* i, uint scope)
+{
+    struct ADBusField field;
+    while (!ADBusIsScopeAtEnd(i, scope))
+    {
+        int err = ADBusIterate(i, &field);
+        if (err)
+            return err;
+        switch (field.type)
+        {
+        case ADBusUInt8Field:
+            ADBusAppendUInt8(m, field.u8);
+            break;
+        case ADBusBooleanField:
+            ADBusAppendBoolean(m, field.b);
+            break;
+        case ADBusInt16Field:
+            ADBusAppendInt16(m, field.i16);
+            break;
+        case ADBusUInt16Field:
+            ADBusAppendUInt16(m, field.u16);
+            break;
+        case ADBusInt32Field:
+            ADBusAppendInt32(m, field.i32);
+            break;
+        case ADBusUInt32Field:
+            ADBusAppendUInt32(m, field.u32);
+            break;
+        case ADBusInt64Field:
+            ADBusAppendInt64(m, field.i64);
+            break;
+        case ADBusUInt64Field:
+            ADBusAppendUInt64(m, field.u64);
+            break;
+        case ADBusDoubleField:
+            ADBusAppendDouble(m, field.d);
+            break;
+        case ADBusStringField:
+            ADBusAppendString(m, field.string, field.size);
+            break;
+        case ADBusObjectPathField:
+            ADBusAppendObjectPath(m, field.string, field.size);
+            break;
+        case ADBusSignatureField:
+            ADBusAppendSignature(m, field.string, field.size);
+            break;
+        case ADBusArrayBeginField:
+            ADBusBeginArray(m);
+            break;
+        case ADBusArrayEndField:
+            ADBusEndArray(m);
+            break;
+        case ADBusStructBeginField:
+            ADBusBeginStruct(m);
+            break;
+        case ADBusStructEndField:
+            ADBusEndStruct(m);
+            break;
+        case ADBusDictEntryBeginField:
+            ADBusBeginDictEntry(m);
+            break;
+        case ADBusDictEntryEndField:
+            ADBusEndDictEntry(m);
+            break;
+        case ADBusVariantBeginField:
+            ADBusBeginVariant(m, field.string, field.size);
+            break;
+        case ADBusVariantEndField:
+            ADBusEndVariant(m);
+            break;
+        default:
+            return -1;
+        }
+    }
     return 0;
 }
 

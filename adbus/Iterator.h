@@ -73,11 +73,11 @@ struct ADBusField
   double          d;
   const char*     string;
   size_t          size;
-  size_t          arrayDataSize;
-  uint scope;
+  uint            scope;
 };
 
 ADBUS_API int ADBusIterate(struct ADBusIterator* i, struct ADBusField* field);
+ADBUS_API int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope);
 
 // ----------------------------------------------------------------------------
 

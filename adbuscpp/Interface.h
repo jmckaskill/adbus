@@ -37,7 +37,7 @@
 
 namespace adbus
 {
-    class BoundSignalBase;
+    class SignalBase;
 
     void CallMethod(struct ADBusCallDetails* details);
 
@@ -125,8 +125,8 @@ namespace adbus
 #define REPEAT_SEPERATOR(x, sep) x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8)
 #include "Interface_t.h"
 
+        operator ADBusMember*()const{return m;}
     private:
-        friend class BoundSignalBase;
         ADBusMember* m;
         ADBusMemberType m_Type;
     };
@@ -151,8 +151,9 @@ namespace adbus
         Member signal(const std::string& name);
         Member property(const std::string& name);
 
+        operator ADBusInterface*()const{return m_I;}
+
     private:
-        friend class Object;
         ADBusInterface* m_I;
     };
 
@@ -192,7 +193,8 @@ namespace adbus
     Member& Member::setGetter(MemFun f)
     {
         UserData<MemFun>* functionData = new UserData<MemFun>(f);
-        setGetter(&GetPropertyCallback<M, T, MemFun>, functionData);
+        functionData->chainedFunction = &GetPropertyCallback<M, T, MemFun>;
+        setGetter(&CallMethod, functionData);
         return *this;
     }
 
@@ -200,7 +202,8 @@ namespace adbus
     Member& Member::setSetter(MemFun f)
     {
         UserData<MemFun>* functionData = new UserData<MemFun>(f);
-        setSetter(&SetPropertyCallback<M, T, MemFun>, functionData);
+        functionData->chainedFunction = &SetPropertyCallback<M, T, MemFun>;
+        setSetter(&CallMethod, functionData);
         return *this;
     }
 

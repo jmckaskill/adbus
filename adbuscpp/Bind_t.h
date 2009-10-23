@@ -65,6 +65,10 @@ namespace adbus
             // a1 << *details->arguments;
             // ...
             DEMARSHALL_ARGUMENTS;
+
+            adbus::MessageEnd end;
+            end << *details->arguments;
+
             // (m->*f)( a0, a1, a2 ...);
             (m->*f)( ARG_LIST );
         }
@@ -82,6 +86,10 @@ namespace adbus
             // a1 << *details->arguments;
             // ...
             DEMARSHALL_ARGUMENTS;
+
+            adbus::MessageEnd end;
+            end << *details->arguments;
+
             // R r = (m->*f)( a0, a1, a2 ...);
             R r = (m->*f)( ARG_LIST );
             if (details->returnMessage)

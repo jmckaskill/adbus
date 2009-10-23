@@ -444,9 +444,9 @@ static int ProcessArray(struct ADBusIterator *i, struct ADBusField* f)
     e->data.array.dataEnd = i->data + size;
     e->data.array.typeBegin = i->signature;
 
-    f->type = ADBusArrayBeginField;
-    f->arrayDataSize = size;
-    f->scope = StackSize(i);
+    f->type   = ADBusArrayBeginField;
+    f->size   = size;
+    f->scope  = StackSize(i);
 
     return 0;
 }
@@ -712,3 +712,27 @@ int ADBusIterate(struct ADBusIterator *i, struct ADBusField* f)
     }
 }
 
+// ----------------------------------------------------------------------------
+
+int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope)
+{
+    if (StackSize(i) < scope)
+    {
+        assert(0);
+        return 1;
+    }
+
+    size_t pop = StackSize(i) - scope;
+    if (pop > 0)
+      stack_vector_remove_end(&i->stack, pop);
+
+    StackEntry* e = StackTop(i);
+    if (e->type != ArrayStackEntry)
+    {
+        assert(0);
+        return 1;
+    }
+
+    i->data = e->data.array.dataEnd;
+    return 0;
+}

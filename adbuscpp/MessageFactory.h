@@ -37,8 +37,6 @@ struct ADBusMessage;
 
 namespace adbus{
 
-    class Connection;
-
     //-----------------------------------------------------------------------------
 
     class MessageFactory
@@ -48,7 +46,7 @@ namespace adbus{
         MessageFactory();
         ~MessageFactory();
         void reset();
-        void setConnection(Connection* connection)      {m_Connection = connection;}
+        void setConnection(ADBusConnection* connection)      {m_Connection = connection;}
         void setDestination(const std::string& dest)    {m_Destination = dest;}
         void setPath(const std::string& path)           {m_Path = path;}
         void setInterface(const std::string& interface) {m_Interface = interface;}
@@ -114,7 +112,7 @@ namespace adbus{
         void setupMatch(enum ADBusMessageType type);
         void setupMessage();
         void sendMessage();
-        Connection*         m_Connection;
+        ADBusConnection*    m_Connection;
         Match               m_Match;
         uint8_t             m_Flags;
         std::string         m_Destination;

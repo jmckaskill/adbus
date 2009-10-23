@@ -105,6 +105,8 @@ ADBUS_API int ADBusEndDictEntry(struct ADBusMarshaller* m);
 ADBUS_API int ADBusBeginVariant(struct ADBusMarshaller* m, const char* sig, int size);
 ADBUS_API int ADBusEndVariant(struct ADBusMarshaller* m);
 
+ADBUS_API int ADBusAppendIteratorData(struct ADBusMarshaller* m, struct ADBusIterator* i, uint scope);
+
 // ----------------------------------------------------------------------------
 
 #ifdef __cplusplus

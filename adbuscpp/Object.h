@@ -26,8 +26,6 @@
 #pragma once
 
 #include "Common.h"
-#include "Connection.h"
-#include "Interface.h"
 
 #include <string>
 #include <vector>
@@ -66,21 +64,22 @@ namespace adbus
         Object();
         virtual ~Object();
 
-        const std::string& path()const{return m_Path;}
-        std::string childPath(const std::string& child);
-
-        Connection* connection()const{return m_Connection;}
-
-        virtual void registerObject(Connection* connection, const std::string& path);
-        virtual void deregisterObject();
-
         template<class M> 
-        void bind(Interface* interface, M* object);
+        void bind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, M* object);
 
-        void addMatch(Match*                match,
-                      ADBusMessageCallback  function,
-                      struct ADBusUser*     user1,
-                      struct ADBusUser*     user2);
+        void unbind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface);
+        void unbindAll();
+
+        uint32_t addMatch(ADBusConnection*           connection,
+                          Match*                match,
+                          ADBusMessageCallback  function,
+                          struct ADBusUser*     user1,
+                          struct ADBusUser*     user2);
+        
+        void removeMatch(ADBusConnection*        connection,
+                         uint32_t           id);
+
+        void removeAllMatches();
 
         // This now includes a whole bunch of match callback functions like:
         //
@@ -134,21 +133,30 @@ namespace adbus
 #include "Object_t.h"
 
     private:
-        void doBind(Interface* interface, struct ADBusUser* user2);
+        void doBind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, struct ADBusUser* user2);
 
-        friend class BoundSignalBase;
-        ADBusObject*            m_Object;
-        Connection*             m_Connection;
-        std::string             m_Path;
-        std::vector<uint32_t>   m_Matches;
-        std::vector<Interface*> m_Interfaces;
+        struct BoundInterfaceData
+        {
+            ADBusConnection*       connection;
+            ADBusObject*      object;
+            ADBusInterface*   interface;
+        };
+
+        struct MatchData
+        {
+            ADBusConnection*   connection;
+            uint32_t      matchId;
+        };
+
+        std::vector<MatchData>          m_Matches;
+        std::vector<BoundInterfaceData> m_Interfaces;
     };
 
     template<class M>
-    void Object::bind(Interface* interface, M* object)
+    void Object::bind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, M* object)
     {
         UserData<M*>* objectData = new UserData<M*>(object);
-        doBind(interface, objectData);
+        doBind(connection, path, interface, objectData);
     }
 
 

@@ -24,10 +24,12 @@
 
 #include "Tests.h"
 
-int main(int argc, char* argv[])
+int main()
 {
+#ifndef NDEBUG
     TestVector();
     TestInterface();
     TestIterator();
+#endif
     return 0;
 }

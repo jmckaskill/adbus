@@ -47,6 +47,7 @@ int LADBusCreateConnection(lua_State* L)
     c->buffer     = ADBusCreateStreamBuffer();
     c->existing_connection = 0;
 
+    (void) argnum;
     assert(lua_gettop(L) == argnum + 1);
     return 1;
 }
@@ -73,12 +74,8 @@ int LADBusParse(lua_State* L)
 
     while (size > 0) {
         int err = ADBusParse(c->buffer, c->message, &data, &size);
-        if (err == ADBusNeedMoreData)
-            break;
-        else if (err == ADBusIgnoredData)
-            continue;
-        else if (err)
-            return luaL_error(L, "Parse error");
+        if (err)
+            return luaL_error(L, "Parse error %d", err);
 
         ADBusDispatch(c->connection, c->message);
     }

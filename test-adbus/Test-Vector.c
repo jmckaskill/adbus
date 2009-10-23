@@ -22,6 +22,8 @@
 //
 // ----------------------------------------------------------------------------
 
+#ifndef NDEBUG
+
 #include "Tests.h"
 
 #include "adbus/vector.h"
@@ -155,3 +157,5 @@ void TestVector()
     TestWCharVector();
     TestString();
 }
+
+#endif

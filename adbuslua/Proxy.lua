@@ -3,7 +3,7 @@
 
 local table         = require("table")
 local string        = require("string")
-local xml           = require("xml")
+local luaxml        = require("luaxml")
 local setmetatable  = _G.setmetatable
 local error         = _G.error
 local unpack        = _G.unpack
@@ -103,7 +103,7 @@ end
 
 
 local function process_introspection(self, introspection)
-    local x         = xml.eval(introspection)
+    local x         = luaxml.eval(introspection)
     local interface = proxy.interface(self)
 
     for _,xml_interface in ipairs(x) do

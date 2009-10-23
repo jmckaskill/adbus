@@ -52,11 +52,11 @@
 #define ARG_LIST REPEAT(ARG, COMMA, EMPTY, EMPTY)
 
     TEMPLATE_CLASS_DECL
-    class CAT(BoundSignal,NUM) : public BoundSignalBase
+    class CAT(Signal,NUM) : public SignalBase
     {
-        ADBUSCPP_NON_COPYABLE(CAT(BoundSignal,NUM));
+        ADBUSCPP_NON_COPYABLE(CAT(Signal,NUM));
     public:
-        CAT(BoundSignal,NUM) ()
+        CAT(Signal,NUM) ()
         {
         }
 

@@ -63,7 +63,7 @@ ansi_project("lua", "ConsoleApp", "A1031290-BB35-CA4C-8F9E-F099DAA91ABA")
   files {"lua-5.1.4/src/lua.c"}
   links {"lua5.1", "adbuslua"}
 
-c99_project("luaxml", "SharedLib", "9B52ED3C-AA46-5843-81F3-4FFA3C6EADED")
+c99_project("LuaXML", "SharedLib", "9B52ED3C-AA46-5843-81F3-4FFA3C6EADED")
   targetname "LuaXML_lib"
   links "lua5.1"
 

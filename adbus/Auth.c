@@ -277,10 +277,13 @@ static void GenerateReply(const char*   hexserver,
     SHA1Init(&sha);
     SHA1AddBytes(&sha, shastr, str_size(&shastr));
 
+    uint8_t* digest = SHA1GetDigest(&sha);
+
     str_clear(&replyarg);
     HexEncode(&replyarg, localData, localDataSize);
     str_append(&replyarg, " ");
-    HexEncode(&replyarg, SHA1GetDigest(&sha), 20);
+    HexEncode(&replyarg, digest, 20);
+    free(digest);
 
     str_set(reply, "DATA ");
     HexEncode(reply, (const uint8_t*) replyarg, str_size(&replyarg));

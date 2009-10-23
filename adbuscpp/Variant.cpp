@@ -24,6 +24,7 @@
  */
 
 #include "Variant.h"
+#include "Message.h"
 
 
 
@@ -46,21 +47,16 @@ void Variant::setupIterator(struct ADBusIterator* iterator)const
 
 void Variant::operator <<(ADBusIterator& iterator)
 {
-  const uint8_t* databegin = ADBusCurrentIteratorData(&iterator, NULL);
-  struct ADBusField begin, field;
-  ADBusIterate(&iterator, &begin);
-  if (begin.type != ADBusVariantBeginField)
-      return;
-  while(!ADBusIsScopeAtEnd(&iterator, begin.scope))
-      ADBusIterate(&iterator, &field);
+  struct ADBusField field;
+  ADBusIterate(&iterator, &field);
+  CheckForDemarshallError(&field, ADBusVariantBeginField);
 
-  const uint8_t* dataend = ADBusCurrentIteratorData(&iterator, NULL);
-
-  ADBusSetMarshalledData(m,
-                         begin.string,
-                         begin.size,
-                         databegin,
-                         dataend - databegin);
+  ADBusBeginArgument(m, field.string, field.size);
+  int err = ADBusAppendIteratorData(m, &iterator, field.scope);
+  if (err) {
+      throw DemarshallError();
+  }
+  ADBusEndArgument(m);
 }
 
 // ----------------------------------------------------------------------------

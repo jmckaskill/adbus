@@ -25,79 +25,81 @@
 
 #pragma once
 
+#include "Common.h"
 #include "Object.h"
-#include "Interface.h"
+#include "adbus/Message.h"
 
 namespace adbus
 {
-    class BoundSignalBase
+    class SignalBase
     {
-        ADBUSCPP_NON_COPYABLE(BoundSignalBase);
+        ADBUSCPP_NON_COPYABLE(SignalBase);
     public:
-        BoundSignalBase();
-        ~BoundSignalBase();
-        void bind(Member signal, Object* object);
+        SignalBase();
+        ~SignalBase();
+        void bind(ADBusConnection* connection, const std::string& path, ADBusMember* signal);
         bool isBound()const{return m_Object != NULL;}
 
     protected:
         void setupMessage();
         void sendMessage();
-        ADBusMessage*   m_Message;
+        ADBusMessage*       m_Message;
 
     private:
-        Object*         m_Object;
-        Member          m_Signal;
+        ADBusConnection*    m_Connection;
+        ADBusObject*        m_Object;
+        ADBusMember*        m_Signal;
     };
 
-    // This now defines a whole bunch of BoundSignal types like:
+    // This now defines a whole bunch of Signal types like:
     //
     // template<class A0, class A1>
-    // class BoundSignal2 : public BoundSignalBase
+    // class Signal2 : public SignalBase
     // {
-    //      ADBUSCPP_NON_COPYABLE(BoundSignal2);
+    //      ADBUSCPP_NON_COPYABLE(Signal2);
     // public:
     //      void emit(const A0& a0, const A1& a1);
     // };
 
 #define NUM 0
 #define REPEAT(x, sep, lead, tail)
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 1
 #define REPEAT(x, sep, lead, tail) lead x(0) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 2
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 3
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 4
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 5
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 6
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 7
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 8
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 #define NUM 9
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8) tail
-#include "BoundSignal_t.h"
+#include "Signal_t.h"
 
 
 }

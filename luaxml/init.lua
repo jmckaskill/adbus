@@ -1,10 +1,11 @@
 require("LuaXML_lib")
+require 'adbuslua.pretty'
 
 local base = _G
-local xml = xml
-module("xml")
+local luaxml = luaxml
+module("luaxml")
 
--- symbolic name for tag index, this allows accessing the tag by var[xml.TAG]
+-- symbolic name for tag index, this allows accessing the tag by var[luaxml.TAG]
 TAG = 0
 
 -- sets or returns tag of a LuaXML object
@@ -19,11 +20,11 @@ end
 -- creates a new LuaXML object either by setting the metatable of an existing Lua table or by setting its tag
 function new(arg)
   if base.type(arg)=="table" then 
-    base.setmetatable(arg,{__index=xml, __tostring=xml.str})
+    base.setmetatable(arg,{__index=luaxml, __tostring=luaxml.str})
 	return arg
   end
   local var={}
-  base.setmetatable(var,{__index=xml, __tostring=xml.str})
+  base.setmetatable(var,{__index=luaxml, __tostring=luaxml.str})
   if base.type(arg)=="string" then var[TAG]=arg end
   return var
 end
@@ -100,12 +101,12 @@ function find(var, tag, attributeKey,attributeValue)
   -- compare this table:
   if tag~=nil then
     if var[0]==tag and ( attributeValue == nil or var[attributeKey]==attributeValue ) then
-      base.setmetatable(var,{__index=xml, __tostring=xml.str})
+      base.setmetatable(var,{__index=luaxml, __tostring=luaxml.str})
       return var
     end
   else
     if attributeValue == nil or var[attributeKey]==attributeValue then
-      base.setmetatable(var,{__index=xml, __tostring=xml.str})
+      base.setmetatable(var,{__index=luaxml, __tostring=luaxml.str})
       return var
     end
   end
