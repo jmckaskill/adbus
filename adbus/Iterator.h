@@ -81,6 +81,30 @@ ADBUS_API int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope);
 
 // ----------------------------------------------------------------------------
 
+ADBUS_API void        ADBusCheckMessageEnd(struct ADBusIterator* i);
+ADBUS_API uint        ADBusCheckBoolean(struct ADBusIterator* i);
+ADBUS_API uint8_t     ADBusCheckUInt8(struct ADBusIterator* i);
+ADBUS_API int16_t     ADBusCheckInt16(struct ADBusIterator* i);
+ADBUS_API uint16_t    ADBusCheckUInt16(struct ADBusIterator* i);
+ADBUS_API int32_t     ADBusCheckInt32(struct ADBusIterator* i);
+ADBUS_API uint32_t    ADBusCheckUInt32(struct ADBusIterator* i);
+ADBUS_API int64_t     ADBusCheckInt64(struct ADBusIterator* i);
+ADBUS_API uint64_t    ADBusCheckUInt64(struct ADBusIterator* i);
+ADBUS_API double      ADBusCheckDouble(struct ADBusIterator* i);
+ADBUS_API const char* ADBusCheckString(struct ADBusIterator* i, size_t* size);
+ADBUS_API const char* ADBusCheckObjectPath(struct ADBusIterator* i, size_t* size);
+ADBUS_API const char* ADBusCheckSignature(struct ADBusIterator* i, size_t* size);
+ADBUS_API uint        ADBusCheckArrayBegin(struct ADBusIterator* i);
+ADBUS_API void        ADBusCheckArrayEnd(struct ADBusIterator* i);
+ADBUS_API uint        ADBusCheckStructBegin(struct ADBusIterator* i);
+ADBUS_API void        ADBusCheckStructEnd(struct ADBusIterator* i);
+ADBUS_API uint        ADBusCheckDictEntryBegin(struct ADBusIterator* i);
+ADBUS_API void        ADBusCheckDictEntryEnd(struct ADBusIterator* i);
+ADBUS_API const char* ADBusCheckVariantBegin(struct ADBusIterator* i, size_t* size, uint* scope);
+ADBUS_API void        ADBusCheckVariantEnd(struct ADBusIterator* i);
+
+// ----------------------------------------------------------------------------
+
 #ifdef __cplusplus
 }
 #endif

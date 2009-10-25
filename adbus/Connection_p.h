@@ -28,6 +28,7 @@
 #include "khash.h"
 #include "vector.h"
 #include "str.h"
+#include <setjmp.h>
 
 // ----------------------------------------------------------------------------
 // Struct definitions
@@ -102,6 +103,8 @@ struct ADBusConnection
     struct ADBusInterface*      properties;
 
     khash_t(ServiceNameMatch)   serviceNames;
+
+    jmp_buf                     errorJmpBuf;
 };
 
 // ----------------------------------------------------------------------------

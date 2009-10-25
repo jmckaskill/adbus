@@ -98,6 +98,11 @@ ADBUS_API void ADBusDispatch(
 ADBUS_API void ADBusRawDispatch(
         struct ADBusCallDetails*        details);
 
+ADBUS_API void ADBusErrorLongjmp(
+        struct ADBusCallDetails*        details,
+        const char*                     errorName,
+        const char*                     errorMsg);
+
 // ----------------------------------------------------------------------------
 // Bus management
 // ----------------------------------------------------------------------------

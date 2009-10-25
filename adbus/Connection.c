@@ -572,6 +572,17 @@ int ADBusParse(
     }
 }
 
+// ----------------------------------------------------------------------------
+
+void ADBusErrorLongjmp(
+        struct ADBusCallDetails*        details,
+        const char*                     errorName,
+        const char*                     errorMsg)
+{
+    if (details->returnMessage)
+        ADBusSetupError(details, errorName, -1, errorMsg, -1);
+    longjmp(details->connection->errorJmpBuf, -1);
+}
 
 
 
