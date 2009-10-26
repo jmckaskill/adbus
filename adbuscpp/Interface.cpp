@@ -43,6 +43,10 @@ void adbus::CallMethod(struct ADBusCallDetails* details)
     {
         data->chainedFunction(details);
     }
+    catch (ParseError& e)
+    {
+        details->parseError = e.parseError;
+    }
     catch (Error& e)
     {
         if (!details->returnMessage)

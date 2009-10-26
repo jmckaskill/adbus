@@ -91,7 +91,7 @@ ADBUS_API int ADBusParse(
         const uint8_t**                 pdata,
         size_t*                         size);
 
-ADBUS_API void ADBusDispatch(
+ADBUS_API int ADBusDispatch(
         struct ADBusConnection*         connection,
         struct ADBusMessage*            message);
 

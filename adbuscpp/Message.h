@@ -72,7 +72,16 @@ namespace adbus
         { return "ADBus marshall error"; }
     };
 
-    class DemarshallError : public Error
+    class ParseError : public std::exception
+    {
+    public:
+        ParseError(int err):parseError(err){}
+        virtual const char* what() const throw()
+        { return "ADBus parse error"; }
+        int parseError;
+    };
+
+    class InvalidArgument : public Error
     {
         virtual const char* errorName() const
         { return "nz.co.foobar.ADBus.InvalidArgument"; }
@@ -82,8 +91,25 @@ namespace adbus
 
     // ----------------------------------------------------------------------------
 
-    void CheckForMarshallError(int err);
-    void CheckForDemarshallError(struct ADBusField* field, enum ADBusFieldType expectedType);
+    inline void CheckForMarshallError(int err)
+    {
+        if (err)
+            throw MarshallError();
+    }
+    inline void Iterate(struct ADBusIterator* i, struct ADBusField* field)
+    {
+        int err = ADBusIterate(i, field);
+        if (err)
+            throw ParseError(err);
+    }
+    inline void Iterate(struct ADBusIterator* i, struct ADBusField* field, enum ADBusFieldType expectedType)
+    {
+        int err = ADBusIterate(i, field);
+        if (err)
+            throw ParseError(err);
+        if (field->type != expectedType)
+            throw InvalidArgument();
+    }
 
     template<class T>
     void AppendArgument(struct ADBusMarshaller* m, const T& t)
@@ -260,8 +286,7 @@ template<class T>
 void operator<<(std::vector<T>& vector, ADBusIterator& i)
 {
     struct ADBusField field;
-    ADBusIterate(&i, &field);
-    adbus::CheckForDemarshallError(&field, ADBusArrayBeginField);
+    adbus::Iterate(&i, &field, ADBusArrayBeginField);
 
     vector.clear();
     while(!ADBusIsScopeAtEnd(&i,field.scope))
@@ -270,25 +295,22 @@ void operator<<(std::vector<T>& vector, ADBusIterator& i)
         vector[vector.size() - 1] << i;
     }
 
-    ADBusIterate(&i, &field);
-    adbus::CheckForDemarshallError(&field, ADBusArrayEndField);
+    adbus::Iterate(&i, &field, ADBusArrayEndField);
 }
 
 template<class T>
 void operator<<(adbus::ArrayReference<T>& array, ADBusIterator& i)
 {
     struct ADBusField field;
-    ADBusIterate(&i, &field);
-    adbus::CheckForDemarshallError(&field, ADBusArrayBeginField);
+    adbus::Iterate(&i, &field, ADBusArrayBeginField);
 
     array.size = field.size / sizeof(T);
     array.data = ADBusCurrentIteratorData(&i, NULL);
 
     int err = ADBusJumpToEndOfArray(&i, field.scope);
     if (err)
-        throw adbus::DemarshallError();
+        throw adbus::ParseError(err);
 
-    ADBusIterate(&i, &field);
-    adbus::CheckForDemarshallError(&field, ADBusArrayEndField);
+    adbus::Iterate(&i, &field, ADBusArrayEndField);
 }
 

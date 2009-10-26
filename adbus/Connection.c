@@ -369,8 +369,9 @@ static void DispatchMethodCall(
     if (!member)
         ThrowInvalidMethod(details);
 
-    // Dispatch the method call
-    ADBusCallMethod(member, details);
+    // Errors will be handled further up in ADBusDispatch
+    if (!setjmp(details->jmpbuf))
+        ADBusCallMethod(member, details);
 
 }
 
@@ -446,7 +447,9 @@ static void DispatchMatch(
                 details->user1 = r->m.user1;
                 details->user2 = r->m.user2;
 
-                r->m.callback(details);
+                // Ignore errors from match callbacks
+                if (!setjmp(details->jmpbuf))
+                    r->m.callback(details);
             }
 
             if (r->m.removeOnFirstMatch) {
@@ -475,9 +478,13 @@ void ADBusRawDispatch(struct ADBusCallDetails*    details)
         DispatchMethodCall(details);
     }
 
+    if (details->parseError)
+        return;
+
     // Reset the returnMessage field for the dispatch match so that matches 
     // don't try and use it
     struct ADBusMessage* returnMessage = details->returnMessage;
+
     details->returnMessage = NULL;
 
     // Dispatch match
@@ -489,14 +496,14 @@ void ADBusRawDispatch(struct ADBusCallDetails*    details)
 
 // ----------------------------------------------------------------------------
 
-void ADBusDispatch(
+int ADBusDispatch(
         struct ADBusConnection* c,
         struct ADBusMessage*    message)
 {
     size_t sz;
     ADBusGetMessageData(message, NULL, &sz);
     if (sz == 0)
-        return;
+        return 0;
 
     ADBusArgumentIterator(message, c->dispatchIterator);
 
@@ -518,11 +525,17 @@ void ADBusDispatch(
     ADBusRawDispatch(&details);
       
     // Send off reply if needed
+    if (details.parseError) {
+        return details.parseError;
+    }
+
     if ( details.returnMessage != NULL
       && !details.manualReply)
     {
         ADBusSendMessage(c, details.returnMessage);
     }
+
+    return 0;
 }
 
 // ----------------------------------------------------------------------------

@@ -93,25 +93,25 @@ function connection:add_match(reg)
     reg.id = id
 
     if reg.unpack_message or reg.unpack_message == nil then
-        reg.callback = function(object, message)
-            if message == nil then
-                message = object
+        if reg.object == nil then
+            reg.callback = function(message)
                 if message.type == "error" then
                     func(nil, message.error_name, unpack(message))
                 else
                     func(unpack(message))
                 end
-            else
+                self:_check_yield(id)
+            end
+        else
+            reg.callback = function(object, message)
                 if message.type == "error" then
                     func(object, nil, message.error_name, unpack(message))
                 else
                     func(object, unpack(message))
                 end
+                self:_check_yield(id)
             end
-
-            self:_check_yield(id)
         end
-
     else
         reg.callback = function(object, message)
             func(object, message)

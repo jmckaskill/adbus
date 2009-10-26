@@ -48,13 +48,12 @@ void Variant::setupIterator(struct ADBusIterator* iterator)const
 void Variant::operator <<(ADBusIterator& iterator)
 {
   struct ADBusField field;
-  ADBusIterate(&iterator, &field);
-  CheckForDemarshallError(&field, ADBusVariantBeginField);
+  adbus::Iterate(&iterator, &field, ADBusVariantBeginField);
 
   ADBusAppendArguments(m, field.string, field.size);
   int err = ADBusAppendIteratorData(m, &iterator, field.scope);
   if (err) {
-      throw DemarshallError();
+      throw ParseError(err);
   }
 }
 
