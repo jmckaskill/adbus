@@ -25,25 +25,34 @@
 
 #pragma once
 
-#include "ADBusLua.h"
+#include "LADBus.h"
+
+#include "adbus/Connection.h"
+#include "adbus/Marshaller.h"
+
 #include "LuaInclude.h"
 
-#include "adbus/User.h"
 
-struct LADBusData
+struct LADBusConnection
 {
-    struct ADBusUser    header;
-    lua_State*          L;
-    int                 callback;
-    int                 argument;
-    int                 connection;
-    int                 interface;
-    int                 returnSignature;
-    int                 propertyType;
+    struct ADBusConnection*     connection;
+    struct ADBusMessage*        message;
+    struct ADBusStreamBuffer*   buffer;
+    uint                        existing_connection;
+    uint                        debug;
 };
 
-LADBUSI_FUNC struct LADBusData* LADBusCreateData();
+LADBUSI_FUNC int LADBusCreateConnection(lua_State* L);
+LADBUSI_FUNC int LADBusFreeConnection(lua_State* L);
 
-LADBUSI_FUNC void LADBusPushRef(lua_State* L, int ref);
-LADBUSI_FUNC int  LADBusGetRef(lua_State* L, int index);
-LADBUSI_FUNC int  LADBusCopyRef(lua_State* L, int ref);
+LADBUSI_FUNC int LADBusSetConnectionSendCallback(lua_State* L);
+LADBUSI_FUNC int LADBusParse(lua_State* L);
+
+LADBUSI_FUNC int LADBusConnectToBus(lua_State* L);
+LADBUSI_FUNC int LADBusIsConnectedToBus(lua_State* L);
+LADBUSI_FUNC int LADBusUniqueServiceName(lua_State* L);
+
+LADBUSI_FUNC int LADBusNextSerial(lua_State* L);
+LADBUSI_FUNC int LADBusSendMessage(lua_State* L);
+
+

@@ -26,6 +26,7 @@
 #pragma once
 
 #include "Message.h"
+#include "adbus/Message.h"
 
 #define NUM 0
 #define REPEAT_SEPERATOR(x, sep)

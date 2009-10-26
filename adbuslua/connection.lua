@@ -18,40 +18,28 @@ interface     = adbuslua_core.interface
 connection = {}
 connection.__index = connection
 
-local function parse_address(address, options, backup)
-    local bus = os.getenv(address) or backup
-    assert(bus, string.format("%s is not set", address))
-    local type,opts = bus:match("([^:]*):([^:]*)")
-    options.type = type
-    for k,v in opts:gmatch("([^=,]*)=([^=,]*)") do
-        options[k] = v
-    end
-end
+local new_socket = adbuslua_core.socket.new
 
-function connection.new(options)
-    local socket = options.socket
-    if socket == nil then
-        if options.type == "session" then
-            parse_address("DBUS_SESSION_BUS_ADDRESS", options)
-        elseif options.type == "system" then
-            parse_address("DBUS_SYSTEM_BUS_ADDRESS", options, "unix:file=/var/run/dbus/system_bus_socket")
+function connection.new(options, debug)
+    local socket
+    if options == nil or options.type == 'session' then
+        socket = new_socket(os.getenv('DBUS_SESSION_BUS_ADDRESS'))
+    elseif options.type == 'system' then
+        socket = new_socket(os.getenv('DBUS_SYSTEM_BUS_ADDRESS'), true)
+    else
+        local addr = options.type .. ":"
+        for k,v in pairs(options) do
+            if k ~= "type" and k ~= "system" then
+                addr = addr .. k .. '=' .. v .. ','
+            end
         end
-
-        if options.type == "tcp" and options.host and options.port then
-            socket = adbuslua_core.socket.new_tcp(options.host, options.port)
-        elseif options.type == "unix" and options.abstract ~= nil then
-            socket = adbuslua_core.socket.new_unix(options.abstract, true)
-        elseif options.type == "unix" and options.file ~= nil then
-            socket = adbuslua_core.socket.new_unix(options.file, false)
-        else
-            error("Don't know how to create socket")
-        end
+        socket = new_socket(addr, options.system)
     end
 
     local self = {}
     setmetatable(self, connection)
 
-    self._connection = adbuslua_core.connection.new(options.debug)
+    self._connection = adbuslua_core.connection.new(debug)
     self._socket     = socket;
 
     self._connection:set_send_callback(function(data)
@@ -106,13 +94,22 @@ function connection:add_match(reg)
 
     if reg.unpack_message or reg.unpack_message == nil then
         reg.callback = function(object, message)
-            if message.type == "error" then
-                func(object, nil, message.error_name, unpack(message))
+            if message == nil then
+                message = object
+                if message.type == "error" then
+                    func(nil, message.error_name, unpack(message))
+                else
+                    func(unpack(message))
+                end
             else
-                func(object, unpack(message))
+                if message.type == "error" then
+                    func(object, nil, message.error_name, unpack(message))
+                else
+                    func(object, unpack(message))
+                end
             end
 
-            self._check_yield(id)
+            self:_check_yield(id)
         end
 
     else

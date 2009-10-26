@@ -26,7 +26,7 @@
 #pragma once
 
 #include "Common.h"
-#include "vector.h"
+#include "memory/kvector.h"
 
 enum StackEntryType
 {
@@ -60,7 +60,7 @@ struct StackEntry
   } data;
 };
 
-VECTOR_INSTANTIATE(struct StackEntry, stack_)
+KVECTOR_INIT(Stack, struct StackEntry)
 
 struct ADBusIterator
 {
@@ -70,6 +70,6 @@ struct ADBusIterator
 
   uint                      alternateEndian;
 
-  stack_vector_t            stack;
+  kvector_t(Stack)*         stack;
 };
 

@@ -89,9 +89,8 @@ namespace adbus
     void AppendArgument(struct ADBusMarshaller* m, const T& t)
     {
         std::string type = ADBusTypeString((T*) NULL);
-        ADBusBeginArgument(m, type.c_str(), type.size());
+        ADBusAppendArguments(m, type.c_str(), type.size());
         t >> *m;
-        ADBusEndArgument(m);
     }
 
     // ----------------------------------------------------------------------------

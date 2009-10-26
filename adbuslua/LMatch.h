@@ -25,33 +25,11 @@
 
 #pragma once
 
-#include "ADBusLua.h"
-
+#include "LADBus.h"
 #include "adbus/Connection.h"
-#include "adbus/Marshaller.h"
-
 #include "LuaInclude.h"
 
-
-struct LADBusConnection
-{
-    struct ADBusConnection*       connection;
-    struct ADBusMessage*          message;
-    struct ADBusStreamBuffer*     buffer;
-    uint                          existing_connection;
-};
-
-LADBUSI_FUNC int LADBusCreateConnection(lua_State* L);
-LADBUSI_FUNC int LADBusFreeConnection(lua_State* L);
-
-LADBUSI_FUNC int LADBusSetConnectionSendCallback(lua_State* L);
-LADBUSI_FUNC int LADBusParse(lua_State* L);
-
-LADBUSI_FUNC int LADBusConnectToBus(lua_State* L);
-LADBUSI_FUNC int LADBusIsConnectedToBus(lua_State* L);
-LADBUSI_FUNC int LADBusUniqueServiceName(lua_State* L);
-
-LADBUSI_FUNC int LADBusNextSerial(lua_State* L);
-LADBUSI_FUNC int LADBusSendMessage(lua_State* L);
-
+LADBUSI_FUNC int LADBusAddMatch(lua_State* L);
+LADBUSI_FUNC int LADBusRemoveMatch(lua_State* L);
+LADBUSI_FUNC int LADBusNextMatchId(lua_State* L);
 

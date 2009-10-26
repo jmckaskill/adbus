@@ -61,19 +61,32 @@ ADBUS_API uint ADBusIsScopeAtEnd(struct ADBusIterator* i, uint scope);
 
 struct ADBusField
 {
-  enum ADBusFieldType type;
-  uint8_t         u8;
-  uint            b;
-  int16_t         i16;
-  uint16_t        u16;
-  int32_t         i32;
-  uint32_t        u32;
-  int64_t         i64;
-  uint64_t        u64;
-  double          d;
-  const char*     string;
-  size_t          size;
-  uint            scope;
+    enum ADBusFieldType   type;
+
+    // Entries used for simple types
+    uint                  b;
+    uint8_t               u8;
+    int16_t               i16;
+    uint16_t              u16;
+    int32_t               i32;
+    uint32_t              u32;
+    int64_t               i64;
+    uint64_t              u64;
+    double                d;
+
+    // Data is filled out for arrays, string for string types, size for both
+    // in bytes. The string is guarenteed by dbus protocol to be valid utf8
+    // with a trailing null (not included in size) and no embedded nulls.
+    // Data can be used for array of fixed sized correctly padded simple types
+    // and structs for very quick decomposing (use ADBusIterate with array
+    // begin, then ADBusJumpToEndOfArray, then ADBusIterate with array end) to
+    // quickly get the array data.
+    const uint8_t*        data;
+    const char*           string;
+    size_t                size;
+
+    // Filled out by all scoped begins/ends (arrays, struct, dict, variant)
+    uint                  scope;
 };
 
 ADBUS_API int ADBusIterate(struct ADBusIterator* i, struct ADBusField* field);
@@ -81,27 +94,32 @@ ADBUS_API int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope);
 
 // ----------------------------------------------------------------------------
 
-ADBUS_API void        ADBusCheckMessageEnd(struct ADBusIterator* i);
-ADBUS_API uint        ADBusCheckBoolean(struct ADBusIterator* i);
-ADBUS_API uint8_t     ADBusCheckUInt8(struct ADBusIterator* i);
-ADBUS_API int16_t     ADBusCheckInt16(struct ADBusIterator* i);
-ADBUS_API uint16_t    ADBusCheckUInt16(struct ADBusIterator* i);
-ADBUS_API int32_t     ADBusCheckInt32(struct ADBusIterator* i);
-ADBUS_API uint32_t    ADBusCheckUInt32(struct ADBusIterator* i);
-ADBUS_API int64_t     ADBusCheckInt64(struct ADBusIterator* i);
-ADBUS_API uint64_t    ADBusCheckUInt64(struct ADBusIterator* i);
-ADBUS_API double      ADBusCheckDouble(struct ADBusIterator* i);
-ADBUS_API const char* ADBusCheckString(struct ADBusIterator* i, size_t* size);
-ADBUS_API const char* ADBusCheckObjectPath(struct ADBusIterator* i, size_t* size);
-ADBUS_API const char* ADBusCheckSignature(struct ADBusIterator* i, size_t* size);
-ADBUS_API uint        ADBusCheckArrayBegin(struct ADBusIterator* i);
-ADBUS_API void        ADBusCheckArrayEnd(struct ADBusIterator* i);
-ADBUS_API uint        ADBusCheckStructBegin(struct ADBusIterator* i);
-ADBUS_API void        ADBusCheckStructEnd(struct ADBusIterator* i);
-ADBUS_API uint        ADBusCheckDictEntryBegin(struct ADBusIterator* i);
-ADBUS_API void        ADBusCheckDictEntryEnd(struct ADBusIterator* i);
-ADBUS_API const char* ADBusCheckVariantBegin(struct ADBusIterator* i, size_t* size, uint* scope);
-ADBUS_API void        ADBusCheckVariantEnd(struct ADBusIterator* i);
+// Check functions in the style of the lua check functions (eg
+// luaL_checkstring). They will longjmp back to throw an invalid argument
+// error. Thus they should only be used to pull out the arguments at the very
+// beginning of a message callback.
+
+ADBUS_API void        ADBusCheckMessageEnd(struct ADBusCallDetails* d);
+ADBUS_API uint        ADBusCheckBoolean(struct ADBusCallDetails* d);
+ADBUS_API uint8_t     ADBusCheckUInt8(struct ADBusCallDetails* d);
+ADBUS_API int16_t     ADBusCheckInt16(struct ADBusCallDetails* d);
+ADBUS_API uint16_t    ADBusCheckUInt16(struct ADBusCallDetails* d);
+ADBUS_API int32_t     ADBusCheckInt32(struct ADBusCallDetails* d);
+ADBUS_API uint32_t    ADBusCheckUInt32(struct ADBusCallDetails* d);
+ADBUS_API int64_t     ADBusCheckInt64(struct ADBusCallDetails* d);
+ADBUS_API uint64_t    ADBusCheckUInt64(struct ADBusCallDetails* d);
+ADBUS_API double      ADBusCheckDouble(struct ADBusCallDetails* d);
+ADBUS_API const char* ADBusCheckString(struct ADBusCallDetails* d, size_t* size);
+ADBUS_API const char* ADBusCheckObjectPath(struct ADBusCallDetails* d, size_t* size);
+ADBUS_API const char* ADBusCheckSignature(struct ADBusCallDetails* d, size_t* size);
+ADBUS_API uint        ADBusCheckArrayBegin(struct ADBusCallDetails* d, const uint8_t** data, size_t* size);
+ADBUS_API void        ADBusCheckArrayEnd(struct ADBusCallDetails* d);
+ADBUS_API uint        ADBusCheckStructBegin(struct ADBusCallDetails* d);
+ADBUS_API void        ADBusCheckStructEnd(struct ADBusCallDetails* d);
+ADBUS_API uint        ADBusCheckDictEntryBegin(struct ADBusCallDetails* d);
+ADBUS_API void        ADBusCheckDictEntryEnd(struct ADBusCallDetails* d);
+ADBUS_API const char* ADBusCheckVariantBegin(struct ADBusCallDetails* d, size_t* size);
+ADBUS_API void        ADBusCheckVariantEnd(struct ADBusCallDetails* d);
 
 // ----------------------------------------------------------------------------
 

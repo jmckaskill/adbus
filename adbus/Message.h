@@ -95,7 +95,6 @@ ADBUS_API void ADBusSetSender(struct ADBusMessage* m, const char* path, int size
 ADBUS_API struct ADBusMarshaller* ADBusArgumentMarshaller(struct ADBusMessage* m);
 ADBUS_API void  ADBusArgumentIterator(struct ADBusMessage* m, struct ADBusIterator* iterator);
 ADBUS_API char* ADBusNewMessageSummary(struct ADBusMessage* m, size_t* size);
-ADBUS_API void  ADBusFreeMessageSummary(char* summary);
 
 // ----------------------------------------------------------------------------
 

@@ -25,58 +25,66 @@
 
 #include "Connection.h"
 #include "User.h"
-#include "khash.h"
-#include "vector.h"
-#include "str.h"
+#include "memory/khash.h"
+#include "memory/kvector.h"
+#include "memory/kstring.h"
 #include <setjmp.h>
+#include <stdint.h>
 
 // ----------------------------------------------------------------------------
 // Struct definitions
 // ----------------------------------------------------------------------------
 
-VECTOR_INSTANTIATE(struct ADBusMatch, match_)
-VECTOR_INSTANTIATE(uint8_t, u8)
-VECTOR_INSTANTIATE(struct ADBusObject*, pobject_)
 
 // ----------------------------------------------------------------------------
 
-struct ServiceNameMatch
+struct Service
 {
-    uint32_t                match;
+    uint32_t                signalMatch;
+    uint32_t                methodMatch;
     char*                   serviceName;
     char*                   uniqueName;
     int                     refCount;
 };
-KHASH_MAP_INIT_STR(ServiceNameMatch, struct ServiceNameMatch)
+
+struct Match
+{
+    struct ADBusMatch       m;
+    struct Service*         service;
+};
 
 // ----------------------------------------------------------------------------
 
-struct BoundInterface
+struct Bind
 {
     struct ADBusInterface*  interface;
     struct ADBusUser*       user2;
 };
-KHASH_MAP_INIT_STR(BoundInterface, struct BoundInterface)
 
 // ----------------------------------------------------------------------------
+
+KVECTOR_INIT(ObjectPtr, struct ADBusObject*)
+KHASH_MAP_INIT_STR(ObjectPtr, struct ADBusObject*)
+KHASH_MAP_INIT_STR(Bind, struct Bind)
 
 struct ADBusObject
 {
     struct ADBusConnection*     connection;
     char*                       name;
-    khash_t(BoundInterface)*    interfaces;
-    pobject_vector_t            children;
+    khash_t(Bind)*              interfaces;
+    kvector_t(ObjectPtr)*       children;
     struct ADBusObject*         parent;
 };
-typedef struct ADBusObject* ADBusObjectPtr;
-KHASH_MAP_INIT_STR(ADBusObjectPtr, struct ADBusObject*)
 
 // ----------------------------------------------------------------------------
 
+KVECTOR_INIT(Match, struct Match)
+KHASH_MAP_INIT_STR(Service, struct Service*)
+
 struct ADBusConnection
 {
-    match_vector_t              registrations;
-    khash_t(ADBusObjectPtr)*    objects;
+    kvector_t(Match)*           registrations;
+    khash_t(ObjectPtr)*         objects;
     uint32_t                    nextSerial;
     uint32_t                    nextMatchId;
     uint                        connected;
@@ -102,16 +110,18 @@ struct ADBusConnection
     struct ADBusInterface*      introspectable;
     struct ADBusInterface*      properties;
 
-    khash_t(ServiceNameMatch)   serviceNames;
+    khash_t(Service)*           services;
 
     jmp_buf                     errorJmpBuf;
 };
 
 // ----------------------------------------------------------------------------
 
+KVECTOR_INIT(uint8_t, uint8_t)
+
 struct ADBusStreamBuffer
 {
-    u8vector_t                  buf;
+    kvector_t(uint8_t)*         buf;
 };
 
 

@@ -71,6 +71,8 @@ ADBUS_API void ADBusSetMarshalledData(
         const uint8_t*          data,
         size_t                  datasize);
 
+ADBUS_API int ADBusAppendArguments(struct ADBusMarshaller* m, const char* sig, int size);
+
 ADBUS_API enum ADBusFieldType ADBusNextMarshallerField(struct ADBusMarshaller* m);
 
 ADBUS_API int ADBusAppendData(struct ADBusMarshaller* m, const uint8_t* data, size_t size);
@@ -89,9 +91,6 @@ ADBUS_API int ADBusAppendDouble(struct ADBusMarshaller* m, double data);
 ADBUS_API int ADBusAppendString(struct ADBusMarshaller* m, const char* str, int size);
 ADBUS_API int ADBusAppendObjectPath(struct ADBusMarshaller* m, const char* str, int size);
 ADBUS_API int ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size);
-
-ADBUS_API int ADBusBeginArgument(struct ADBusMarshaller* m, const char* sig, int size);
-ADBUS_API int ADBusEndArgument(struct ADBusMarshaller* m);
 
 ADBUS_API int ADBusBeginArray(struct ADBusMarshaller* m);
 ADBUS_API int ADBusEndArray(struct ADBusMarshaller* m);

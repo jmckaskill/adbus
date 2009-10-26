@@ -23,11 +23,11 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Interface.h"
+#include "LInterface.h"
 
-#include "Connection.h"
-#include "Data.h"
-#include "Object.h"
+#include "LConnection.h"
+#include "LData.h"
+#include "LObject.h"
 
 #include "adbus/Interface.h"
 

@@ -80,17 +80,18 @@ ADBUS_API void ADBusSetupReturnExpanded(
 
 ADBUS_API void ADBusSetupMethodCall(
         struct ADBusMessage*        message,
-        struct ADBusConnection*     connection);
+        struct ADBusConnection*     connection,
+        uint32_t                    serial);
 
 ADBUS_API void ADBusSetupAddBusMatch(
         struct ADBusMessage*        message,
         struct ADBusConnection*     connection,
-        struct ADBusMatch*          match);
+        const struct ADBusMatch*    match);
 
 ADBUS_API void ADBusSetupRemoveBusMatch(
         struct ADBusMessage*        message,
         struct ADBusConnection*     connection,
-        struct ADBusMatch*          match);
+        const struct ADBusMatch*    match);
 
 ADBUS_API void ADBusSetupRequestServiceName(
         struct ADBusMessage*        message,

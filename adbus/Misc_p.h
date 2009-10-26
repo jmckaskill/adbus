@@ -50,6 +50,8 @@ ADBUSI_DATA const uint8_t ADBusMajorProtocolVersion_;
 
 ADBUSI_FUNC int ADBusRequiredAlignment_(char type);
 
+ADBUSI_FUNC uint ADBusRequiresServiceLookup_(const char* name, int size);
+
 // ----------------------------------------------------------------------------
 
 #pragma pack(push)
@@ -87,31 +89,27 @@ struct ADBusExtendedHeader_
 
 // ----------------------------------------------------------------------------
 
+#ifndef min
+#   define min(x,y) (((x) < (y)) ? (x) : (y))
+#endif
 
 #define ASSERT_RETURN(x) assert(x); if (!(x)) return;
 #define ASSERT_RETURN_ERR(x) assert(x); if (!(x)) return -1;
 
-#define NEW(STRUCT) ((STRUCT*) calloc(1, sizeof(STRUCT)))
-
-#ifdef WIN32
-static inline char* strndup(const char* string, size_t n)
+static inline char* strndup_(const char* string, size_t n)
 {
     char* s = (char*) malloc(n + 1);
     memcpy(s, string, n);
     s[n] = '\0';
     return s;
 }
-#else
-extern char* strndup(const char* string, size_t n);
-#endif
-
-struct Timer
+static inline char* strdup_(const char* string)
 {
-    uint64_t begin;
-    uint64_t frequency;
-};
-ADBUSI_FUNC void TimerBegin(struct Timer* ctx);
-ADBUSI_FUNC void TimerEnd(struct Timer* ctx, const char* what);
+    return strndup_(string, strlen(string));
+}
+
+ADBUSI_FUNC uint64_t TimerBegin();
+ADBUSI_FUNC void TimerEnd(uint64_t begin, const char* what);
 
 // ----------------------------------------------------------------------------
 

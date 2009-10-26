@@ -26,14 +26,10 @@
 #include "Interface.h"
 #include "Interface_p.h"
 #include "Misc_p.h"
-#include "vector.h"
+#include "memory/kvector.h"
 
 #include <assert.h>
 #include <string.h>
-
-#ifdef WIN32
-#   define strdup _strdup
-#endif
 
 // ----------------------------------------------------------------------------
 // Interface management
@@ -46,9 +42,9 @@ struct ADBusInterface* ADBusCreateInterface(
     struct ADBusInterface* i = NEW(struct ADBusInterface);
 
     i->name = (size >= 0)
-            ? strndup(name, size)
-            : strdup(name);
-    i->members = kh_init(ADBusMemberPtr);
+            ? strndup_(name, size)
+            : strdup_(name);
+    i->members = kh_new(MemberPtr);
 
     return i;  
 }
@@ -59,16 +55,15 @@ static void FreeMember(struct ADBusMember* member);
 
 void ADBusFreeInterface(struct ADBusInterface* i)
 {
-    if (!i)
-        return;
+    if (i) {
+        for (khiter_t ii = kh_begin(i->members); ii != kh_end(i->members); ++ii) {
+            if (kh_exist(i->members, ii))
+                FreeMember(kh_val(i->members, ii));
+        }
+        kh_free(MemberPtr, i->members);
 
-    for (khiter_t ii = kh_begin(i->members); ii != kh_end(i->members); ++ii) {
-        if (kh_exist(i->members, ii))
-            FreeMember(kh_val(i->members, ii));
+        free(i);
     }
-    kh_destroy(ADBusMemberPtr, i->members);
-
-    free(i);
 }
 
 // ----------------------------------------------------------------------------
@@ -84,11 +79,13 @@ struct ADBusMember* ADBusAddMember(
     struct ADBusMember* m = NEW(struct ADBusMember);
     m->interface    = i;
     m->type         = type;
-    m->name         = (size >= 0) ? strndup(name, size) : strdup(name);
-    m->annotations  = kh_init(StringPair);
+    m->name         = (size >= 0) ? strndup_(name, size) : strdup_(name);
+    m->annotations  = kh_new(StringPair);
+    m->inArguments  = kv_new(Argument);
+    m->outArguments = kv_new(Argument);
 
     int ret;
-    khiter_t ki = kh_put(ADBusMemberPtr, i->members, m->name, &ret);
+    khiter_t ki = kh_put(MemberPtr, i->members, m->name, &ret);
     if (!ret) {
         FreeMember(kh_val(i->members, ki));
     }
@@ -110,20 +107,19 @@ static void FreeMember(struct ADBusMember* m)
             free(kh_val(m->annotations, ii));
         }
     }
-    kh_destroy(StringPair, m->annotations);
+    kh_free(StringPair, m->annotations);
 
-    for (size_t i = 0; i < arg_vector_size(&m->inArguments); ++i) {
-        free(m->inArguments[i].name);
-        free(m->inArguments[i].type);
+    for (size_t i = 0; i < kv_size(m->inArguments); ++i) {
+        free(kv_a(m->inArguments, i).name);
+        free(kv_a(m->inArguments, i).type);
     }
+    kv_free(Argument, m->inArguments);
 
-    for (size_t i = 0; i < arg_vector_size(&m->outArguments); ++i) {
-        free(m->outArguments[i].name);
-        free(m->outArguments[i].type);
+    for (size_t i = 0; i < kv_size(m->outArguments); ++i) {
+        free(kv_a(m->outArguments, i).name);
+        free(kv_a(m->outArguments, i).type);
     }
-
-    arg_vector_free(&m->inArguments);
-    arg_vector_free(&m->outArguments);
+    kv_free(Argument, m->outArguments);
 
     free(m->propertyType);
     free(m->name);
@@ -145,9 +141,9 @@ struct ADBusMember* ADBusGetInterfaceMember(
 {
     // We need to guarantee name is nul terminated
     if (size >= 0)
-        name = strndup(name, size);
+        name = strndup_(name, size);
 
-    khiter_t ii = kh_get(ADBusMemberPtr, i->members, name);
+    khiter_t ii = kh_get(MemberPtr, i->members, name);
 
     if (size >= 0)
         free((char*) name);
@@ -179,14 +175,14 @@ void ADBusAddArgument(struct ADBusMember* m,
     if (typeSize < 0)
         typeSize = strlen(type);
 
-    struct Argument** pvec = (direction == ADBusInArgument)
-                           ? &m->inArguments
-                           : &m->outArguments;
+    kvector_t(Argument)* pvec = (direction == ADBusInArgument)
+                              ? m->inArguments
+                              : m->outArguments;
 
-    struct Argument* a = arg_vector_insert_end(pvec, 1);
+    struct Argument* a = kv_push(Argument, pvec, 1);
     if (name && nameSize > 0)
-        a->name = strndup(name, nameSize);
-    a->type = strndup(type, typeSize);
+        a->name = strndup_(name, nameSize);
+    a->type = strndup_(type, typeSize);
 }
 
 // ----------------------------------------------------------------------------
@@ -198,12 +194,12 @@ void ADBusAddAnnotation(struct ADBusMember* m,
     assert(name && value);
 
     name = (nameSize >= 0)
-         ? strndup(name, nameSize)
-         : strdup(name);
+         ? strndup_(name, nameSize)
+         : strdup_(name);
 
     value = (valueSize >= 0)
-          ? strndup(value, valueSize)
-          : strdup(value);
+          ? strndup_(value, valueSize)
+          : strdup_(value);
 
     int ret;
     khiter_t ki = kh_put(StringPair, m->annotations, name, &ret);
@@ -236,8 +232,8 @@ void ADBusSetPropertyType(
         int                         typeSize)
 {
     m->propertyType = (typeSize >= 0)
-                    ? strndup(type, typeSize)
-                    : strdup(type);
+                    ? strndup_(type, typeSize)
+                    : strdup_(type);
 }
 
 // ----------------------------------------------------------------------------

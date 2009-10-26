@@ -170,25 +170,27 @@ end
 
 -- Signals
 
-function proxy.connect(self, signal_name, callback, object)
+function proxy.connect(reg)
+    local self       = reg.proxy
     local match_ids  = rawget(self, "_signal_match_ids");
     local connection = proxy.connection(self)
     local sigs       = rawget(self, "_signals");
-    local interface  = sigs[signal_name]
-    assert(sig, "Invalid signal name")
+    local interface  = sigs[reg.member]
+    assert(interface, "Invalid signal name")
 
     local id = connection:add_match{
         add_match_to_bus_daemon = true,
-        type        = "signal",
-        interface   = sig,
-        path        = proxy.path(self),
-        source      = proxy.service(self),
-        member      = signal_name,
-        callback    = callback,
-        object      = object,
+        type            = "signal",
+        interface       = interface,
+        path            = proxy.path(self),
+        sender          = proxy.service(self),
+        member          = signal_name,
+        callback        = reg.callback,
+        object          = reg.object,
+        unpack_message  = reg.unpack_message,
     }
 
-    table.insert(match_ids)
+    table.insert(match_ids, id)
     return id
 end
 

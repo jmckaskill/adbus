@@ -35,9 +35,9 @@ using namespace adbus;
 // ----------------------------------------------------------------------------
 
 SignalBase::SignalBase()
-:   m_Object(NULL),
-    m_Signal(NULL),
-    m_Connection(NULL)
+:   m_Connection(NULL),
+    m_Object(NULL),
+    m_Signal(NULL)
 {
     m_Message = ADBusCreateMessage();
 }

@@ -28,16 +28,12 @@
 #include "Misc_p.h"
 #include "Marshaller.h"
 #include "Iterator.h"
-#include "str.h"
+#include "memory/kstring.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-#ifdef WIN32
-# define strdup _strdup
-#endif
 
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
@@ -124,7 +120,7 @@ void ADBusResetMessage(struct ADBusMessage* m)
 // ----------------------------------------------------------------------------
 
 #ifdef WIN32
-#define strdup _strdup
+#define strdup_ _strdup_
 #endif
 
 int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size)
@@ -228,37 +224,37 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
             case ADBusSignatureCode:
                 if (field.type != ADBusSignatureField)
                     return ADBusInvalidData;
-                m->signature = strndup(field.string, field.size);
+                m->signature = strndup_(field.string, field.size);
                 break;
             case ADBusPathCode:
                 if (field.type != ADBusObjectPathField)
                     return ADBusInvalidData;
-                m->path = strndup(field.string, field.size);
+                m->path = strndup_(field.string, field.size);
                 break;
             case ADBusInterfaceCode:
                 if (field.type != ADBusStringField)
                     return ADBusInvalidData;
-                m->interface = strndup(field.string, field.size);
+                m->interface = strndup_(field.string, field.size);
                 break;
             case ADBusMemberCode:
                 if (field.type != ADBusStringField)
                     return ADBusInvalidData;
-                m->member = strndup(field.string, field.size);
+                m->member = strndup_(field.string, field.size);
                 break;
             case ADBusErrorNameCode:
                 if (field.type != ADBusStringField)
                     return ADBusInvalidData;
-                m->errorName = strndup(field.string, field.size);
+                m->errorName = strndup_(field.string, field.size);
                 break;
             case ADBusDestinationCode:
                 if (field.type != ADBusStringField)
                     return ADBusInvalidData;
-                m->destination = strndup(field.string, field.size);
+                m->destination = strndup_(field.string, field.size);
                 break;
             case ADBusSenderCode:
                 if (field.type != ADBusStringField)
                     return ADBusInvalidData;
-                m->sender = strndup(field.string, field.size);
+                m->sender = strndup_(field.string, field.size);
                 break;
             default:
                 break;
@@ -299,7 +295,7 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
         // Realistically we should break up the signature into the seperate
         // arguments and begin and end each one with a seperate signature, but
         // the iterator doesn't return begin and end argument fields
-        ADBusBeginArgument(mar, m->signature, -1);
+        ADBusAppendArguments(mar, m->signature, -1);
 
         ADBusArgumentIterator(m, iterator);
         ADBusSetIteratorEndianness(iterator, (enum ADBusEndianness) header->endianness);
@@ -307,8 +303,6 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
         int err = ADBusAppendIteratorData(mar, iterator, 0);
         if (err)
             return err;
-
-        ADBusEndArgument(mar);
     }
 
     return 0;
@@ -320,38 +314,38 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
 
 static void AppendString(struct ADBusMessage* m, uint8_t code, const char* field)
 {
-    if (!field)
-        return;
-    ADBusBeginStruct(m->marshaller);
-    ADBusAppendUInt8(m->marshaller, code);
-    ADBusBeginVariant(m->marshaller, "s", -1);
-    ADBusAppendString(m->marshaller, field, -1);
-    ADBusEndVariant(m->marshaller);
-    ADBusEndStruct(m->marshaller);
+    if (field) {
+        ADBusBeginStruct(m->marshaller);
+        ADBusAppendUInt8(m->marshaller, code);
+        ADBusBeginVariant(m->marshaller, "s", -1);
+        ADBusAppendString(m->marshaller, field, -1);
+        ADBusEndVariant(m->marshaller);
+        ADBusEndStruct(m->marshaller);
+    }
 }
 
 static void AppendSignature(struct ADBusMessage* m, uint8_t code, const char* field)
 {
-    if (!field)
-        return;
-    ADBusBeginStruct(m->marshaller);
-    ADBusAppendUInt8(m->marshaller, code);
-    ADBusBeginVariant(m->marshaller, "g", -1);
-    ADBusAppendSignature(m->marshaller, field, -1);
-    ADBusEndVariant(m->marshaller);
-    ADBusEndStruct(m->marshaller);
+    if (field) {
+        ADBusBeginStruct(m->marshaller);
+        ADBusAppendUInt8(m->marshaller, code);
+        ADBusBeginVariant(m->marshaller, "g", -1);
+        ADBusAppendSignature(m->marshaller, field, -1);
+        ADBusEndVariant(m->marshaller);
+        ADBusEndStruct(m->marshaller);
+    }
 }
 
 static void AppendObjectPath(struct ADBusMessage* m, uint8_t code, const char* field)
 {
-    if (!field)
-        return;
-    ADBusBeginStruct(m->marshaller);
-    ADBusAppendUInt8(m->marshaller, code);
-    ADBusBeginVariant(m->marshaller, "o", -1);
-    ADBusAppendObjectPath(m->marshaller, field, -1);
-    ADBusEndVariant(m->marshaller);
-    ADBusEndStruct(m->marshaller);
+    if (field) {
+        ADBusBeginStruct(m->marshaller);
+        ADBusAppendUInt8(m->marshaller, code);
+        ADBusBeginVariant(m->marshaller, "o", -1);
+        ADBusAppendObjectPath(m->marshaller, field, -1);
+        ADBusEndVariant(m->marshaller);
+        ADBusEndStruct(m->marshaller);
+    }
 }
 
 static void AppendUInt32(struct ADBusMessage* m, uint8_t code, uint32_t field)
@@ -385,7 +379,7 @@ static void BuildMessage(struct ADBusMessage* m)
     header.serial       = m->serial;
     ADBusAppendData(m->marshaller, (const uint8_t*) &header, sizeof(struct ADBusHeader_));
 
-    ADBusBeginArgument(m->marshaller, "a(yv)", -1);
+    ADBusAppendArguments(m->marshaller, "a(yv)", -1);
     ADBusBeginArray(m->marshaller);
     AppendString(m, ADBusInterfaceCode, m->interface);
     AppendString(m, ADBusMemberCode, m->member);
@@ -393,15 +387,11 @@ static void BuildMessage(struct ADBusMessage* m)
     AppendString(m, ADBusDestinationCode, m->destination);
     AppendString(m, ADBusSenderCode, m->sender);
     AppendObjectPath(m, ADBusPathCode, m->path);
-
     if (m->hasReplySerial)
       AppendUInt32(m, ADBusReplySerialCode, m->replySerial);
-
     if (argumentData && argumentSize > 0)
       AppendSignature(m, ADBusSignatureCode, signature);
-
     ADBusEndArray(m->marshaller);
-    ADBusEndArgument(m->marshaller);
 
     size_t headerSize;
     ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &headerSize);
@@ -571,8 +561,8 @@ void ADBusSetPath(struct ADBusMessage* m, const char* path, int size)
 {
     free(m->path);
     m->path = (size >= 0)
-            ? strndup(path, size)
-            : strdup(path);
+            ? strndup_(path, size)
+            : strdup_(path);
 }
 
 // ----------------------------------------------------------------------------
@@ -581,8 +571,8 @@ void ADBusSetInterface(struct ADBusMessage* m, const char* interface, int size)
 {
     free(m->interface);
     m->interface = (size >= 0)
-                 ? strndup(interface, size)
-                 : strdup(interface);
+                 ? strndup_(interface, size)
+                 : strdup_(interface);
 }
 
 // ----------------------------------------------------------------------------
@@ -591,8 +581,8 @@ void ADBusSetMember(struct ADBusMessage* m, const char* member, int size)
 {
     free(m->member);
     m->member = (size >= 0)
-              ? strndup(member, size)
-              : strdup(member);
+              ? strndup_(member, size)
+              : strdup_(member);
 }
 
 // ----------------------------------------------------------------------------
@@ -601,8 +591,8 @@ void ADBusSetErrorName(struct ADBusMessage* m, const char* errorName, int size)
 {
     free(m->errorName);
     m->errorName = (size >= 0)
-                 ? strndup(errorName, size)
-                 : strdup(errorName);
+                 ? strndup_(errorName, size)
+                 : strdup_(errorName);
 }
 
 // ----------------------------------------------------------------------------
@@ -611,8 +601,8 @@ void ADBusSetDestination(struct ADBusMessage* m, const char* destination, int si
 {
     free(m->destination);
     m->destination = (size >= 0)
-                   ? strndup(destination, size)
-                   : strdup(destination);
+                   ? strndup_(destination, size)
+                   : strdup_(destination);
 }
 
 // ----------------------------------------------------------------------------
@@ -621,8 +611,8 @@ void ADBusSetSender(struct ADBusMessage* m, const char* sender, int size)
 {
     free(m->sender);
     m->sender = (size >= 0)
-              ? strndup(sender, size)
-              : strdup(sender);
+              ? strndup_(sender, size)
+              : strdup_(sender);
 }
 
 // ----------------------------------------------------------------------------
@@ -656,83 +646,83 @@ void ADBusArgumentIterator(struct ADBusMessage* m, struct ADBusIterator* iterato
 // ----------------------------------------------------------------------------
 
 static void PrintStringField(
-        str_t* str,
+        kstring_t* str,
         const char* field,
         const char* what)
 {
     if (field)
-        str_printf(str, "\n%-15s \"%s\"", what, field);
+        ks_printf(str, "\n\t%-15s \"%s\"", what, field);
 }
 
-static void LogField(str_t* str, struct ADBusIterator* i, struct ADBusField* field);
-static void LogScope(str_t* str, struct ADBusIterator* i, enum ADBusFieldType end)
+static void LogField(kstring_t* str, struct ADBusIterator* i, struct ADBusField* field);
+static void LogScope(kstring_t* str, struct ADBusIterator* i, enum ADBusFieldType end)
 {
     uint first = 1;
     struct ADBusField field;
     while (!ADBusIterate(i, &field) && field.type != end && field.type != ADBusEndField) {
         if (!first)
-            str_printf(str, ", ");
+            ks_printf(str, ", ");
         first = 0;
         LogField(str, i, &field);
     }
 }
 
-static void LogField(str_t* str, struct ADBusIterator* i, struct ADBusField* field)
+static void LogField(kstring_t* str, struct ADBusIterator* i, struct ADBusField* field)
 {
     enum ADBusFieldType type = field->type;
     switch (type)
     {
     case ADBusUInt8Field:
-        str_printf(str, "%d", (int) field->u8);
+        ks_printf(str, "%d", (int) field->u8);
         break;
     case ADBusBooleanField:
-        str_printf(str, "%s", field->b ? "true" : "false");
+        ks_printf(str, "%s", field->b ? "true" : "false");
         break;
     case ADBusInt16Field:
-        str_printf(str, "%d", (int) field->i16);
+        ks_printf(str, "%d", (int) field->i16);
         break;
     case ADBusUInt16Field:
-        str_printf(str, "%d", (int) field->u16);
+        ks_printf(str, "%d", (int) field->u16);
         break;
     case ADBusInt32Field:
-        str_printf(str, "%d", (int) field->i32);
+        ks_printf(str, "%d", (int) field->i32);
         break;
     case ADBusUInt32Field:
-        str_printf(str, "%u", (unsigned int) field->u32);
+        ks_printf(str, "%u", (unsigned int) field->u32);
         break;
     case ADBusInt64Field:
-        str_printf(str, "%lld", (long long int) field->i64);
+        ks_printf(str, "%lld", (long long int) field->i64);
         break;
     case ADBusUInt64Field:
-        str_printf(str, "%llu", (long long unsigned int) field->u64);
+        ks_printf(str, "%llu", (long long unsigned int) field->u64);
         break;
     case ADBusDoubleField:
-        str_printf(str, "%.15g", field->d);
+        ks_printf(str, "%.15g", field->d);
         break;
     case ADBusStringField:
     case ADBusObjectPathField:
     case ADBusSignatureField:
-        str_printf(str, "\"%s\"", field->string);
+        ks_printf(str, "\"%s\"", field->string);
         break;
     case ADBusArrayBeginField:
-        str_printf(str, "[ ");
+        ks_printf(str, "[ ");
         LogScope(str, i, ADBusArrayEndField);
-        str_printf(str, " ]");
+        ks_printf(str, " ]");
         break;
     case ADBusStructBeginField:
-        str_printf(str, "( ");
+        ks_printf(str, "( ");
         LogScope(str, i, ADBusStructEndField);
-        str_printf(str, " )");
+        ks_printf(str, " )");
         break;
     case ADBusDictEntryBeginField:
-        str_printf(str, "{ ");
+        ks_printf(str, "{ ");
         LogScope(str, i, ADBusDictEntryEndField);
-        str_printf(str, " }");
+        ks_printf(str, " }");
         break;
     case ADBusVariantBeginField:
-        str_printf(str, "<%s>{ ", field->string);
+        ks_printf(str, "<%s>{ ", field->string);
         LogScope(str, i, ADBusVariantEndField);
-        str_printf(str, " }");
+        ks_printf(str, " }");
         break;
     default:
         assert(0);
@@ -741,53 +731,56 @@ static void LogField(str_t* str, struct ADBusIterator* i, struct ADBusField* fie
 
 char* ADBusNewMessageSummary(struct ADBusMessage* m, size_t* size)
 {
-    str_t str = NULL;
+    kstring_t* str = ks_new();
     size_t messageSize;
     ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &messageSize);
     messageSize -= m->argumentOffset;
 
     enum ADBusMessageType type = ADBusGetMessageType(m);
     if (type == ADBusMethodCallMessage)
-      str_printf(&str, "Type method_call (1), ");
+      ks_printf(str, "Type method_call (1), ");
     else if (type == ADBusMethodReturnMessage)
-      str_printf(&str, "Type method_return (2), ");
+      ks_printf(str, "Type method_return (2), ");
     else if (type == ADBusErrorMessage)
-      str_printf(&str, "Type error (3), ");
+      ks_printf(str, "Type error (3), ");
     else if (type == ADBusSignalMessage)
-      str_printf(&str, "Type signal (4), ");
+      ks_printf(str, "Type signal (4), ");
     else
-      str_printf(&str, "Type unknown (%d), ", (int) type);
+      ks_printf(str, "Type unknown (%d), ", (int) type);
 
-    str_printf(&str, "Flags %d, Length %d, Serial %d",
+    ks_printf(str, "Flags %d, Length %d, Serial %d",
             (int) ADBusGetFlags(m),
             (int) messageSize,
             (int) ADBusGetSerial(m));
-    PrintStringField(&str, m->path, "Path");
-    PrintStringField(&str, m->interface, "Interface");
-    PrintStringField(&str, m->member, "Member");
-    PrintStringField(&str, m->errorName, "Error name");
+    PrintStringField(str, m->path, "Path");
+    PrintStringField(str, m->interface, "Interface");
+    PrintStringField(str, m->member, "Member");
+    PrintStringField(str, m->errorName, "Error name");
     if (m->hasReplySerial)
-        str_printf(&str, "\n%-15s %d", "Reply serial", m->replySerial);
-    PrintStringField(&str, m->destination, "Destination");
-    PrintStringField(&str, m->sender, "Sender");
-    PrintStringField(&str, m->signature, "Signature");
+        ks_printf(str, "\n\t%-15s %d", "Reply serial", m->replySerial);
+    PrintStringField(str, m->destination, "Destination");
+    PrintStringField(str, m->sender, "Sender");
 
     int argnum = 0;
     struct ADBusIterator* iter = m->headerIterator;
     ADBusArgumentIterator(m, iter);
+
+    const char* sig = ADBusCurrentIteratorSignature(iter, NULL);
+    if (sig && *sig)
+        PrintStringField(str, sig, "Signature");
+
     struct ADBusField field;
     while (!ADBusIterate(iter, &field) && field.type != ADBusEndField) {
-        str_printf(&str, "\nArgument %2d     ", argnum++);
-        LogField(&str, iter, &field);
+        ks_printf(str, "\n\tArgument %2d     ", argnum++);
+        LogField(str, iter, &field);
     }
-    if (size)
-        *size = str_size(&str);
-    return str;
-}
 
-void ADBusFreeMessageSummary(char* str)
-{
-    str_free(&str);
+    if (size)
+        *size = ks_size(str);
+
+    char* ret = ks_release(str);
+    ks_free(str);
+    return ret;
 }
 
 

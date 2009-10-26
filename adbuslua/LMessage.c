@@ -23,10 +23,10 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Message.h"
+#include "LMessage.h"
 
 
-#include "Interface.h" //for LADBusCheckFields
+#include "LInterface.h" //for LADBusCheckFields
 
 #include "adbus/Iterator.h"
 #include "adbus/Marshaller.h"
@@ -322,13 +322,11 @@ int LADBusMarshallArgument(
         int                     signatureSize,
         struct ADBusMarshaller* marshaller)
 {
-    int err = ADBusBeginArgument(marshaller, signature, signatureSize);
+    int err = ADBusAppendArguments(marshaller, signature, signatureSize);
     if (err)
         return err;
 
-    MarshallNextField(L, argumentIndex, marshaller);
-
-    return ADBusEndArgument(marshaller);
+    return MarshallNextField(L, argumentIndex, marshaller);
 }
 
 // ----------------------------------------------------------------------------

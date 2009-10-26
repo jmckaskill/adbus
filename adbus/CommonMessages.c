@@ -29,8 +29,9 @@
 #include "Connection_p.h"
 #include "Interface_p.h"
 #include "Message.h"
+#include "Misc_p.h"
 #include "User.h"
-#include "str.h"
+#include "memory/kstring.h"
 
 // ----------------------------------------------------------------------------
 
@@ -88,9 +89,8 @@ void ADBusSetupErrorExpanded(
     if (errorMessage)
     {
         struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-        ADBusBeginArgument(marshaller, "s", -1);
+        ADBusAppendArguments(marshaller, "s", -1);
         ADBusAppendString(marshaller, errorMessage, errorMessageSize);
-        ADBusEndArgument(marshaller);
     }
 }
 
@@ -154,17 +154,21 @@ void ADBusSetupReturnExpanded(
 
 void ADBusSetupMethodCall(
         struct ADBusMessage*        message,
-        struct ADBusConnection*     connection)
+        struct ADBusConnection*     connection,
+        uint32_t                    serial)
 {
     ADBusResetMessage(message);
     ADBusSetMessageType(message, ADBusMethodCallMessage);
-    ADBusSetSerial(message, ADBusNextSerial(connection));
+    if (serial)
+        ADBusSetSerial(message, serial);
+    else
+        ADBusSetSerial(message, ADBusNextSerial(connection));
 }
 
 // ----------------------------------------------------------------------------
 
 static void Append(
-        str_t* match,
+        kstring_t* match,
         const char* fieldName,
         const char* field,
         int size)
@@ -175,32 +179,49 @@ static void Append(
     if (size < 0)
         size = strlen(field);
 
-    str_append(match, fieldName);
-    str_append(match, "='");
-    str_append_n(match, field, size);
-    str_append(match, "',");
+    ks_cat(match, fieldName);
+    ks_cat(match, "='");
+    ks_cat_n(match, field, size);
+    ks_cat(match, "',");
 }
 
-static void GetMatchString(struct ADBusMatch* match, str_t* matchString)
+static void GetMatchString(const struct ADBusMatch* match, kstring_t* matchString)
 {
     if (match->type == ADBusMethodCallMessage)
-        str_append(matchString, "type='method_call',");
+        ks_cat(matchString, "type='method_call',");
     else if (match->type == ADBusMethodReturnMessage)
-        str_append(matchString, "type='method_return',");
+        ks_cat(matchString, "type='method_return',");
     else if (match->type == ADBusErrorMessage)
-        str_append(matchString, "type='error',");
+        ks_cat(matchString, "type='error',");
     else if (match->type == ADBusSignalMessage)
-        str_append(matchString, "type='signal',");
+        ks_cat(matchString, "type='signal',");
 
-    Append(matchString, "sender", match->sender, match->senderSize);
+    // We only want to add the sender field if we are not going to have to do
+    // a lookup conversion
+    if (match->sender
+     && !ADBusRequiresServiceLookup_(match->sender, match->senderSize))
+    {
+        Append(matchString, "sender", match->sender, match->senderSize);
+    }
     Append(matchString, "interface", match->interface, match->interfaceSize);
     Append(matchString, "member", match->member, match->memberSize);
     Append(matchString, "path", match->path, match->pathSize);
     Append(matchString, "destination", match->destination, match->destinationSize);
 
+    for (size_t i = 0; i < match->argumentsSize; ++i) {
+        struct ADBusMatchArgument* arg = &match->arguments[i];
+        ks_printf(matchString, "arg%d='", arg->number);
+        if (arg->valueSize < 0) {
+            ks_cat(matchString, arg->value);
+        } else {
+            ks_cat_n(matchString, arg->value, arg->valueSize);
+        }
+        ks_cat(matchString, "',");
+    }
+
     // Remove the trailing ','
-    if (str_size(matchString) > 0)
-        str_remove_end(matchString, 1);
+    if (ks_size(matchString) > 0)
+        ks_remove_end(matchString, 1);
 }
 
 // ----------------------------------------------------------------------------
@@ -209,7 +230,7 @@ static void SetupBusCall(
         struct ADBusMessage* message,
         struct ADBusConnection* connection)
 {
-    ADBusSetupMethodCall(message, connection);
+    ADBusSetupMethodCall(message, connection, 0);
     ADBusSetDestination(message, "org.freedesktop.DBus", -1);
     ADBusSetPath(message, "/", -1);
     ADBusSetInterface(message, "org.freedesktop.DBus", -1);
@@ -220,20 +241,19 @@ static void SetupBusCall(
 void ADBusSetupAddBusMatch(
         struct ADBusMessage*        message,
         struct ADBusConnection*     connection,
-        struct ADBusMatch*          match)
+        const struct ADBusMatch*    match)
 {
     SetupBusCall(message, connection);
     ADBusSetMember(message, "AddMatch", -1);
 
-    str_t mstr = NULL;
-    GetMatchString(match, &mstr);
+    kstring_t* mstr = ks_new();
+    GetMatchString(match, mstr);
 
     struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusBeginArgument(marshaller, "s", -1);
-    ADBusAppendString(marshaller, mstr, str_size(&mstr));
-    ADBusEndArgument(marshaller);
+    ADBusAppendArguments(marshaller, "s", -1);
+    ADBusAppendString(marshaller, ks_cstr(mstr), ks_size(mstr));
 
-    str_free(&mstr);
+    ks_free(mstr);
 }
 
 // ----------------------------------------------------------------------------
@@ -241,20 +261,19 @@ void ADBusSetupAddBusMatch(
 void ADBusSetupRemoveBusMatch(
         struct ADBusMessage*        message,
         struct ADBusConnection*     connection,
-        struct ADBusMatch*          match)
+        const struct ADBusMatch*    match)
 {
     SetupBusCall(message, connection);
     ADBusSetMember(message, "RemoveMatch", -1);
 
-    str_t mstr = NULL;
-    GetMatchString(match, &mstr);
+    kstring_t* mstr = ks_new();
+    GetMatchString(match, mstr);
 
     struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusBeginArgument(marshaller, "s", -1);
-    ADBusAppendString(marshaller, mstr, str_size(&mstr));
-    ADBusEndArgument(marshaller);
+    ADBusAppendArguments(marshaller, "s", -1);
+    ADBusAppendString(marshaller, ks_cstr(mstr), ks_size(mstr));
 
-    str_free(&mstr);
+    ks_free(mstr);
 }
 
 // ----------------------------------------------------------------------------
@@ -270,13 +289,9 @@ void ADBusSetupRequestServiceName(
     ADBusSetMember(message, "RequestName", -1);
 
     struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusBeginArgument(marshaller, "s", -1);
+    ADBusAppendArguments(marshaller, "su", -1);
     ADBusAppendString(marshaller, service, size);
-    ADBusEndArgument(marshaller);
-
-    ADBusBeginArgument(marshaller, "u", -1);
     ADBusAppendUInt32(marshaller, flags);
-    ADBusEndArgument(marshaller);
 }
 
 // ----------------------------------------------------------------------------
@@ -291,9 +306,8 @@ void ADBusSetupReleaseServiceName(
     ADBusSetMember(message, "ReleaseName", -1);
 
     struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusBeginArgument(marshaller, "s", -1);
+    ADBusAppendArguments(marshaller, "s", -1);
     ADBusAppendString(marshaller, service, size);
-    ADBusEndArgument(marshaller);
 }
 
 // ----------------------------------------------------------------------------

@@ -98,11 +98,6 @@ ADBUS_API void ADBusDispatch(
 ADBUS_API void ADBusRawDispatch(
         struct ADBusCallDetails*        details);
 
-ADBUS_API void ADBusErrorLongjmp(
-        struct ADBusCallDetails*        details,
-        const char*                     errorName,
-        const char*                     errorMsg);
-
 // ----------------------------------------------------------------------------
 // Bus management
 // ----------------------------------------------------------------------------
@@ -141,7 +136,7 @@ struct ADBusMatchArgument
 {
     int             number;
     const char*     value;
-    size_t          valueSize;
+    int             valueSize;
 };
 
 struct ADBusMatch
@@ -186,7 +181,7 @@ struct ADBusMatch
     // returned from ADBusNextMatchId
     uint32_t             id;
 };
-#define ADBusMatchInit(pmatch) memset(pmatch, 0, sizeof(struct ADBusMatch))
+#define ADBusInitMatch(pmatch) memset(pmatch, 0, sizeof(struct ADBusMatch))
 
 ADBUS_API uint32_t ADBusNextMatchId(
         struct ADBusConnection*     connection);

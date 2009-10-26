@@ -28,15 +28,15 @@
 #define _WIN32_WINNT 0x500
 #endif
 
-#include "ADBusLua.h"
+#include "LADBus.h"
 
-#include "Connection.h"
-#include "Data.h"
-#include "Interface.h"
-#include "Match.h"
-#include "Message.h"
-#include "Object.h"
-#include "Socket.h"
+#include "LConnection.h"
+#include "LData.h"
+#include "LInterface.h"
+#include "LMatch.h"
+#include "LMessage.h"
+#include "LObject.h"
+#include "LSocket.h"
 
 #include "adbus/Interface.h"
 
@@ -297,10 +297,7 @@ static const luaL_Reg kInterfaceReg[] = {
 
 // Reg for adbuslua_core.socket
 static const luaL_Reg kSocketReg[] = {
-    {"new_tcp", &LADBusNewTcpSocket},
-#ifndef WIN32
-    {"new_unix", &LADBusNewUnixSocket},
-#endif
+    {"new", &LADBusNewSocket},
     {"__gc", &LADBusCloseSocket},
     {"send", &LADBusSocketSend},
     {"receive", &LADBusSocketRecv},

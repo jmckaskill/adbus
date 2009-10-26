@@ -27,16 +27,17 @@
 #include "Tests.h"
 
 #include "adbus/Iterator.h"
-#include "adbus/vector.h"
+#include "memory/kvector.h"
 
 #include <assert.h>
 #include <string.h>
+#include <stdint.h>
 
-VECTOR_INSTANTIATE(uint8_t, u8)
+KVECTOR_INIT(u8, uint8_t)
 
 static struct ADBusField        sField;
 static struct ADBusIterator*    sIterator;
-static u8vector_t               sData;
+static kvector_t(u8)*           sData;
 static enum ADBusEndianness     sEndianness;
 
 // ----------------------------------------------------------------------------
@@ -60,15 +61,16 @@ static void TestInvalidData()
 
 static void ResetIterator(const char* sig, const uint8_t* data, size_t size)
 {
-    u8vector_clear(&sData);
-    uint8_t* dest = u8vector_insert_end(&sData, size);
+    kv_clear(u8, sData);
+    uint8_t* dest = kv_push(u8, sData, size);
     memcpy(dest, data, size);
-    ADBusResetIterator(sIterator, sig, -1, sData, size);
+    ADBusResetIterator(sIterator, sig, -1, &kv_a(sData, 0), size);
     ADBusSetIteratorEndianness(sIterator, sEndianness);
 }
 
 static void Setup(enum ADBusEndianness endianness)
 {
+    sData = kv_new(u8);
     sIterator = ADBusCreateIterator();
     sEndianness = endianness;
 }
@@ -77,7 +79,7 @@ static void Cleanup()
 {
     ADBusFreeIterator(sIterator);
     sIterator = NULL;
-    u8vector_free(&sData);
+    kv_free(u8, sData);
 }
 
 // ----------------------------------------------------------------------------
@@ -147,6 +149,7 @@ static void TestString(const char* str)
     assert(strlen(str) == sField.size);
 }
 
+#if 0
 static void TestObjectPath(const char* str)
 {
     TestField(ADBusObjectPathField);
@@ -160,6 +163,7 @@ static void TestSignature(const char* str)
     assert(strcmp(sField.string, str) == 0);
     assert(strlen(str) == sField.size);
 }
+#endif
 
 static void TestArrayBegin()
 { TestField(ADBusArrayBeginField); }
@@ -171,10 +175,12 @@ static void TestStructBegin()
 static void TestStructEnd()
 { TestField(ADBusStructEndField); }
 
+#if 0
 static void TestDictEntryBegin()
 { TestField(ADBusDictEntryBeginField); }
 static void TestDictEntryEnd()
 { TestField(ADBusDictEntryEndField); }
+#endif
 
 static void TestVariantBegin(const char* type)
 {

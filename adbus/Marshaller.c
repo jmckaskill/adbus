@@ -40,12 +40,12 @@
 
 static struct StackEntry* StackTop(struct ADBusMarshaller* m)
 {
-    return m->stack + stack_vector_size(&m->stack) - 1;
+    return &kv_a(m->stack, kv_size(m->stack) - 1);
 }
 
 static struct StackEntry* StackPush(struct ADBusMarshaller* m)
 {
-    return stack_vector_insert_end(&m->stack, 1);
+    return kv_push(Stack, m->stack, 1);
 }
 
 static void StackPop(struct ADBusMarshaller* m)
@@ -53,20 +53,19 @@ static void StackPop(struct ADBusMarshaller* m)
     struct StackEntry* s = StackTop(m);
     if (s->type == VariantStackEntry)
         free(s->d.variant.signature);
-    stack_vector_remove_end(&m->stack, 1);
+    kv_pop(Stack, m->stack, 1);
 }
 
 static size_t StackSize(struct ADBusMarshaller* m)
 {
-    return stack_vector_size(&m->stack);
+    return kv_size(m->stack);
 }
 
 static void AlignData(struct ADBusMarshaller* m, size_t align)
 {
-    size_t padding = ADBUS_ALIGN_VALUE_(size_t, u8vector_size(&m->data), align)
-                   - u8vector_size(&m->data);
-    if (padding > 0)
-        u8vector_insert_end(&m->data, padding);
+    size_t old = kv_size(m->data);
+    size_t sz = ADBUS_ALIGN_VALUE_(size_t, old, align);
+    kv_push(u8, m->data, sz - old);
 }
 
 // ----------------------------------------------------------------------------
@@ -75,19 +74,21 @@ static void AlignData(struct ADBusMarshaller* m, size_t align)
 
 struct ADBusMarshaller* ADBusCreateMarshaller()
 {
-    struct ADBusMarshaller* ret = NEW(struct ADBusMarshaller);
-    ADBusResetMarshaller(ret);
-    return ret;
+    struct ADBusMarshaller* m = NEW(struct ADBusMarshaller);
+    m->data  = kv_new(u8);
+    m->stack = kv_new(Stack);
+    ADBusResetMarshaller(m);
+    return m;
 }
 
 // ----------------------------------------------------------------------------
 
 void ADBusResetMarshaller(struct ADBusMarshaller* m)
 {
-    while(stack_vector_size(&m->stack) > 0)
+    while(kv_size(m->stack) > 0)
         StackPop(m);
 
-    u8vector_clear(&m->data);
+    kv_clear(u8, m->data);
     m->signature[0] = '\0';
     m->sigp = &m->signature[0];
 }
@@ -96,15 +97,16 @@ void ADBusResetMarshaller(struct ADBusMarshaller* m)
 
 void ADBusFreeMarshaller(struct ADBusMarshaller* m)
 {
-    if (!m)
-        return;
+    if (m) {
+        // We need to pop off the stack entries to free the variant strings
+        while(kv_size(m->stack) > 0)
+            StackPop(m);
 
-    ADBusResetMarshaller(m);
+        kv_free(u8, m->data);
+        kv_free(Stack, m->stack);
 
-    u8vector_free(&m->data);
-    stack_vector_free(&m->stack);
-
-    free(m);
+        free(m);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -125,7 +127,7 @@ void ADBusSetMarshalledData(struct ADBusMarshaller* m,
     strncat(m->signature, sig, sigsize);
     m->sigp = m->signature;
 
-    uint8_t* dest = u8vector_insert_end(&m->data, dataSize);
+    uint8_t* dest = kv_push(u8, m->data, dataSize);
     memcpy(dest, data, dataSize);
 }
 
@@ -142,9 +144,9 @@ void ADBusGetMarshalledData(const struct ADBusMarshaller* m,
     if (sigsize)
         *sigsize = strlen(m->signature);
     if (data)
-        *data = m->data;
+        *data = &kv_a(m->data, 0);
     if (dataSize)
-        *dataSize = u8vector_size(&m->data);
+        *dataSize = kv_size(m->data);
 }
 
 // ----------------------------------------------------------------------------
@@ -158,7 +160,7 @@ int ADBusAppendData(struct ADBusMarshaller* m, const uint8_t* data, size_t size)
                           || s->type == VariantStackEntry);
     }
 
-    uint8_t* dest = u8vector_insert_end(&m->data, size);
+    uint8_t* dest = kv_push(u8, m->data, size);
     memcpy(dest, data, size);
 
     return 0;
@@ -269,7 +271,7 @@ static uint8_t* AppendFixedField(
 
     AlignData(m, size);
 
-    uint8_t* data = u8vector_insert_end(&m->data, size);
+    uint8_t* data = kv_push(u8, m->data, size);
     m->sigp++;
     AppendField(m);
 
@@ -370,7 +372,7 @@ static int AppendShortString(struct ADBusMarshaller* m, const char* str, int siz
 
     ASSERT_RETURN_ERR(size < 256);
 
-    uint8_t* psize  = u8vector_insert_end(&m->data, 1 + size + 1);
+    uint8_t* psize  = kv_push(u8, m->data, 1 + size + 1);
     char* pstr      = (char*) psize + 1;
 
     *psize = (uint8_t) size;
@@ -391,7 +393,7 @@ static int AppendLongString(struct ADBusMarshaller* m, const char* str, int size
 
     AlignData(m, 4);
 
-    uint8_t* pdata  = u8vector_insert_end(&m->data, 4 + size + 1);
+    uint8_t* pdata  = kv_push(u8, m->data, 4 + size + 1);
     uint32_t* psize = (uint32_t*) pdata;
     char* pstr      = (char*) pdata + 4;
 
@@ -434,7 +436,7 @@ int ADBusAppendSignature(struct ADBusMarshaller* m, const char* str, int size)
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-int ADBusBeginArgument(struct ADBusMarshaller* m, const char* sig, int size)
+int ADBusAppendArguments(struct ADBusMarshaller* m, const char* sig, int size)
 {
     if (size < 0)
         size = strlen(sig);
@@ -449,14 +451,6 @@ int ADBusBeginArgument(struct ADBusMarshaller* m, const char* sig, int size)
 }
 
 // ----------------------------------------------------------------------------
-
-int ADBusEndArgument(struct ADBusMarshaller* m)
-{
-    ASSERT_RETURN_ERR(StackSize(m) == 0);
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
@@ -467,10 +461,10 @@ int ADBusBeginArray(struct ADBusMarshaller* m)
     m->sigp++;
 
     AlignData(m, 4);
-    size_t isize = u8vector_size(&m->data);
-    u8vector_insert_end(&m->data, 4);
+    size_t isize = kv_size(m->data);
+    kv_push(u8, m->data, 4);
     AlignData(m, ADBusRequiredAlignment_(*m->sigp));
-    size_t idata = u8vector_size(&m->data);
+    size_t idata = kv_size(m->data);
 
     struct StackEntry* s = StackPush(m);
     s->type = ArrayStackEntry;
@@ -494,8 +488,8 @@ static void AppendArrayChild(struct ADBusMarshaller* m)
 int ADBusEndArray(struct ADBusMarshaller* m)
 {
     struct StackEntry* s = StackTop(m);
-    uint32_t* psize = (uint32_t*)&m->data[s->d.array.sizeIndex];
-    *psize = (uint32_t)(u8vector_size(&m->data) - s->d.array.dataBegin);
+    uint32_t* psize = (uint32_t*) &kv_a(m->data, s->d.array.sizeIndex);
+    *psize = (uint32_t)(kv_size(m->data) - s->d.array.dataBegin);
 
     ASSERT_RETURN_ERR(*psize < ADBusMaximumArrayLength);
 
@@ -653,7 +647,7 @@ int ADBusAppendVariant(struct ADBusMarshaller* m,
 
     // Append the data
     AlignData(m, ADBusRequiredAlignment_(*sig));
-    uint8_t* dest = u8vector_insert_end(&m->data, datasize);
+    uint8_t* dest = kv_push(u8, m->data, datasize);
     memcpy(dest, data, datasize);
 
     AppendField(m);
@@ -672,13 +666,17 @@ static void AppendField(struct ADBusMarshaller* m)
     switch(StackTop(m)->type)
     {
     case ArrayStackEntry:
-        return AppendArrayChild(m);
+        AppendArrayChild(m);
+        break;
     case VariantStackEntry:
-        return AppendVariantChild(m);
+        AppendVariantChild(m);
+        break;
     case DictEntryStackEntry:
-        return AppendDictEntryChild(m);
+        AppendDictEntryChild(m);
+        break;
     case StructStackEntry:
-        return AppendStructChild(m);
+        AppendStructChild(m);
+        break;
     }
 }
 

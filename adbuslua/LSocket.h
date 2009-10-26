@@ -23,61 +23,19 @@
  * ----------------------------------------------------------------------------
  */
 
-
 #pragma once
 
-#include "Marshaller.h"
+#include "LADBus.h"
+#include "LuaInclude.h"
 
-#include "memory/kvector.h"
-#include "memory/kstring.h"
+#include <adbus/Socket.h>
 
-#include <stdint.h>
-
-
-// ----------------------------------------------------------------------------
-
-enum StackEntryType
+struct LADBusSocket
 {
-    ArrayStackEntry,
-    StructStackEntry,
-    VariantStackEntry,
-    DictEntryStackEntry,
+    ADBusSocket_t socket;
 };
 
-struct ArrayStackData
-{
-    size_t      sizeIndex;
-    size_t      dataBegin;
-    const char* sigBegin;
-};
-
-struct VariantStackData
-{
-    char* signature;
-    const char* oldSigp;
-};
-
-struct StackEntry
-{
-    enum StackEntryType type;
-
-    union
-    {
-        struct ArrayStackData array;
-        struct VariantStackData variant;
-    }d;
-};
-
-// ----------------------------------------------------------------------------
-
-KVECTOR_INIT(u8, uint8_t)
-KVECTOR_INIT(Stack, struct StackEntry)
-
-struct ADBusMarshaller
-{
-    kvector_t(u8)*              data;
-    char                        signature[257];
-    const char*                 sigp;
-    kvector_t(Stack)*           stack;
-};
-
+LADBUSI_FUNC int LADBusNewSocket(lua_State* L);
+LADBUSI_FUNC int LADBusCloseSocket(lua_State* L);
+LADBUSI_FUNC int LADBusSocketSend(lua_State* L);
+LADBUSI_FUNC int LADBusSocketRecv(lua_State* L);

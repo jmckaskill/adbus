@@ -25,20 +25,25 @@
 
 #pragma once
 
-#include "ADBusLua.h"
-#include "Connection.h"
+#include "Common.h"
 
-#include "adbus/Connection.h"
+#ifdef __cplusplus
+extern "C"{
+#endif
 
-#include "LuaInclude.h"
+#ifdef WIN32
+    typedef uintptr_t ADBusSocket_t;
+#   define ADBUS_INVALID_SOCKET (ADBusSocket_t)(~0)
+#else
+    typedef int ADBusSocket_t;
+#   define ADBUS_INVALID_SOCKET -1
+#endif
 
-LADBUSI_FUNC int LADBusBindInterface(lua_State* L);
-LADBUSI_FUNC int LADBusUnbindInterface(lua_State* L);
-LADBUSI_FUNC int LADBusEmit(lua_State* L);
+ADBUS_API ADBusSocket_t ADBusConnectSocket(
+        uint                    systembus,
+        const char*             envstr,
+        int                     size);
 
-LADBUSI_FUNC void LADBusMethodCallback(struct ADBusCallDetails* details);
-LADBUSI_FUNC void LADBusGetPropertyCallback(struct ADBusCallDetails* details);
-LADBUSI_FUNC void LADBusSetPropertyCallback( struct ADBusCallDetails* details);
-
-
-
+#ifdef __cplusplus
+}
+#endif

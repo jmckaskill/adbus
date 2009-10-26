@@ -97,9 +97,8 @@ namespace adbus
                 struct ADBusMarshaller* m =
                         ADBusArgumentMarshaller(details->returnMessage);
                 std::string type = ADBusTypeString((R*) NULL);
-                ADBusBeginArgument(m, type.c_str(), type.size());
+                ADBusAppendArguments(m, type.c_str(), type.size());
                 r >> *m;
-                ADBusEndArgument(m);
             }
         }
 

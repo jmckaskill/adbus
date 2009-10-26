@@ -27,6 +27,10 @@
 
 #include "Common.h"
 
+#include "Bind.h"
+#include "Interface.h"
+#include "Message.h"
+
 #include <string>
 #include <vector>
 
@@ -135,21 +139,21 @@ namespace adbus
     private:
         void doBind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, struct ADBusUser* user2);
 
-        struct BoundInterfaceData
+        struct BindData
         {
-            ADBusConnection*       connection;
+            ADBusConnection*  connection;
             ADBusObject*      object;
             ADBusInterface*   interface;
         };
 
         struct MatchData
         {
-            ADBusConnection*   connection;
-            uint32_t      matchId;
+            ADBusConnection*    connection;
+            uint32_t            matchId;
         };
 
-        std::vector<MatchData>          m_Matches;
-        std::vector<BoundInterfaceData> m_Interfaces;
+        std::vector<MatchData>  m_Matches;
+        std::vector<BindData>   m_Interfaces;
     };
 
     template<class M>

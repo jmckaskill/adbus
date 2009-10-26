@@ -27,12 +27,12 @@
 
 #include "Interface.h"
 #include "User.h"
-#include "khash.h"
-#include "vector.h"
+#include "memory/khash.h"
+#include "memory/kvector.h"
 
 // ----------------------------------------------------------------------------
 
-KHASH_MAP_INIT_STR(StringPair, char*);
+KHASH_MAP_INIT_STR(StringPair, char*)
 
 struct Argument
 {
@@ -40,7 +40,7 @@ struct Argument
     char*           type;
 };
 
-VECTOR_INSTANTIATE(struct Argument, arg_)
+KVECTOR_INIT(Argument, struct Argument)
 
 // ----------------------------------------------------------------------------
 
@@ -53,8 +53,8 @@ struct ADBusMember
 
     char*                       propertyType;
 
-    arg_vector_t                inArguments;
-    arg_vector_t                outArguments;
+    kvector_t(Argument)*        inArguments;
+    kvector_t(Argument)*        outArguments;
 
     khash_t(StringPair)*        annotations;
 
@@ -67,14 +67,14 @@ struct ADBusMember
     struct ADBusUser*           setPropertyData;
 };
 typedef struct ADBusMember* ADBusMemberPtr;
-KHASH_MAP_INIT_STR(ADBusMemberPtr, ADBusMemberPtr)
+KHASH_MAP_INIT_STR(MemberPtr, ADBusMemberPtr)
 
 // ----------------------------------------------------------------------------
 
 struct ADBusInterface
 {
-    char*                     name;
-    khash_t(ADBusMemberPtr)*  members;
+    char*                   name;
+    khash_t(MemberPtr)*     members;
 };
 
 

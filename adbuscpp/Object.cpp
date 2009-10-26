@@ -71,7 +71,7 @@ uint32_t Object::addMatch(
         struct ADBusUser*       user2)
 {
     ADBusMatch adbusmatch;
-    ADBusMatchInit(&adbusmatch);
+    ADBusInitMatch(&adbusmatch);
 
     adbusmatch.type = m->type;
     adbusmatch.addMatchToBusDaemon = m->addMatchToBusDaemon;
@@ -130,7 +130,7 @@ void Object::doBind(
         ADBusInterface*         interface,
         struct ADBusUser*       user2)
 {
-    BoundInterfaceData bound;
+    BindData bound;
     bound.connection = c;
     bound.object     = ADBusAddObject(c, path.c_str(), path.size());
     bound.interface  = interface;
@@ -152,7 +152,7 @@ void Object::unbind(
         return;
 
     for (size_t i = 0; i < m_Interfaces.size(); ++i) {
-        BoundInterfaceData& b = m_Interfaces[i];
+        BindData& b = m_Interfaces[i];
         if (b.connection == c 
          && b.interface == interface 
          && b.object == object)
@@ -169,7 +169,7 @@ void Object::unbind(
 void Object::unbindAll()
 {
     for (size_t i = 0; i < m_Interfaces.size(); ++i) {
-        BoundInterfaceData& b = m_Interfaces[i];
+        BindData& b = m_Interfaces[i];
         ADBusUnbindInterface(b.object, b.interface);
     }
     m_Interfaces.clear();

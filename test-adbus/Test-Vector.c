@@ -26,127 +26,124 @@
 
 #include "Tests.h"
 
-#include "adbus/vector.h"
-#include "adbus/str.h"
+#include "memory/kvector.h"
+#include "memory/kstring.h"
 
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
 #include <wchar.h>
 
-VECTOR_INSTANTIATE(char, c)
-VECTOR_INSTANTIATE(wchar_t, wc)
-static void DoTestWCharVector(wcvector_t* vec, const wchar_t* str)
+KVECTOR_INIT(char, char)
+KVECTOR_INIT(wchar_t, wchar_t)
+static void DoTestWCharVector(kvector_t(wchar_t)* vec, const wchar_t* str)
 {
-    assert(wcslen(str) == wcvector_size(vec));
-    assert(wcsncmp(str, *vec, wcvector_size(vec)) == 0);
+    assert(wcslen(str) == kv_size(vec));
+    assert(wcsncmp(str, &kv_a(vec, 0), kv_size(vec)) == 0);
 }
 
-static void DoTestCharVector(cvector_t* vec, const char* str)
+static void DoTestCharVector(kvector_t(char)* vec, const char* str)
 {
-    assert(strlen(str) == cvector_size(vec));
-    assert(strncmp(str, *vec, cvector_size(vec)) == 0);
+    assert(strlen(str) == kv_size(vec));
+    assert(strncmp(str, &kv_a(vec, 0), kv_size(vec)) == 0);
 }
 
-#define TEST(STR) DoTestCharVector(&vec, STR)
+#define TEST(STR) DoTestCharVector(vec, STR)
 
 static void TestCharVector()
 {
     char* dest;
-    cvector_t vec = NULL;
+    kvector_t(char)* vec = kv_new(char);
 
-    dest = cvector_insert_end(&vec, 3);
+    dest = kv_push(char, vec, 3);
     memcpy(dest, "abc", 3);
     TEST("abc");
 
-    dest = cvector_insert_end(&vec, 2);
+    dest = kv_push(char, vec, 2);
     memcpy(dest, "de", 2);
     TEST("abcde");
 
-    dest = cvector_insert(&vec, 1, 3);
+    dest = kv_insert(char, vec, 1, 3);
     memcpy(dest, "fgh", 3);
     TEST("afghbcde");
 
-    cvector_remove_end(&vec, 4);
+    kv_pop(char, vec, 4);
     TEST("afgh");
 
-    cvector_remove(&vec, 1, 2);
+    kv_remove(char, vec, 1, 2);
     TEST("ah");
 
-    cvector_free(&vec);
-    assert(vec == NULL);
+    kv_free(char, vec);
 }
 
 #undef TEST
-#define TEST(STR) DoTestWCharVector(&vec, STR)
+#define TEST(STR) DoTestWCharVector(vec, STR)
 
 static void TestWCharVector()
 {
     // Use wchar_t so that the member size is > 1
     wchar_t* dest;
-    wcvector_t vec = NULL;
+    kvector_t(wchar_t)* vec = kv_new(wchar_t);
 
-    dest = wcvector_insert_end(&vec, 3);
+    dest = kv_push(wchar_t, vec, 3);
     memcpy(dest, L"abc", 3 * sizeof(wchar_t));
     TEST(L"abc");
 
-    dest = wcvector_insert_end(&vec, 2);
+    dest = kv_push(wchar_t, vec, 2);
     memcpy(dest, L"de", 2 * sizeof(wchar_t));
     TEST(L"abcde");
 
-    dest = wcvector_insert(&vec, 1, 3);
+    dest = kv_insert(wchar_t, vec, 1, 3);
     memcpy(dest, L"fgh", 3 * sizeof(wchar_t));
     TEST(L"afghbcde");
 
-    wcvector_remove_end(&vec, 4);
+    kv_pop(wchar_t, vec, 4);
     TEST(L"afgh");
 
-    wcvector_remove(&vec, 1, 2);
+    kv_remove(wchar_t, vec, 1, 2);
     TEST(L"ah");
 
-    wcvector_free(&vec);
-    assert(vec == NULL);
+    kv_free(wchar_t, vec);
 }
 
 #undef TEST
 
-static void DoTestString(str_t* string, const char* str)
+static void DoTestString(kstring_t* string, const char* str)
 {
     size_t sz = strlen(str);
-    size_t stringz = str_size(string);
+    size_t stringz = ks_size(string);
     assert(sz == stringz);
-    assert(strcmp(str, *string) == 0);
+    assert(ks_cmp(string, str) == 0);
 }
 
-#define TEST(STR) DoTestString(&str, STR)
+#define TEST(STR) DoTestString(str, STR)
 
 static void TestString()
 {
-    str_t str = NULL;
+    kstring_t* str = ks_new();
 
-    str_append(&str, "abc");
+    ks_cat(str, "abc");
     TEST("abc");
 
-    str_append(&str, "de");
+    ks_cat(str, "de");
     TEST("abcde");
 
-    str_append(&str, "fghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz");
+    ks_cat(str, "fghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz");
     TEST("abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz");
 
-    str_remove(&str, 3, 2);
+    ks_remove(str, 3, 2);
     TEST("abcfghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz");
 
-    str_remove_end(&str, 26);
+    ks_remove_end(str, 26);
     TEST("abcfghijklmnopqrstuvwxyz");
 
-    str_insert_n(&str, 3, "defg", 2);
+    ks_insert_n(str, 3, "defg", 2);
     TEST("abcdefghijklmnopqrstuvwxyz");
 
-    str_insert(&str, 3, "de");
+    ks_insert(str, 3, "de");
     TEST("abcdedefghijklmnopqrstuvwxyz");
 
-    str_free(&str);
-    assert(str == NULL);
+    ks_free(str);
 }
 
 #undef TEST

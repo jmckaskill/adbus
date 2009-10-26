@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include "ADBusLua.h"
-#include "Data.h"
+#include "LADBus.h"
+#include "LData.h"
 
 #include "adbus/Connection.h"
 #include "LuaInclude.h"

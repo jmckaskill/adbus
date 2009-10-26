@@ -24,12 +24,12 @@
  */
 
 
-#include "Match.h"
+#include "LMatch.h"
 
-#include "Connection.h"
-#include "Data.h"
-#include "Interface.h"
-#include "Message.h"
+#include "LConnection.h"
+#include "LData.h"
+#include "LInterface.h"
+#include "LMessage.h"
 
 #include "adbus/Connection.h"
 
@@ -53,9 +53,9 @@ static uint UnpackOptionalEnumField(
 
     } else if (lua_isstring(L, -1)) {
         int i = 0;
-        const char* string = lua_tostring(L, offset);
+        const char* string = lua_tostring(L, -1);
         const char* compareKey = types[i];
-        while (compareKey != NULL || strcmp(string, compareKey) != 0)
+        while (compareKey != NULL && strcmp(string, compareKey) != 0)
         {
             compareKey = types[++i];
         }
@@ -287,6 +287,12 @@ static int UnpackMatch(
 
     UnpackOptionalStringField(L,
                               offset,
+                              "interface",
+                              &match->interface,
+                              &match->interfaceSize);
+
+    UnpackOptionalStringField(L,
+                              offset,
                               "destination",
                               &match->destination,
                               &match->destinationSize);
@@ -364,7 +370,7 @@ int LADBusAddMatch(lua_State* L)
     data->L = L;
 
     struct ADBusMatch match;
-    ADBusMatchInit(&match);
+    ADBusInitMatch(&match);
 
     UnpackMatch(L, 2, &match, data);
     match.callback = &MatchCallback;

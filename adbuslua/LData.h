@@ -25,11 +25,26 @@
 
 #pragma once
 
-#include "ADBusLua.h"
-#include "adbus/Connection.h"
+#include "LADBus.h"
 #include "LuaInclude.h"
 
-LADBUSI_FUNC int LADBusAddMatch(lua_State* L);
-LADBUSI_FUNC int LADBusRemoveMatch(lua_State* L);
-LADBUSI_FUNC int LADBusNextMatchId(lua_State* L);
+#include "adbus/User.h"
 
+struct LADBusData
+{
+    struct ADBusUser    header;
+    lua_State*          L;
+    int                 callback;
+    int                 argument;
+    int                 connection;
+    int                 interface;
+    int                 returnSignature;
+    int                 propertyType;
+    uint                debug;
+};
+
+LADBUSI_FUNC struct LADBusData* LADBusCreateData();
+
+LADBUSI_FUNC void LADBusPushRef(lua_State* L, int ref);
+LADBUSI_FUNC int  LADBusGetRef(lua_State* L, int index);
+LADBUSI_FUNC int  LADBusCopyRef(lua_State* L, int ref);

@@ -30,6 +30,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <setjmp.h>
 
 #ifdef ADBUS_BUILD_AS_DLL
 #   ifdef ADBUS_LIBRARY
@@ -282,6 +283,10 @@ struct ADBusCallDetails
     struct ADBusIterator*   arguments;
 
     // Response
+    // set this to any non-zero response from the iterator calls
+    // Then on returning ADBusParse will return this which should disconnect
+    // the connection
+    int                     parseError;
     // manualReply indicates to the callee whether there is a return message
     uint                    manualReply;
     // Messages to use for replying - may be NULL if the original caller
@@ -305,6 +310,12 @@ struct ADBusCallDetails
     // For match callbacks both are from ADBusAddMatch
     const struct ADBusUser* user1;
     const struct ADBusUser* user2;
+
+    // The jmpbuf will be setup for use by any callback, and is used by the
+    // ADBusCheck* functions
+    // You should setup returnMessage with an error message or set parseError
+    // before longjmp'ing - the longjmp argument is ignored
+    jmp_buf jmpbuf;
 };
 #define ADBusInitCallDetails(P) memset(P, 0, sizeof(struct ADBusCallDetails))
 

@@ -31,8 +31,10 @@
 #include <string.h>
 
 #ifdef WIN32
-#include <windows.h>
-#include <crtdbg.h>
+#   include <windows.h>
+#   include <crtdbg.h>
+#else
+#   include <sys/time.h>
 #endif
 
 // ----------------------------------------------------------------------------
@@ -49,24 +51,50 @@ void ADBusPrintDebug_(const char* format, ...)
 
 // ----------------------------------------------------------------------------
 
-void TimerBegin(struct Timer* ctx)
+uint ADBusRequiresServiceLookup_(const char* name, int size)
 {
-  LARGE_INTEGER freq, begin;
-  QueryPerformanceFrequency(&freq);
-  ctx->frequency = freq.QuadPart;
-  QueryPerformanceCounter(&begin);
-  ctx->begin = begin.QuadPart;
+    if (size < 0)
+        size = strlen(name);
+
+    return size > 0
+        && *name != ':'
+        && (strncmp(name, "org.freedesktop.DBus", size) != 0);
 }
 
 // ----------------------------------------------------------------------------
 
-void TimerEnd(struct Timer* ctx, const char* what)
+#ifdef WIN32
+uint64_t TimerBegin()
 {
-  LARGE_INTEGER end;
-  QueryPerformanceCounter(&end);
-  uint64_t us = (end.QuadPart - ctx->begin) * 1000000 / ctx->frequency;
-  _CrtDbgReport(_CRT_WARN, NULL, -1, "", "%s %u us\n", what, (uint) us);
+    LARGE_INTEGER freq, begin;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&begin);
+    return (begin.QuadPart * 1000000) / freq.QuadPart;
 }
+#else
+uint64_t TimerBegin()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (((uint64_t) tv.tv_sec) * 1000000) + tv.tv_usec;
+}
+#endif
+
+// ----------------------------------------------------------------------------
+
+#ifdef WIN32
+void TimerEnd(uint64_t begin, const char* what)
+{
+    uint64_t end = TimerBegin();
+    _CrtDbgReport(_CRT_WARN, NULL, -1, "", "%s %u us\n", what, (uint) (end - begin));
+}
+#else
+void TimerEnd(uint64_t begin, const char* what)
+{
+    uint64_t end = TimerBegin();
+    fprintf(stderr, "%s %u us\n", what, (uint) (end - begin));
+}
+#endif
 
 // ----------------------------------------------------------------------------
 

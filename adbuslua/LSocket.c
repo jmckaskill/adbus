@@ -23,51 +23,93 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Variant.h"
-#include "Message.h"
 
+#include "LSocket.h"
+#include "LADBus.h"
 
+#include "adbus/Socket.h"
 
-using namespace adbus;
+#ifdef WIN32
+#   include <Winsock2.h>
+#   include <WS2tcpip.h>
+#else
+#   include <sys/types.h>
+#   include <sys/socket.h>
+#   include <unistd.h>
+#   define closesocket(x) close(x)
+#endif
+
+#include <string.h>
+#include <stdio.h>
+
 
 // ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
 
-void Variant::setupIterator(struct ADBusIterator* iterator)const
+int LADBusNewSocket(lua_State* L)
 {
-  const char* sig;
-  size_t sigsize;
-  const uint8_t* data;
-  size_t datasize;
-  ADBusGetMarshalledData(m, &sig, &sigsize, &data, &datasize);
-  ADBusResetIterator(iterator, sig, sigsize, data, datasize);
+    size_t addrlen;
+    const char* addr = luaL_checklstring(L, 1, &addrlen);
+    uint systembus = lua_type(L, 2) == LUA_TBOOLEAN && lua_toboolean(L, 2);
+
+    ADBusSocket_t s = ADBusConnectSocket(systembus, addr, addrlen);
+
+    if (s == ADBUS_INVALID_SOCKET)
+        return luaL_error(L, "Failure to connect");
+
+    struct LADBusSocket* lsocket = LADBusPushNewSocket(L);
+    lsocket->socket = s;
+
+    return 1;
 }
 
 // ----------------------------------------------------------------------------
 
-void Variant::operator <<(ADBusIterator& iterator)
+int LADBusCloseSocket(lua_State* L)
 {
-  struct ADBusField field;
-  ADBusIterate(&iterator, &field);
-  CheckForDemarshallError(&field, ADBusVariantBeginField);
+    struct LADBusSocket* s = LADBusCheckSocket(L, 1);
+    if (s->socket != ADBUS_INVALID_SOCKET)
+        closesocket(s->socket);
+    s->socket = ADBUS_INVALID_SOCKET;
 
-  ADBusAppendArguments(m, field.string, field.size);
-  int err = ADBusAppendIteratorData(m, &iterator, field.scope);
-  if (err) {
-      throw DemarshallError();
-  }
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void Variant::operator >>(ADBusMarshaller& marshaller) const
+int LADBusSocketSend(lua_State* L)
 {
-  const char* sig;
-  size_t sigsize;
-  const uint8_t* data;
-  size_t datasize;
-  ADBusGetMarshalledData(m, &sig, &sigsize, &data, &datasize);
-  ADBusSetMarshalledData(&marshaller, sig, sigsize, data, datasize);
+    size_t size;
+
+    struct LADBusSocket* s = LADBusCheckSocket(L, 1);
+    const char* data = luaL_checklstring(L, 2, &size);
+
+    if (s->socket != ADBUS_INVALID_SOCKET) {
+        send(s->socket, data, size, 0);
+    }
+
+    return 0;
 }
+
+// ----------------------------------------------------------------------------
+
+int LADBusSocketRecv(lua_State* L)
+{
+    struct LADBusSocket* s = LADBusCheckSocket(L, 1);
+
+    if (s->socket != ADBUS_INVALID_SOCKET) {
+        char buf[64 * 1024];
+        int recvd = recv(s->socket, buf, sizeof(buf), 0);
+        lua_pushlstring(L, buf, recvd);
+        return 1;
+    }
+
+    return 0;
+}
+
+
+
+
+
+
 
 

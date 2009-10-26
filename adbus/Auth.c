@@ -25,7 +25,7 @@
 
 #include "Auth.h"
 #include "sha1.h"
-#include "str.h"
+#include "memory/kstring.h"
 
 #include <string.h>
 
@@ -41,7 +41,7 @@
 #include <windows.h>
 #include <sddl.h>
 
-static void LocalId(str_t* id)
+static void LocalId(kstring_t* id)
 {
     HANDLE process_token = NULL;
     TOKEN_USER *token_user = NULL;
@@ -72,11 +72,11 @@ static void LocalId(str_t* id)
 
 #ifdef UNICODE
     size_t sidlen = wcslen(stringsid);
-    str_clear(id);
+    ks_clear(id);
     for (size_t i = 0; i < sidlen; ++i)
-        str_append_char(id, (char) stringsid[i]);
+        ks_cat_char(id, (char) stringsid[i]);
 #else
-    str_set_n(id, stringsid);
+    ks_set(id, stringsid);
 #endif
 
     LocalFree(stringsid);
@@ -91,27 +91,28 @@ failed:
 #include <unistd.h>
 #include <sys/types.h>
 
-static void LocalId(str_t* id)
+static void LocalId(kstring_t* id)
 {
     uid_t uid = geteuid();
     char buf[32];
     snprintf(buf, 31, "%d", (int) uid);
     buf[31] = '\0';
-    str_set(id, buf);
+    ks_set(id, buf);
 }
 
 #endif
 
 // ----------------------------------------------------------------------------
 
-static void HexDecode(str_t* out, const char* str, size_t size)
+static void HexDecode(kstring_t* out, const char* str, size_t size)
 {
     if (size % 2 != 0)
         return;
 
+    const uint8_t* ustr = (const uint8_t*) str;
     for (size_t i = 0; i < size / 2; ++i)
     {
-        char hi = str[2*i];
+        uint8_t hi = ustr[2*i];
         if ('0' <= hi && hi <= '9')
             hi = hi - '0';
         else if ('a' <= hi && hi <= 'f')
@@ -121,7 +122,7 @@ static void HexDecode(str_t* out, const char* str, size_t size)
         else
             return;
 
-        char lo = str[2*i + 1];
+        uint8_t lo = ustr[2*i + 1];
         if ('0' <= lo && lo <= '9')
             lo = lo - '0';
         else if ('a' <= lo && lo <= 'f')
@@ -131,30 +132,31 @@ static void HexDecode(str_t* out, const char* str, size_t size)
         else
             return;
 
-        str_append_char(out, (hi << 4) | lo);
+        ks_cat_char(out, (hi << 4) | lo);
     }
 }
 
 // ----------------------------------------------------------------------------
 
-static void HexEncode(str_t* out, const uint8_t* data, size_t size)
+static void HexEncode(kstring_t* out, const char* data, size_t size)
 {
+    const uint8_t* udata = (const uint8_t*) data;
     for (size_t i = 0; i < size; ++i)
     {
-        char hi = data[i] >> 4;
+        uint8_t hi = udata[i] >> 4;
         if (hi < 10)
             hi += '0';
         else
             hi += 'a' - 10;
 
-        char lo = data[i] & 0x0F;
+        uint8_t lo = udata[i] & 0x0F;
         if (lo < 10)
             lo += '0';
         else
             lo += 'a' - 10;
 
-        str_append_char(out, hi);
-        str_append_char(out, lo);
+        ks_cat_char(out, hi);
+        ks_cat_char(out, lo);
     }
 }
 
@@ -162,25 +164,24 @@ static void HexEncode(str_t* out, const uint8_t* data, size_t size)
 
 static void GetCookie(const char* keyring,
                       const char* id,
-                      str_t* cookie)
+                      kstring_t* cookie)
 {
-    str_t keyringFile = NULL;
+    kstring_t* keyringFile = ks_new();
 #ifdef WIN32
     const char* home = getenv("userprofile");
 #else
     const char* home = getenv("HOME");
 #endif
     if (home) {
-        str_append(&keyringFile, home);
-        str_append(&keyringFile, "/");
+        ks_cat(keyringFile, home);
+        ks_cat(keyringFile, "/");
     }
     // If no HOME env then we go off the current directory
-    str_append(&keyringFile, ".dbus-keyrings/");
-    str_append(&keyringFile, keyring);
-    FILE* file = fopen(keyringFile, "r");
-    str_free(&keyringFile);
+    ks_cat(keyringFile, ".dbus-keyrings/");
+    ks_cat(keyringFile, keyring);
+    FILE* file = fopen(ks_cstr(keyringFile), "r");
     if (!file)
-        return;
+        goto end;
     char buf[4096];
     while(fgets(buf, 4096, file))
     {
@@ -199,21 +200,25 @@ static void GetCookie(const char* keyring,
 
             const char* dataBegin = timeEnd + 1;
             const char* dataEnd = bufEnd - 1; // -1 for \n
-            str_set_n(cookie, dataBegin, dataEnd - dataBegin);
+            ks_set_n(cookie, dataBegin, dataEnd - dataBegin);
             break;
         }
     }
-    fclose(file);
+
+end:
+    if (file)
+        fclose(file);
+    ks_free(keyringFile);
 }
 
 // ----------------------------------------------------------------------------
 
 static int ParseServerData(const char* data,
-                           str_t* keyring,
-                           str_t* id,
-                           str_t* serverData)
+                           kstring_t* keyring,
+                           kstring_t* id,
+                           kstring_t* serverData)
 {
-    str_t decoded = NULL;
+    kstring_t* decoded = ks_new();
     const char* commandEnd = NULL;;
     const char* hexDataBegin = NULL;
     const char* hexDataEnd = NULL;
@@ -229,14 +234,16 @@ static int ParseServerData(const char* data,
     if (!hexDataEnd)
         goto err;
     
-    HexDecode(&decoded, hexDataBegin, hexDataEnd - hexDataBegin);
+    HexDecode(decoded, hexDataBegin, hexDataEnd - hexDataBegin);
+
+    const char* cdecoded = ks_cstr(decoded);
     
-    keyringEnd = strchr(decoded, ' ');
+    keyringEnd = strchr(cdecoded, ' ');
     if (!keyringEnd)
         goto err;
 
     if (keyring)    
-        str_set_n(keyring, decoded, keyringEnd - decoded);
+        ks_set_n(keyring, cdecoded, keyringEnd - cdecoded);
     
     idBegin = keyringEnd + 1;
     idEnd = strchr(idBegin, ' ');
@@ -244,15 +251,15 @@ static int ParseServerData(const char* data,
         goto err;
     
     if (id)
-        str_set_n(id, idBegin, idEnd - idBegin);
+        ks_set_n(id, idBegin, idEnd - idBegin);
     if (serverData)
-        str_set(serverData, idEnd + 1);
+        ks_set(serverData, idEnd + 1);
 
-    str_free(&decoded);
+    ks_free(decoded);
     return 0;
 
 err:
-    str_free(&decoded);
+    ks_free(decoded);
     return 1;
 }
 
@@ -260,118 +267,126 @@ err:
 
 static void GenerateReply(const char*   hexserver,
                           const char*   hexcookie,
-                          uint8_t*      localData,
+                          const char*   localData,
                           size_t        localDataSize,
-                          str_t* reply)
+                          kstring_t*    reply)
 {
-    str_t shastr = NULL;
-    str_t replyarg = NULL;
+    kstring_t* shastr = ks_new();
+    kstring_t* replyarg = ks_new();
 
-    str_set(&shastr, hexserver);
-    str_append(&shastr, ":");
-    HexEncode(&shastr, localData, localDataSize);
-    str_append(&shastr, ":");
-    str_append(&shastr, hexcookie);
+    ks_set(shastr, hexserver);
+    ks_cat(shastr, ":");
+    HexEncode(shastr, localData, localDataSize);
+    ks_cat(shastr, ":");
+    ks_cat(shastr, hexcookie);
 
     SHA1 sha;
     SHA1Init(&sha);
-    SHA1AddBytes(&sha, shastr, str_size(&shastr));
+    SHA1AddBytes(&sha, ks_cstr(shastr), ks_size(shastr));
 
-    uint8_t* digest = SHA1GetDigest(&sha);
+    char* digest = (char*) SHA1GetDigest(&sha);
 
-    str_clear(&replyarg);
-    HexEncode(&replyarg, localData, localDataSize);
-    str_append(&replyarg, " ");
-    HexEncode(&replyarg, digest, 20);
+    ks_clear(replyarg);
+    HexEncode(replyarg, localData, localDataSize);
+    ks_cat(replyarg, " ");
+    HexEncode(replyarg, digest, 20);
     free(digest);
 
-    str_set(reply, "DATA ");
-    HexEncode(reply, (const uint8_t*) replyarg, str_size(&replyarg));
-    str_append(reply, "\r\n");
+    ks_set(reply, "DATA ");
+    HexEncode(reply, ks_cstr(replyarg), ks_size(replyarg));
+    ks_cat(reply, "\r\n");
 
-    str_free(&shastr);
-    str_free(&replyarg);
+    ks_free(shastr);
+    ks_free(replyarg);
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusAuthDBusCookieSha1(
+int ADBusAuthDBusCookieSha1(
         ADBusAuthSendCallback       send,
         ADBusAuthRecvCallback       recv,
         ADBusAuthRandCallback       rand,
         void*                       data)
 {
-    str_t id         = NULL;
-    str_t auth       = NULL;
-    str_t cookie     = NULL;
-    str_t keyring    = NULL;
-    str_t keyringid  = NULL;
-    str_t servdata   = NULL;
-    str_t reply      = NULL;
+    kstring_t* id         = ks_new();
+    kstring_t* auth       = ks_new();
+    kstring_t* cookie     = ks_new();
+    kstring_t* keyring    = ks_new();
+    kstring_t* keyringid  = ks_new();
+    kstring_t* servdata   = ks_new();
+    kstring_t* reply      = ks_new();
 
     send(data, "\0", 1);
 
-    LocalId(&id);
+    LocalId(id);
 
-    str_append(&auth, "AUTH DBUS_COOKIE_SHA1 ");
-    HexEncode(&auth, (const uint8_t*) id, str_size(&id));
-    str_append(&auth, "\r\n");
+    ks_cat(auth, "AUTH DBUS_COOKIE_SHA1 ");
+    HexEncode(auth, ks_cstr(id), ks_size(id));
+    ks_cat(auth, "\r\n");
 
-    send(data, auth, str_size(&auth));
+    send(data, ks_cstr(auth), ks_size(auth));
 
     char buf[4096];
     int len = recv(data, buf, 4096);
     buf[len] = '\0';
 
-    uint8_t randomData[32];
+    char randomData[32];
     for (size_t i = 0; i < 32; ++i)
         randomData[i] = rand(data);
 
-    ParseServerData(buf, &keyring, &keyringid, &servdata);
-    GetCookie(keyring, keyringid, &cookie);
-    GenerateReply(servdata, cookie, randomData, 32, &reply);
+    ParseServerData(buf, keyring, keyringid, servdata);
+    GetCookie(ks_cstr(keyring), ks_cstr(keyringid), cookie);
+    GenerateReply(ks_cstr(servdata), ks_cstr(cookie), randomData, 32, reply);
 
-    send(data, reply, str_size(&reply));
+    send(data, ks_cstr(reply), ks_size(reply));
     len = recv(data, buf, 4096);
+    buf[len] = '\0';
+    if (strncmp(buf, "OK ", strlen("OK ")) != 0)
+        return -1;
+
     send(data, "BEGIN\r\n", strlen("BEGIN\r\n"));
 
-    str_free(&id);
-    str_free(&auth);
-    str_free(&cookie);
-    str_free(&keyring);
-    str_free(&keyringid);
-    str_free(&servdata);
-    str_free(&reply);
+    ks_free(id);
+    ks_free(auth);
+    ks_free(cookie);
+    ks_free(keyring);
+    ks_free(keyringid);
+    ks_free(servdata);
+    ks_free(reply);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusAuthExternal(
+int ADBusAuthExternal(
         ADBusAuthSendCallback       send,
         ADBusAuthRecvCallback       recv,
         void*                       data)
 {
-    str_t id = NULL;
-    str_t auth = NULL;
+    kstring_t* id = ks_new();
+    kstring_t* auth = ks_new();
 
     send(data, "\0", 1);
 
-    LocalId(&id);
+    LocalId(id);
 
-    str_append(&auth, "AUTH EXTERNAL ");
-    HexEncode(&auth, (const uint8_t*) id, str_size(&id));
-    str_append(&auth, "\r\n");
+    ks_cat(auth, "AUTH EXTERNAL ");
+    HexEncode(auth, ks_cstr(id), ks_size(id));
+    ks_cat(auth, "\r\n");
 
-    send(data, auth, str_size(&auth));
+    send(data, ks_cstr(auth), ks_size(auth));
 
     char buf[4096];
     int len = recv(data, buf, 4096);
     buf[len] = '\0';
+    if (strncmp(buf, "OK ", strlen("OK ")) != 0)
+        return -1;
 
     send(data, "BEGIN\r\n", strlen("BEGIN\r\n"));
 
-    str_free(&id);
-    str_free(&auth);
+    ks_free(id);
+    ks_free(auth);
+    return 0;
 }
 
 

@@ -23,11 +23,11 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Object.h"
+#include "LObject.h"
 
-#include "Data.h"
-#include "Interface.h"
-#include "Message.h"
+#include "LData.h"
+#include "LInterface.h"
+#include "LMessage.h"
 
 #include "adbus/Interface.h"
 #include "adbus/CommonMessages.h"

@@ -36,13 +36,13 @@ typedef int     (*ADBusAuthRecvCallback)(void*, char*, size_t);
 typedef uint8_t (*ADBusAuthRandCallback)(void*);
 
 // Performs a dbus cookie sha1 auth. Using blocking callbacks.
-ADBUS_API void ADBusAuthDBusCookieSha1(
+ADBUS_API int ADBusAuthDBusCookieSha1(
         ADBusAuthSendCallback   send,
         ADBusAuthRecvCallback   recv,
         ADBusAuthRandCallback   rand,
         void*                   data);
 
-ADBUS_API void ADBusAuthExternal(
+ADBUS_API int ADBusAuthExternal(
         ADBusAuthSendCallback   send,
         ADBusAuthRecvCallback   recv,
         void*                   data);

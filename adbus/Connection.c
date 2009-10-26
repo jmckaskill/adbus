@@ -31,79 +31,111 @@
 #include "Iterator.h"
 #include "Message.h"
 #include "Misc_p.h"
-#include "vector.h"
-#include "str.h"
+#include "memory/kvector.h"
+#include "memory/kstring.h"
 
 #include <assert.h>
 
-#ifdef WIN32
-# define strdup _strdup
-#endif
 
 // ----------------------------------------------------------------------------
 // Errors (private)
 // ----------------------------------------------------------------------------
 
-static void SetupInvalidArgument(struct ADBusCallDetails* details)
+static void ThrowInvalidArgument(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.InvalidArgument", -1,
             "Invalid arguments passed to a method call.", -1);
+    longjmp(details->jmpbuf, 0);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupInvalidPath(struct ADBusCallDetails* details)
+static void ThrowInvalidPath(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.ObjectNotFound", -1,
             "No object exists for the requested path.", -1);
+    longjmp(details->jmpbuf, 0);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupInvalidInterface(struct ADBusCallDetails* details)
+static void ThrowInvalidInterface(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.InterfaceNotFound", -1,
             "The requested path does not export the requested interface.", -1);
+    longjmp(details->jmpbuf, 0);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupInvalidMethod(struct ADBusCallDetails* details)
+static void ThrowInvalidMethod(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.MethodNotFound", -1,
             "Method name you invoked isn't known by the object you invoked it on.", -1);
+    longjmp(details->jmpbuf, 0);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupInvalidProperty(struct ADBusCallDetails* details)
+static void ThrowInvalidProperty(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.PropertyNotFound", -1,
             "The requested object and interface do not export the requested property.", -1);
+    longjmp(details->jmpbuf, 0);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupReadOnlyProperty(struct ADBusCallDetails* details)
+static void ThrowReadOnlyProperty(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.ReadOnlyProperty", -1,
             "The requested property is read only.", -1);
+    longjmp(details->jmpbuf, 0);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupWriteOnlyProperty(struct ADBusCallDetails* details)
+static void ThrowWriteOnlyProperty(struct ADBusCallDetails* details)
 {
     ADBusSetupError(details,
             "nz.co.foobar.ADBus.Error.WriteOnlyProperty", -1,
             "The requested property is write only.", -1);
+    longjmp(details->jmpbuf, 0);
 }
+
+
+
+
+// ----------------------------------------------------------------------------
+// UserPointer (used for local callbacks)
+// ----------------------------------------------------------------------------
+
+struct UserPointer
+{
+    struct ADBusUser header;
+    void* pointer;
+};
+
+static void FreeUserPointer(struct ADBusUser* data)
+{
+    free(data);
+}
+
+struct ADBusUser* CreateUserPointer(void* p)
+{
+    struct UserPointer* u = NEW(struct UserPointer);
+    u->header.free = &FreeUserPointer;
+    u->pointer = p;
+    return &u->header;
+}
+
+
 
 // ----------------------------------------------------------------------------
 // Connection management
@@ -129,7 +161,9 @@ struct ADBusConnection* ADBusCreateConnection()
 
     c->dispatchIterator = ADBusCreateIterator();
 
-    c->objects = kh_init(ADBusObjectPtr);
+    c->objects       = kh_new(ObjectPtr);
+    c->services  = kh_new(Service);
+    c->registrations = kv_new(Match);
 
     struct ADBusMember* m;
 
@@ -164,8 +198,9 @@ struct ADBusConnection* ADBusCreateConnection()
 
 // ----------------------------------------------------------------------------
 
-static void FreeMatchData(struct ADBusMatch* match);
+static void FreeMatchData(struct Match* match);
 static void FreeObject(struct ADBusObject* object);
+static void FreeService(struct Service* match);
 
 void ADBusFreeConnection(struct ADBusConnection* c)
 {
@@ -190,11 +225,18 @@ void ADBusFreeConnection(struct ADBusConnection* c)
             FreeObject(kh_val(c->objects,ii));
         }
     }
-    kh_destroy(ADBusObjectPtr, c->objects);
+    kh_free(ObjectPtr, c->objects);
 
-    for (size_t i = 0; i < match_vector_size(&c->registrations); ++i)
-        FreeMatchData(&c->registrations[i]);
-    match_vector_free(&c->registrations);
+    for (khiter_t si = kh_begin(c->services); si != kh_end(c->services); ++si) {
+        if (kh_exist(c->services, si)) {
+            FreeService(kh_val(c->services, si));
+        }
+    }
+    kh_free(Service, c->services);
+
+    for (size_t i = 0; i < kv_size(c->registrations); ++i)
+        FreeMatchData(&kv_a(c->registrations, i));
+    kv_free(Match, c->registrations);
 
     free(c);
 }
@@ -286,11 +328,10 @@ static void DispatchMethodCall(
     assert(path);
 
     // Find the object
-    khiter_t oi = kh_get(ADBusObjectPtr, c->objects, path);
-    if (oi == kh_end(c->objects)) {
-        SetupInvalidPath(details);
-        return;
-    }
+    khiter_t oi = kh_get(ObjectPtr, c->objects, path);
+    if (oi == kh_end(c->objects))
+        ThrowInvalidPath(details);
+
     struct ADBusObject* object = kh_val(c->objects, oi);
 
     // Find the member
@@ -304,10 +345,8 @@ static void DispatchMethodCall(
                 interfaceSize,
                 &details->user2);
 
-        if (!interface) {
-            SetupInvalidInterface(details);
-            return;
-        }
+        if (!interface)
+            ThrowInvalidInterface(details);
 
         member = ADBusGetInterfaceMember(
                 interface,
@@ -327,10 +366,8 @@ static void DispatchMethodCall(
 
     }
 
-    if (!member) {
-        SetupInvalidMethod(details);
-        return;
-    }
+    if (!member)
+        ThrowInvalidMethod(details);
 
     // Dispatch the method call
     ADBusCallMethod(member, details);
@@ -349,14 +386,14 @@ static uint Matches(const char* matchString, const char* messageString)
     return strcmp(matchString, messageString) == 0;
 }
 
-static uint ReplySerialMatches(struct ADBusMatch* r, struct ADBusMessage* message)
+static uint ReplySerialMatches(struct Match* r, struct ADBusMessage* message)
 {
-    if (!r->checkReplySerial)
+    if (!r->m.checkReplySerial)
         return 1; // ignoring this field
     if (!ADBusHasReplySerial(message))
         return 0; // message doesn't have this field
 
-    return r->replySerial == ADBusGetReplySerial(message);
+    return r->m.replySerial == ADBusGetReplySerial(message);
 }
 
 static void DispatchMatch(
@@ -372,41 +409,50 @@ static void DispatchMatch(
     const char* member          = ADBusGetMember(m, NULL);
     const char* errorName       = ADBusGetErrorName(m, NULL);
 
-    for (size_t i = 0; i < match_vector_size(&c->registrations);)
+    for (size_t i = 0; i < kv_size(c->registrations); ++i)
     {
-        struct ADBusMatch* r = &c->registrations[i];
-        if (r->type && r->type != type) {
-            ++i;
+        struct Match* r = &kv_a(c->registrations, i);
+        if (r->service) {
+            // If r->service->uniqueName is still null then we don't know
+            // who owns the service name so we can't match anything
+            if (r->service->uniqueName == NULL) {
+                continue;
+            } else if (!Matches(r->service->uniqueName, sender)) {
+                continue;
+            }
+        } else if (!Matches(r->m.sender, sender)) {
+            continue;
+        }
+
+        if (r->m.type && r->m.type != type) {
+            continue;
         } else if (!ReplySerialMatches(r, m)) {
-            ++i;
-        } else if (!Matches(r->sender, sender)) {
-            ++i;
-        } else if (!Matches(r->destination, destination)) {
-            ++i;
-        } else if (!Matches(r->path, path)) {
-            ++i;
-        } else if (!Matches(r->interface, interface)) {
-            ++i;
-        } else if (!Matches(r->member, member)) {
-            ++i;
-        } else if (!Matches(r->errorName, errorName)) {
-            ++i;
+            continue;
+        } else if (!Matches(r->m.destination, destination)) {
+            continue;
+        } else if (!Matches(r->m.path, path)) {
+            continue;
+        } else if (!Matches(r->m.interface, interface)) {
+            continue;
+        } else if (!Matches(r->m.member, member)) {
+            continue;
+        } else if (!Matches(r->m.errorName, errorName)) {
+            continue;
         } else {
-            if (r->callback) {
+            if (r->m.callback) {
                 // We want to reset the argument iterator for every match
                 ADBusArgumentIterator(m, details->arguments);
 
-                details->user1 = r->user1;
-                details->user2 = r->user2;
+                details->user1 = r->m.user1;
+                details->user2 = r->m.user2;
 
-                r->callback(details);
+                r->m.callback(details);
             }
 
-            if (r->removeOnFirstMatch) {
+            if (r->m.removeOnFirstMatch) {
                 FreeMatchData(r);
-                match_vector_remove(&c->registrations, i, 1);
-            } else {
-                ++i;
+                kv_remove(Match, c->registrations, i, 1);
+                --i;
             }
         }
     }
@@ -483,18 +529,19 @@ void ADBusDispatch(
 
 struct ADBusStreamBuffer* ADBusCreateStreamBuffer()
 {
-    return NEW(struct ADBusStreamBuffer);
+    struct ADBusStreamBuffer* b = NEW(struct ADBusStreamBuffer);
+    b->buf = kv_new(uint8_t);
+    return b;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusFreeStreamBuffer(struct ADBusStreamBuffer* buffer)
+void ADBusFreeStreamBuffer(struct ADBusStreamBuffer* b)
 {
-    if (!buffer)
-        return;
-
-    u8vector_free(&buffer->buf);
-    free(buffer);
+    if (b) {
+        kv_free(uint8_t, b->buf);
+        free(b);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -505,10 +552,10 @@ static uint RequireDataInParseBuffer(
         const uint8_t**             data,
         size_t*                     size)
 {
-    int toAdd = needed - u8vector_size(&b->buf);
+    int toAdd = needed - kv_size(b->buf);
     if (toAdd > (int) *size) {
         // Don't have enough data
-        uint8_t* dest = u8vector_insert_end(&b->buf, *size);
+        uint8_t* dest = kv_push(uint8_t, b->buf, *size);
         memcpy(dest, *data, *size);
         *data += *size;
         *size = 0;
@@ -516,7 +563,7 @@ static uint RequireDataInParseBuffer(
 
     } else if (toAdd > 0) {
         // Need to push data into the buffer, but we have enough
-        uint8_t* dest = u8vector_insert_end(&b->buf, toAdd);
+        uint8_t* dest = kv_push(uint8_t, b->buf, toAdd);
         memcpy(dest, *data, toAdd);
         *data += toAdd;
         *size -= toAdd;
@@ -535,7 +582,7 @@ int ADBusParse(
         size_t*                     size)
 {
     ADBusResetMessage(message);
-    if (u8vector_size(&b->buf) > 0)
+    if (kv_size(b->buf) > 0)
     {
         // Use up message from the stream buffer
         
@@ -544,13 +591,13 @@ int ADBusParse(
             return 0;
 
         // Now we add enough to the buffer to be able to parse the message
-        size_t messageSize = ADBusNextMessageSize(b->buf, u8vector_size(&b->buf));
+        size_t messageSize = ADBusNextMessageSize(&kv_a(b->buf, 0), kv_size(b->buf));
         assert(messageSize > 0);
         if (!RequireDataInParseBuffer(b, messageSize, data, size))
             return 0;
 
-        int err = ADBusSetMessageData(message, b->buf, messageSize);
-        u8vector_remove(&b->buf, 0, messageSize);
+        int err = ADBusSetMessageData(message, &kv_a(b->buf, 0), messageSize);
+        kv_remove(uint8_t, b->buf, 0, messageSize);
         return err;
     }
     else
@@ -559,7 +606,7 @@ int ADBusParse(
         if (messageSize == 0 || messageSize > *size)
         {
             // We don't have enough to parse the message
-            uint8_t* dest = u8vector_insert_end(&b->buf, *size);
+            uint8_t* dest = kv_push(uint8_t, b->buf, *size);
             memcpy(dest, *data, *size);
             return 0;
         }
@@ -572,17 +619,6 @@ int ADBusParse(
     }
 }
 
-// ----------------------------------------------------------------------------
-
-void ADBusErrorLongjmp(
-        struct ADBusCallDetails*        details,
-        const char*                     errorName,
-        const char*                     errorMsg)
-{
-    if (details->returnMessage)
-        ADBusSetupError(details, errorName, -1, errorMsg, -1);
-    longjmp(details->connection->errorJmpBuf, -1);
-}
 
 
 
@@ -601,7 +637,7 @@ static void ConnectionCallback(
 
     struct ADBusConnection* c = details->connection;
     free(c->uniqueService);
-    c->uniqueService = strdup(field.string);
+    c->uniqueService = strdup_(field.string);
     c->connected = 1;
 
     if (c->connectCallback)
@@ -621,7 +657,7 @@ void ADBusConnectToBus(
     ADBusSetupHello(c->outgoingMessage, c);
 
     struct ADBusMatch match;
-    ADBusMatchInit(&match);
+    ADBusInitMatch(&match);
     match.type                  = ADBusMethodReturnMessage;
     match.callback              = &ConnectionCallback;
     match.replySerial           = ADBusGetSerial(c->outgoingMessage);
@@ -688,7 +724,7 @@ static void AddServiceMatch(
     data->callback    = callback;
 
     struct ADBusMatch match;
-    ADBusMatchInit(&match);
+    ADBusInitMatch(&match);
     match.type               = ADBusMethodReturnMessage;
     match.callback           = &ServiceCallback;
     match.replySerial        = ADBusGetSerial(c->outgoingMessage);
@@ -742,47 +778,204 @@ void ADBusReleaseServiceName(
 // Match registrations
 // ----------------------------------------------------------------------------
 
-static void CloneString(const char** str, int* size)
+static void CloneString(const char* from, int fsize, const char** to, int* tsize)
 {
-    if (!*str)
-    {
-        *size = 0;
-    }
-    else
-    {
-        if (*size < 0)
-            *size = strlen(*str);
-        *str = strndup(*str, *size);
+    if (from) {
+        if (fsize < 0)
+            fsize = strlen(from);
+        *to = strndup_(from, fsize);
+        *tsize = fsize;
     }
 }
 
-static str_t SanitisePath(const char* path, int size);
+static void SanitisePath(kstring_t* out, const char* path, int size);
 
 static void CloneMatch(const struct ADBusMatch* from,
-                       struct ADBusMatch* to)
+                       struct Match* to)
 {
-    memcpy(to, from, sizeof(struct ADBusMatch));
-    CloneString(&to->sender,         &to->senderSize);
-    CloneString(&to->destination,    &to->destinationSize);
-    CloneString(&to->interface,      &to->interfaceSize);
-    CloneString(&to->member,         &to->memberSize);
-    CloneString(&to->errorName,      &to->errorNameSize);
-    if (from->path)
-        to->path = SanitisePath(from->path, from->pathSize);
+    to->m.type                = from->type;
+    to->m.addMatchToBusDaemon = from->addMatchToBusDaemon;
+    to->m.removeOnFirstMatch  = from->removeOnFirstMatch;
+    to->m.replySerial         = from->replySerial;
+    to->m.checkReplySerial    = from->checkReplySerial;
+    to->m.callback            = from->callback;
+    to->m.user1               = from->user1;
+    to->m.user2               = from->user2;
+    to->m.id                  = from->id;
+
+#define STRING(NAME) CloneString(from->NAME, from->NAME ## Size, &to->m.NAME, &to->m.NAME ## Size)
+    STRING(sender);
+    STRING(destination);
+    STRING(interface);
+    STRING(member);
+    STRING(errorName);
+    if (from->path) {
+        kstring_t* sanitised = ks_new();
+        SanitisePath(sanitised, from->path, from->pathSize);
+        to->m.pathSize = ks_size(sanitised);
+        to->m.path     = ks_release(sanitised);
+        ks_free(sanitised);
+    }
+    size_t argsize = from->argumentsSize * sizeof(struct ADBusMatchArgument);
+    to->m.arguments = malloc(argsize);
+    to->m.argumentsSize = from->argumentsSize;
+    for (size_t i = 0; i < from->argumentsSize; ++i) {
+        to->m.arguments[i].number = from->arguments[i].number;
+        STRING(arguments[i].value);
+    }
+#undef STRING
 }
 
-static void FreeMatchData(struct ADBusMatch* match)
+static void FreeMatchData(struct Match* m)
 {
-    if (!match)
+    if (m) {
+        free((char*) m->m.sender);
+        free((char*) m->m.destination);
+        free((char*) m->m.interface);
+        free((char*) m->m.member);
+        free((char*) m->m.errorName);
+        free((char*) m->m.path);
+        ADBusUserFree(m->m.user1);
+        ADBusUserFree(m->m.user2);
+        for (size_t i = 0; i < m->m.argumentsSize; ++i) {
+            free((char*) m->m.arguments[i].value);
+        }
+        free(m->m.arguments);
+    }
+}
+
+static void FreeService(struct Service* s)
+{
+    if (s) {
+        free(s->serviceName);
+        free(s->uniqueName);
+        free(s);
+    }
+}
+
+// ----------------------------------------------------------------------------
+
+static void GetNameOwner(struct ADBusCallDetails* details)
+{
+    struct UserPointer* u = (struct UserPointer*) details->user1;
+    struct Service* d = (struct Service*) u->pointer;
+
+    d->methodMatch = 0;
+
+    const char* unique = ADBusCheckString(details, NULL);
+    ADBusCheckMessageEnd(details);
+
+    free(d->uniqueName);
+    d->uniqueName = strdup_(unique);
+}
+
+static void NameOwnerChanged(struct ADBusCallDetails* details)
+{
+    struct UserPointer* u = (struct UserPointer*) details->user1;
+    struct Service* d = (struct Service*) u->pointer;
+
+    ADBusCheckString(details, NULL);
+    ADBusCheckString(details, NULL);
+    const char* to = ADBusCheckString(details, NULL);
+    ADBusCheckMessageEnd(details);
+
+    free(d->uniqueName);
+    d->uniqueName = strdup_(to);
+}
+
+// ----------------------------------------------------------------------------
+
+static struct Service* AddService(
+        struct ADBusConnection* c,
+        const char*             servname)
+{
+    struct Service* s;
+
+    int added = 0;
+    khiter_t si = kh_put(Service, c->services, servname, &added);
+    if (!added) {
+        s = kh_val(c->services, si);
+        s->refCount++;
+    } else {
+        s = NEW(struct Service);
+        s->refCount = 1;
+        s->serviceName = strdup_(servname);
+
+        kh_key(c->services, si) = s->serviceName;
+        kh_val(c->services, si) = s;
+    }
+    return s;
+}
+
+static void AddServiceMatches(
+        struct ADBusConnection* c,
+        struct Service*         s)
+{
+    // Add the NameOwnerChanged match
+    struct ADBusMatchArgument arg0;
+    arg0.number = 0;
+    arg0.value = s->serviceName;
+    arg0.valueSize = -1;
+
+    struct ADBusMatch match;
+    ADBusInitMatch(&match);
+    match.type = ADBusSignalMessage;
+    match.addMatchToBusDaemon = 1;
+    match.sender = "org.freedesktop.DBus";
+    match.path = "/org/freedesktop/DBus";
+    match.interface = "org.freedesktop.DBus";
+    match.member = "NameOwnerChanged";
+    match.senderSize = -1;
+    match.pathSize = -1;
+    match.interfaceSize = -1;
+    match.memberSize = -1;
+    match.arguments = &arg0;
+    match.argumentsSize = 1;
+    match.callback = &NameOwnerChanged;
+    match.user1 = CreateUserPointer(s);
+
+    s->signalMatch = ADBusAddMatch(c, &match);
+
+    // Call GetNameOwner - do this after adding the NameOwnerChanged match to
+    // avoid a race condition. Setup the match for the reply first
+    ADBusInitMatch(&match);
+    match.type = ADBusMethodReturnMessage;
+    match.removeOnFirstMatch = 1;
+    match.replySerial = ADBusNextSerial(c);
+    match.checkReplySerial = 1;
+    match.callback = &GetNameOwner;
+    match.user1 = CreateUserPointer(s);
+
+    s->methodMatch = ADBusAddMatch(c, &match);
+
+    struct ADBusMessage* m = c->outgoingMessage;
+    ADBusSetupMethodCall(m, c, match.replySerial);
+    ADBusSetDestination(m, "org.freedesktop.DBus", -1);
+    ADBusSetPath(m, "/org/freedesktop/DBus", -1);
+    ADBusSetInterface(m, "org.freedesktop.DBus", -1);
+    ADBusSetMember(m, "GetNameOwner", -1);
+    struct ADBusMarshaller* mar = ADBusArgumentMarshaller(m);
+    ADBusAppendArguments(mar, "s", -1);
+    ADBusAppendString(mar, s->serviceName, -1);
+
+    ADBusSendMessage(c, m);
+}
+
+static void RemoveService(struct ADBusConnection* c, struct Service* s)
+{
+    s->refCount--;
+    if (s->refCount > 0)
         return;
-    free((char*) match->sender);
-    free((char*) match->destination);
-    free((char*) match->interface);
-    free((char*) match->member);
-    free((char*) match->errorName);
-    str_free((str_t*) &match->path);
-    ADBusUserFree(match->user1);
-    ADBusUserFree(match->user2);
+
+    khiter_t si = kh_get(Service, c->services, s->serviceName);
+    if (si != kh_end(c->services))
+        kh_del(Service, c->services, si);
+
+    if (s->methodMatch)
+        ADBusRemoveMatch(c, s->methodMatch);
+    if (s->signalMatch)
+        ADBusRemoveMatch(c, s->signalMatch);
+    FreeService(s);
 }
 
 // ----------------------------------------------------------------------------
@@ -791,27 +984,51 @@ uint32_t ADBusAddMatch(
         struct ADBusConnection*     c,
         const struct ADBusMatch*    reg)
 {
-    struct ADBusMatch* match = match_vector_insert_end(&c->registrations, 1);
+    struct Match* match = kv_push(Match, c->registrations, 1);
     CloneMatch(reg, match);
-    if (match->id <= 0)
-        match->id = ADBusNextMatchId(c);
+    if (match->m.id == 0) {
+        match->m.id = ADBusNextMatchId(c);
+    }
 
-    if (reg->addMatchToBusDaemon) {
-        ADBusSetupAddBusMatch(c->outgoingMessage, c, match);
+    if (match->m.addMatchToBusDaemon) {
+        ADBusSetupAddBusMatch(c->outgoingMessage, c, &match->m);
         ADBusSendMessage(c, c->outgoingMessage);
     }
 
-    return match->id;
+    uint32_t id = match->m.id;
+
+    // If the sender field is a service name we have to track the service name
+    // assignments
+    if (match->m.sender
+     && ADBusRequiresServiceLookup_(match->m.sender, match->m.senderSize))
+    {
+        struct Service* s = AddService(c, match->m.sender);
+        match->service = s;
+        // WARNING: AddServiceMatch will call ADBusAddMatch which may cause
+        // match to be a dangling pointer
+        if (s->signalMatch == 0) {
+            AddServiceMatches(c, s);
+        }
+    }
+
+    return id;
 }
 
 // ----------------------------------------------------------------------------
 
 void ADBusRemoveMatch(struct ADBusConnection* c, uint32_t id)
 {
-    for (size_t i = 0; i < match_vector_size(&c->registrations); ++i) {
-        if (c->registrations[i].id == id) {
-            FreeMatchData(&c->registrations[i]);
-            match_vector_remove(&c->registrations, i, 1);
+    for (size_t i = 0; i < kv_size(c->registrations); ++i) {
+        if (kv_a(c->registrations, i).m.id == id) {
+            struct Match* m = &kv_a(c->registrations, i);
+            struct Service* s = m->service;
+            FreeMatchData(m);
+            kv_remove(Match, c->registrations, i, 1);
+
+            // Remove the service after removing the match - as removing the
+            // service will remove more matches
+            if (s)
+                RemoveService(c, s);
             return;
         }
     }
@@ -835,72 +1052,49 @@ uint32_t ADBusNextMatchId(struct ADBusConnection* c)
 // Object management
 // ----------------------------------------------------------------------------
 
-struct UserPointer
-{
-    struct ADBusUser header;
-    void* pointer;
-};
-
-static void FreeUserPointer(struct ADBusUser* data)
-{
-    free(data);
-}
-
-struct ADBusUser* CreateUserPointer(void* p)
-{
-    struct UserPointer* u = NEW(struct UserPointer);
-    u->header.free = &FreeUserPointer;
-    u->pointer = p;
-    return &u->header;
-}
-
-// ----------------------------------------------------------------------------
-
 static void FreeObject(struct ADBusObject* o)
 {
-    if (!o)
-        return;
-
-    for (khiter_t ii = kh_begin(o->interfaces); ii != kh_end(o->interfaces); ++ii) {
-        if (kh_exist(o->interfaces, ii)) {
-            ADBusUserFree(kh_val(o->interfaces, ii).user2);
+    if (o) {
+        khash_t(Bind)* h = o->interfaces;
+        for (khiter_t ii = kh_begin(h); ii != kh_end(h); ++ii) {
+            if (kh_exist(h, ii)) {
+                ADBusUserFree(kh_val(h, ii).user2);
+            }
         }
+        kh_free(Bind, h);
+        kv_free(ObjectPtr, o->children);
+        free(o->name);
+        free(o);
     }
-    kh_destroy(BoundInterface, o->interfaces);
-    pobject_vector_free(&o->children);
-    free(o->name);
-    free(o);
 }
 
 // ----------------------------------------------------------------------------
 
-static str_t SanitisePath(
+static void SanitisePath(
+        kstring_t*      out,
         const char*     path,
         int             size)
 {
+    ks_clear(out);
     if (size < 0)
         size = strlen(path);
 
-    str_t ret = NULL;
-
     // Make sure it starts with a /
     if (size == 0 || path[0] != '/')
-        str_append(&ret, "/");
+        ks_cat(out, "/");
     if (size > 0)
-        str_append_n(&ret, path, size);
+        ks_cat_n(out, path, size);
 
     // Remove repeating slashes
-    for (size_t i = 1; i < str_size(&ret); ++i) {
-        if (ret[i] == '/' && ret[i-1] == '/') {
-            str_remove(&ret, i, 1);
+    for (size_t i = 1; i < ks_size(out); ++i) {
+        if (ks_a(out, i) == '/' && ks_a(out, i-1) == '/') {
+            ks_remove(out, i, 1);
         }
     }
 
     // Remove trailing /
-    if (str_size(&ret) > 1 && ret[str_size(&ret) - 1] == '/')
-        str_remove_end(&ret, 1);
-
-    return ret;
+    if (ks_size(out) > 1 && ks_a(out, ks_size(out) - 1) == '/')
+        ks_remove_end(out, 1);
 }
 
 static void ParentPath(
@@ -910,10 +1104,11 @@ static void ParentPath(
 {
     // Path should have already been sanitised so double /'s should not happen
 #ifndef NDEBUG
-    str_t sanitised = SanitisePath(path, size);
+    kstring_t* sanitised = ks_new();
+    SanitisePath(sanitised, path, size);
     assert(path[size] == '\0');
-    assert(strcmp(sanitised, path) == 0);
-    str_free(&sanitised);
+    assert(ks_cmp(sanitised, path) == 0);
+    ks_free(sanitised);
 #endif
 
     --size;
@@ -937,15 +1132,16 @@ static struct ADBusObject* DoAddObject(
 {
     int added;
     assert(path[size] == '\0');
-    khiter_t ki = kh_put(ADBusObjectPtr, c->objects, path, &added);
+    khiter_t ki = kh_put(ObjectPtr, c->objects, path, &added);
     if (!added) {
         return kh_val(c->objects, ki);
     }
 
     struct ADBusObject* o = NEW(struct ADBusObject);
-    o->name         = strdup(path);
+    o->name         = strdup_(path);
     o->connection   = c;
-    o->interfaces   = kh_init(BoundInterface);
+    o->interfaces   = kh_new(Bind);
+    o->children     = kv_new(ObjectPtr);
 
     kh_key(c->objects, ki) = o->name;
     kh_val(c->objects, ki) = o;
@@ -955,12 +1151,11 @@ static struct ADBusObject* DoAddObject(
 
     // Setup the parent-child links
     if (strcmp(path, "/") != 0) {
-        struct ADBusObject** pchild;
         size_t parentSize;
-
         ParentPath(path, size, &parentSize);
         o->parent = DoAddObject(c, path, parentSize);
-        pchild  = pobject_vector_insert_end(&o->parent->children, 1);
+
+        struct ADBusObject** pchild = kv_push(ObjectPtr, o->parent->children, 1);
         *pchild = o;
     }
 
@@ -972,9 +1167,10 @@ struct ADBusObject* ADBusAddObject(
         const char*             path,
         int                     size)
 {
-    str_t name = SanitisePath(path, size);
-    struct ADBusObject* o = DoAddObject(c, name, str_size(&name));
-    str_free(&name);
+    kstring_t* name = ks_new();
+    SanitisePath(name, path, size);
+    struct ADBusObject* o = DoAddObject(c, ks_data(name), ks_size(name));
+    ks_free(name);
     return o;
 }
 
@@ -988,12 +1184,13 @@ struct ADBusObject* ADBusGetObject(
 {
     struct ADBusObject* ret = NULL;
 
-    str_t name = SanitisePath(path, size);
-    khiter_t ki = kh_get(ADBusObjectPtr, c->objects, name);
+    kstring_t* name = ks_new();
+    SanitisePath(name, path, size);
+    khiter_t ki = kh_get(ObjectPtr, c->objects, ks_cstr(name));
     if (ki != kh_end(c->objects))
         ret = kh_val(c->objects, ki);
 
-    str_free(&name);
+    ks_free(name);
     return ret;
 }
 
@@ -1005,7 +1202,7 @@ int ADBusBindInterface(
         struct ADBusUser*       user2)
 {
     int added;
-    khiter_t bi = kh_put(BoundInterface, o->interfaces, interface->name, &added);
+    khiter_t bi = kh_put(Bind, o->interfaces, interface->name, &added);
     if (!added)
         return -1; // there was already an interface with that name
 
@@ -1023,14 +1220,14 @@ static void CheckRemoveObject(struct ADBusObject* o)
     // We have 2 builtin interfaces (introspectable and properties)
     // If these are the only two left and we have no children then we need
     // to prune this object
-    if (kh_size(o->interfaces) > 2 || pobject_vector_size(&o->children) > 0)
+    if (kh_size(o->interfaces) > 2 || kv_size(o->children) > 0)
         return;
 
     // Remove it from its parent
     struct ADBusObject* parent = o->parent;
-    for (size_t i = 0; i < pobject_vector_size(&parent->children); ++i) {
-        if (parent->children[i] == o) {
-            pobject_vector_remove(&parent->children, i, 1);
+    for (size_t i = 0; i < kv_size(parent->children); ++i) {
+        if (kv_a(parent->children, i) == o) {
+            kv_remove(ObjectPtr, parent->children, i, 1);
             break;
         }
     }
@@ -1038,9 +1235,9 @@ static void CheckRemoveObject(struct ADBusObject* o)
 
     // Remove it from the object lookup table
     struct ADBusConnection* c = o->connection;
-    khiter_t oi = kh_get(ADBusObjectPtr, c->objects, o->name);
+    khiter_t oi = kh_get(ObjectPtr, c->objects, o->name);
     if (oi != kh_end(c->objects))
-        kh_del(ADBusObjectPtr, c->objects, oi);
+        kh_del(ObjectPtr, c->objects, oi);
 
     // Free the object
     FreeObject(o);
@@ -1052,14 +1249,14 @@ int ADBusUnbindInterface(
         struct ADBusObject*     o,
         struct ADBusInterface*  interface)
 {
-    khiter_t bi = kh_get(BoundInterface, o->interfaces, interface->name);
+    khiter_t bi = kh_get(Bind, o->interfaces, interface->name);
     if (bi == kh_end(o->interfaces))
         return -1;
     if (interface != kh_val(o->interfaces, bi).interface)
         return -1;
 
     ADBusUserFree(kh_val(o->interfaces, bi).user2);
-    kh_del(BoundInterface, o->interfaces, bi);
+    kh_del(Bind, o->interfaces, bi);
 
     CheckRemoveObject(o);
 
@@ -1078,9 +1275,9 @@ struct ADBusInterface* ADBusGetBoundInterface(
     // So if we cannot guarentee this (ie interfaceSize >= 0) then copy the
     // string out and free it after the lookup
     if (interfaceSize >= 0)
-        interface = strndup(interface, interfaceSize);
+        interface = strndup_(interface, interfaceSize);
 
-    khiter_t bi = kh_get(BoundInterface, o->interfaces, interface);
+    khiter_t bi = kh_get(Bind, o->interfaces, interface);
 
     if (interfaceSize >= 0)
         free((char*) interface);
@@ -1107,7 +1304,7 @@ struct ADBusMember* ADBusGetBoundMember(
 
     for (khiter_t bi = kh_begin(o->interfaces); bi != kh_end(o->interfaces); ++bi) {
         if (kh_exist(o->interfaces, bi)) {
-            struct BoundInterface* b = &kh_val(o->interfaces, bi);
+            struct Bind* b = &kh_val(o->interfaces, bi);
             m = ADBusGetInterfaceMember(b->interface, type, member, memberSize);
             if (user2)
                 *user2 = b->user2;
@@ -1136,32 +1333,32 @@ struct ADBusMember* ADBusGetBoundMember(
 
 static void IntrospectArguments(
         struct ADBusMember*     m,
-        str_t*               out)
+        kstring_t*               out)
 {
-    for (size_t i = 0; i < arg_vector_size(&m->inArguments); ++i)
+    for (size_t i = 0; i < kv_size(m->inArguments); ++i)
     {
-        struct Argument* a = &m->inArguments[i];
-        str_append(out, "\t\t\t<arg type=\"");
-        str_append(out, a->type);
+        struct Argument* a = &kv_a(m->inArguments, i);
+        ks_cat(out, "\t\t\t<arg type=\"");
+        ks_cat(out, a->type);
         if (a->name)
         {
-            str_append(out, "\" name=\"");
-            str_append(out, a->name);
+            ks_cat(out, "\" name=\"");
+            ks_cat(out, a->name);
         }
-        str_append(out, "\" direction=\"in\"/>\n");
+        ks_cat(out, "\" direction=\"in\"/>\n");
     }
 
-    for (size_t i = 0; i < arg_vector_size(&m->outArguments); ++i)
+    for (size_t i = 0; i < kv_size(m->outArguments); ++i)
     {
-        struct Argument* a = &m->outArguments[i];
-        str_append(out, "\t\t\t<arg type=\"");
-        str_append(out, a->type);
+        struct Argument* a = &kv_a(m->outArguments, i);
+        ks_cat(out, "\t\t\t<arg type=\"");
+        ks_cat(out, a->type);
         if (a->name)
         {
-            str_append(out, "\" name=\"");
-            str_append(out, a->name);
+            ks_cat(out, "\" name=\"");
+            ks_cat(out, a->name);
         }
-        str_append(out, "\" direction=\"out\"/>\n");
+        ks_cat(out, "\" direction=\"out\"/>\n");
     }
 
 }
@@ -1170,15 +1367,15 @@ static void IntrospectArguments(
 
 static void IntrospectAnnotations(
         struct ADBusMember*     m,
-        str_t*               out)
+        kstring_t*               out)
 {
     for (khiter_t ai = kh_begin(m->annotations); ai != kh_end(m->annotations); ++ai) {
         if (kh_exist(m->annotations, ai)) {
-            str_append(out, "\t\t\t<annotation name=\"");
-            str_append(out, kh_key(m->annotations, ai));
-            str_append(out, "\" value=\"");
-            str_append(out, kh_val(m->annotations, ai));
-            str_append(out, "\"/>\n");
+            ks_cat(out, "\t\t\t<annotation name=\"");
+            ks_cat(out, kh_key(m->annotations, ai));
+            ks_cat(out, "\" value=\"");
+            ks_cat(out, kh_val(m->annotations, ai));
+            ks_cat(out, "\"/>\n");
         }
     }
 }
@@ -1186,62 +1383,62 @@ static void IntrospectAnnotations(
 
 static void IntrospectMember(
         struct ADBusMember*     m,
-        str_t*               out)
+        kstring_t*               out)
 {
     switch (m->type)
     {
         case ADBusPropertyMember:
             {
-                str_append(out, "\t\t<property name=\"");
-                str_append(out, m->name);
-                str_append(out, "\" type=\"");
-                str_append(out, m->propertyType);
-                str_append(out, "\" access=\"");
+                ks_cat(out, "\t\t<property name=\"");
+                ks_cat(out, m->name);
+                ks_cat(out, "\" type=\"");
+                ks_cat(out, m->propertyType);
+                ks_cat(out, "\" access=\"");
                 uint read  = ADBusIsPropertyReadable(m);
                 uint write = ADBusIsPropertyWritable(m);
                 if (read && write)
-                    str_append(out, "readwrite");
+                    ks_cat(out, "readwrite");
                 else if (read)
-                    str_append(out, "read");
+                    ks_cat(out, "read");
                 else if (write)
-                    str_append(out, "write");
+                    ks_cat(out, "write");
                 else
                     assert(0);
 
                 if (kh_size(m->annotations) == 0)
                 {
-                    str_append(out, "\"/>\n");
+                    ks_cat(out, "\"/>\n");
                 }
                 else
                 {
-                    str_append(out, "\">\n");
+                    ks_cat(out, "\">\n");
                     IntrospectAnnotations(m, out);
-                    str_append(out, "\t\t</property>\n");
+                    ks_cat(out, "\t\t</property>\n");
                 }
             }
             break;
         case ADBusMethodMember:
             {
-                str_append(out, "\t\t<method name=\"");
-                str_append(out, m->name);
-                str_append(out, "\">\n");
+                ks_cat(out, "\t\t<method name=\"");
+                ks_cat(out, m->name);
+                ks_cat(out, "\">\n");
 
                 IntrospectAnnotations(m, out);
                 IntrospectArguments(m, out);
 
-                str_append(out, "\t\t</method>\n");
+                ks_cat(out, "\t\t</method>\n");
             }
             break;
         case ADBusSignalMember:
             {
-                str_append(out, "\t\t<signal name=\"");
-                str_append(out, m->name);
-                str_append(out, "\">\n");
+                ks_cat(out, "\t\t<signal name=\"");
+                ks_cat(out, m->name);
+                ks_cat(out, "\">\n");
 
                 IntrospectAnnotations(m, out);
                 IntrospectArguments(m, out);
 
-                str_append(out, "\t\t</signal>\n");
+                ks_cat(out, "\t\t</signal>\n");
             }
             break;
         default:
@@ -1254,14 +1451,14 @@ static void IntrospectMember(
 
 static void IntrospectInterfaces(
         struct ADBusObject*     o,
-        str_t*                  out)
+        kstring_t*                  out)
 {
     for (khiter_t bi = kh_begin(o->interfaces); bi != kh_end(o->interfaces); ++bi) {
         if (kh_exist(o->interfaces, bi)) {
             struct ADBusInterface* i = kh_val(o->interfaces, bi).interface;
-            str_append(out, "\t<interface name=\"");
-            str_append(out, i->name);
-            str_append(out, "\">\n");
+            ks_cat(out, "\t<interface name=\"");
+            ks_cat(out, i->name);
+            ks_cat(out, "\">\n");
 
             for (khiter_t mi = kh_begin(i->members); mi != kh_end(i->members); ++mi) {
                 if (kh_exist(i->members, mi)) {
@@ -1269,7 +1466,7 @@ static void IntrospectInterfaces(
                 }
             }
 
-            str_append(out, "\t</interface>\n");
+            ks_cat(out, "\t</interface>\n");
         }
     }
 }
@@ -1278,9 +1475,9 @@ static void IntrospectInterfaces(
 
 static void IntrospectNode(
         struct ADBusObject*     o,
-        str_t*               out)
+        kstring_t*               out)
 {
-    str_append(
+    ks_cat(
             out,
             "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\"\n"
             "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
@@ -1290,19 +1487,19 @@ static void IntrospectNode(
 
     size_t namelen = strlen(o->name);
     // Now add the child objects
-    for (size_t i = 0; i < pobject_vector_size(&o->children); ++i) {
+    for (size_t i = 0; i < kv_size(o->children); ++i) {
         // Find the child tail ie ("bar" for "/foo/bar" or "foo" for "/foo")
-        const char* child = o->children[i]->name;
+        const char* child = kv_a(o->children, i)->name;
         child += namelen;
         if (namelen > 1)
             child += 1; // +1 for '/' when o is not the root node
 
-        str_append(out, "\t<node name=\"");
-        str_append(out, child);
-        str_append(out, "\"/>\n");
+        ks_cat(out, "\t<node name=\"");
+        ks_cat(out, child);
+        ks_cat(out, "\"/>\n");
     }
 
-    str_append(out, "</node>\n");
+    ks_cat(out, "</node>\n");
 }
 
 // ----------------------------------------------------------------------------
@@ -1310,6 +1507,8 @@ static void IntrospectNode(
 static void IntrospectCallback(
         struct ADBusCallDetails*    details)
 {
+    ADBusCheckMessageEnd(details);
+
     // If no reply is wanted, we're done
     if (!details->returnMessage) {
         return;
@@ -1318,15 +1517,14 @@ static void IntrospectCallback(
     struct UserPointer* p = (struct UserPointer*) details->user2;
     struct ADBusObject* o = (struct ADBusObject*) p->pointer;
 
-    str_t out = NULL;
-    IntrospectNode(o, &out);
+    kstring_t* out = ks_new();
+    IntrospectNode(o, out);
 
     struct ADBusMarshaller* m = ADBusArgumentMarshaller(details->returnMessage);
-    ADBusBeginArgument(m, "s", -1);
-    ADBusAppendString(m, &out[0], str_size(&out));
-    ADBusEndArgument(m);
+    ADBusAppendArguments(m, "s", -1);
+    ADBusAppendString(m, ks_cstr(out), ks_size(out));
 
-    str_free(&out);
+    ks_free(out);
 }
 
 
@@ -1343,49 +1541,34 @@ static void GetPropertyCallback(
     struct UserPointer* p = (struct UserPointer*) details->user2;
     struct ADBusObject* object = (struct ADBusObject*) p->pointer;
 
-    struct ADBusField field;
+    // Unpack the message
+    const char* iname  = ADBusCheckString(details, NULL);
+    const char* pname  = ADBusCheckString(details, NULL);
+    ADBusCheckMessageEnd(details);
 
     // Get the interface
-    ADBusIterate(details->arguments, &field);
-    if (field.type != ADBusStringField) {
-        SetupInvalidArgument(details);
-        return;
-    }
-
     struct ADBusInterface* interface = ADBusGetBoundInterface(
             object,
-            field.string,
-            field.size,
+            iname,
+            -1,
             &details->user2);
 
-    if (!interface) {
-        SetupInvalidInterface(details);
-        return;
-    }
+    if (!interface)
+        ThrowInvalidInterface(details);
 
     // Get the property
-    ADBusIterate(details->arguments, &field);
-    if (field.type != ADBusStringField) {
-        SetupInvalidArgument(details);
-        return;
-    }
-
     struct ADBusMember* property = ADBusGetInterfaceMember(
             interface,
             ADBusPropertyMember,
-            field.string,
-            field.size);
+            pname,
+            -1);
 
-    if (!property) {
-        SetupInvalidProperty(details);
-        return;
-    }
+    if (!property)
+        ThrowInvalidProperty(details);
 
     // Check that we can read the property
-    if (!ADBusIsPropertyReadable(property)) {
-        SetupWriteOnlyProperty(details);
-        return;
-    }
+    if (!ADBusIsPropertyReadable(property))
+        ThrowWriteOnlyProperty(details);
 
     // If no reply is wanted we are finished
     if (!details->returnMessage)
@@ -1399,13 +1582,10 @@ static void GetPropertyCallback(
     size_t typeSize;
     const char* type = ADBusPropertyType(property, &typeSize);
 
-    ADBusBeginArgument(m, "v", -1);
+    ADBusAppendArguments(m, "v", -1);
     ADBusBeginVariant(m, type, typeSize);
-    
     ADBusCallGetProperty(property, details);
-
     ADBusEndVariant(m);
-    ADBusEndArgument(m);
 }
 
 // ----------------------------------------------------------------------------
@@ -1416,37 +1596,31 @@ static void GetAllPropertiesCallback(
     struct UserPointer* p = (struct UserPointer*) details->user2;
     struct ADBusObject* object = (struct ADBusObject*) p->pointer;
 
-    struct ADBusField field;
+    // Unpack the message
+    const char* iname = ADBusCheckString(details, NULL);
+    ADBusCheckMessageEnd(details);
 
     // Get the interface
-    ADBusIterate(details->arguments, &field);
-    if (field.type != ADBusStringField) {
-        SetupInvalidArgument(details);
-        return;
-    }
-
     struct ADBusInterface* interface = ADBusGetBoundInterface(
             object,
-            field.string,
-            field.size,
+            iname,
+            -1,
             &details->user2);
 
-    if (!interface) {
-        SetupInvalidInterface(details);
-        return;
-    }
+    if (!interface)
+        ThrowInvalidInterface(details);
 
     // If no reply is wanted we are finished
     if (!details->returnMessage)
         return;
 
-    // Iterate over the properties
+    // Iterate over the properties and marshall up the values
     struct ADBusMarshaller* m = ADBusArgumentMarshaller(details->returnMessage);
     details->propertyMarshaller = m;
-    ADBusBeginArgument(m, "a{sv}", -1);
+    ADBusAppendArguments(m, "a{sv}", -1);
     ADBusBeginArray(m);
 
-    khash_t(ADBusMemberPtr)* mbrs = interface->members;
+    khash_t(MemberPtr)* mbrs = interface->members;
     for (khiter_t mi = kh_begin(mbrs); mi != kh_end(mbrs); ++mi) {
         if (kh_exist(mbrs, mi)) {
             struct ADBusMember* mbr = kh_val(mbrs, mi);
@@ -1474,7 +1648,6 @@ static void GetAllPropertiesCallback(
     }
 
     ADBusEndArray(m);
-    ADBusEndArgument(m);
 }
 
 // ----------------------------------------------------------------------------
@@ -1485,64 +1658,41 @@ static void SetPropertyCallback(
     struct UserPointer* p = (struct UserPointer*) details->user2;
     struct ADBusObject* object = (struct ADBusObject*) p->pointer;
 
-    struct ADBusField field;
+    // Unpack the message
+    const char* iname = ADBusCheckString(details, NULL);
+    const char* pname = ADBusCheckString(details, NULL);
 
     // Get the interface
-    ADBusIterate(details->arguments, &field);
-    if (field.type != ADBusStringField) {
-        SetupInvalidArgument(details);
-        return;
-    }
-
     struct ADBusInterface* interface = ADBusGetBoundInterface(
             object,
-            field.string,
-            field.size,
+            iname,
+            -1,
             &details->user2);
 
-    if (!interface) {
-        SetupInvalidInterface(details);
-        return;
-    }
+    if (!interface)
+        ThrowInvalidInterface(details);
 
     // Get the property
-    ADBusIterate(details->arguments, &field);
-    if (field.type != ADBusStringField) {
-        SetupInvalidArgument(details);
-        return;
-    }
-
     struct ADBusMember* property = ADBusGetInterfaceMember(
             interface,
             ADBusPropertyMember,
-            field.string,
-            field.size);
+            pname,
+            -1);
 
-    if (!property) {
-        SetupInvalidProperty(details);
-        return;
-    }
+    if (!property)
+        ThrowInvalidProperty(details);
 
     // Check that we can write the property
-    if (!ADBusIsPropertyWritable(property)) {
-        SetupReadOnlyProperty(details);
-        return;
-    }
+    if (!ADBusIsPropertyWritable(property))
+        ThrowReadOnlyProperty(details);
 
     // Get the property type
-    ADBusIterate(details->arguments, &field);
-    if (field.type != ADBusVariantBeginField) {
-        SetupInvalidArgument(details);
-        return;
-    }
-    const char* messageType = field.string;
+    const char* sig = ADBusCheckVariantBegin(details, NULL);
 
     // Check the property type
     const char* type = ADBusPropertyType(property, NULL);
-    if (strcmp(type, messageType) != 0) {
-        SetupInvalidArgument(details);
-        return;
-    }
+    if (strcmp(type, sig) != 0)
+        ThrowInvalidArgument(details);
 
     // Set the property
     details->propertyIterator = details->arguments;

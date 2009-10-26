@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "ADBusLua.h"
+#include "LADBus.h"
 #include "adbus/Marshaller.h"
 #include "adbus/Message.h"
 

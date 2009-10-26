@@ -26,7 +26,9 @@
 #include "Iterator.h"
 #include "Iterator_p.h"
 #include "Misc_p.h"
-#include "vector.h"
+#include "Connection.h"
+#include "CommonMessages.h"
+#include "memory/kvector.h"
 
 #include <assert.h>
 #include <string.h>
@@ -35,29 +37,19 @@
 // Helper Functions
 // ----------------------------------------------------------------------------
 
-static uint IsStackEmpty(struct ADBusIterator *i)
-{
-    return stack_vector_size(&i->stack) == 0;
-}
-
-static size_t StackSize(struct ADBusIterator *i)
-{
-    return stack_vector_size(&i->stack);
-}
-
 static struct StackEntry* StackTop(struct ADBusIterator *i)
 {
-    return i->stack + StackSize(i) - 1;
+    return &kv_a(i->stack, kv_size(i->stack) - 1);
 }
 
 static struct StackEntry* PushStackEntry(struct ADBusIterator *i)
 {
-    return stack_vector_insert_end(&i->stack, 1);
+    return kv_push(Stack, i->stack, 1);
 }
 
 static void PopStackEntry(struct ADBusIterator *i)
 {
-    stack_vector_remove_end(&i->stack, 1);
+    kv_pop(Stack, i->stack, 1);
 }
 
 // ----------------------------------------------------------------------------
@@ -340,7 +332,7 @@ static int ProcessStruct(struct ADBusIterator *i, struct ADBusField* f)
     i->signature += 1; // skip over '('
 
     f->type = ADBusStructBeginField;
-    f->scope = StackSize(i);
+    f->scope = kv_size(i->stack);
 
     return 0;
 }
@@ -386,7 +378,7 @@ static int ProcessDictEntry(struct ADBusIterator *i, struct ADBusField* f)
     i->signature += 1; // skip over '{'
 
     f->type = ADBusDictEntryBeginField;
-    f->scope = StackSize(i);
+    f->scope = kv_size(i->stack);
 
     return 0;
 }
@@ -446,7 +438,7 @@ static int ProcessArray(struct ADBusIterator *i, struct ADBusField* f)
 
     f->type   = ADBusArrayBeginField;
     f->size   = size;
-    f->scope  = StackSize(i);
+    f->scope  = kv_size(i->stack);
 
     return 0;
 }
@@ -504,7 +496,7 @@ static int ProcessVariant(struct ADBusIterator *i, struct ADBusField* f)
     e->data.variant.seenFirst = 0;
 
     f->type = ADBusVariantBeginField;
-    f->scope = StackSize(i);
+    f->scope = kv_size(i->stack);
 
     i->signature = f->string;
 
@@ -594,18 +586,19 @@ static int ProcessField(struct ADBusIterator *i, struct ADBusField* f)
 
 struct ADBusIterator* ADBusCreateIterator()
 {
-    return NEW(struct ADBusIterator);
+    struct ADBusIterator* i = NEW(struct ADBusIterator);
+    i->stack = kv_new(Stack);
+    return i;
 }
 
 // ----------------------------------------------------------------------------
 
 void ADBusFreeIterator(struct ADBusIterator* i)
 {
-    if (!i)
-        return;
-
-    stack_vector_free(&i->stack);
-    free(i);
+    if (i) {
+        kv_free(Stack, i->stack);
+        free(i);
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -623,7 +616,7 @@ void ADBusResetIterator(struct ADBusIterator* i,
     i->alternateEndian = 0;
 
     i->signature = sig;
-    stack_vector_clear(&i->stack);
+    kv_clear(Stack, i->stack);
 }
 
 // ----------------------------------------------------------------------------
@@ -657,16 +650,16 @@ const char* ADBusCurrentIteratorSignature(struct ADBusIterator *i, size_t* size)
 
 uint ADBusIsScopeAtEnd(struct ADBusIterator *i, uint scope)
 {
-    if (StackSize(i) < scope)
+    if (kv_size(i->stack) < scope)
     {
         assert(0);
         return 1;
     }
 
-    if (StackSize(i) > scope)
+    if (kv_size(i->stack) > scope)
         return 0;
 
-    if (IsStackEmpty(i))
+    if (kv_size(i->stack) == 0)
         return IsRootAtEnd(i);
 
     switch(StackTop(i)->type)
@@ -689,7 +682,7 @@ uint ADBusIsScopeAtEnd(struct ADBusIterator *i, uint scope)
 
 int ADBusIterate(struct ADBusIterator *i, struct ADBusField* f)
 {
-    if (IsStackEmpty(i))
+    if (kv_size(i->stack) == 0)
     {
         return NextRootField(i,f);
     }
@@ -716,17 +709,15 @@ int ADBusIterate(struct ADBusIterator *i, struct ADBusField* f)
 
 int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope)
 {
-    if (StackSize(i) < scope)
+    if (kv_size(i->stack) < scope)
     {
         assert(0);
         return 1;
     }
 
-    size_t pop = StackSize(i) - scope;
-    if (pop > 0)
-      stack_vector_remove_end(&i->stack, pop);
+    kv_pop(Stack, i->stack, kv_size(i->stack) - scope);
 
-    StackEntry* e = StackTop(i);
+    struct StackEntry* e = StackTop(i);
     if (e->type != ArrayStackEntry)
     {
         assert(0);
@@ -736,3 +727,188 @@ int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope)
     i->data = e->data.array.dataEnd;
     return 0;
 }
+
+
+
+
+// ----------------------------------------------------------------------------
+// Check functions
+// ----------------------------------------------------------------------------
+
+static void CheckField(
+        struct ADBusCallDetails*    details,
+        struct ADBusField*          field,
+        enum ADBusFieldType         type)
+{
+    int err = ADBusIterate(details->arguments, field);
+    if (err) {
+        details->parseError = err;
+        longjmp(details->jmpbuf, 0);
+    }
+
+    if (field->type != type) {
+        ADBusSetupError(
+                details,
+                "nz.co.foobar.ADBus.Error.InvalidArgument", -1,
+                "Invalid arguments passed to a method call.", -1);
+        longjmp(details->jmpbuf, 0);
+    }
+}
+
+void ADBusCheckMessageEnd(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusEndField);
+}
+
+uint ADBusCheckBoolean(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusBooleanField);
+    return f.b;
+}
+
+uint8_t ADBusCheckUInt8(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusUInt8Field);
+    return f.u8;
+}
+
+int16_t ADBusCheckInt16(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusInt16Field);
+    return f.i16;
+}
+
+uint16_t ADBusCheckUInt16(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusUInt16Field);
+    return f.u16;
+}
+
+int32_t ADBusCheckInt32(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusInt32Field);
+    return f.i32;
+}
+
+uint32_t ADBusCheckUInt32(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusUInt32Field);
+    return f.u32;
+}
+
+int64_t ADBusCheckInt64(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusInt64Field);
+    return f.i64;
+}
+
+uint64_t ADBusCheckUInt64(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusUInt64Field);
+    return f.u64;
+}
+
+double ADBusCheckDouble(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusDoubleField);
+    return f.d;
+}
+
+const char* ADBusCheckString(struct ADBusCallDetails* d, size_t* size)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusStringField);
+    if (size)
+        *size = f.size;
+    return f.string;
+}
+
+const char* ADBusCheckObjectPath(struct ADBusCallDetails* d, size_t* size)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusObjectPathField);
+    if (size)
+        *size = f.size;
+    return f.string;
+}
+
+const char* ADBusCheckSignature(struct ADBusCallDetails* d, size_t* size)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusSignatureField);
+    if (size)
+        *size = f.size;
+    return f.string;
+}
+
+uint ADBusCheckArrayBegin(struct ADBusCallDetails* d, const uint8_t** data, size_t* size)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusArrayBeginField);
+    if (data)
+        *data = f.data;
+    if (size)
+        *size = f.size;
+    return f.scope;
+}
+
+void ADBusCheckArrayEnd(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusArrayEndField);
+}
+
+uint ADBusCheckStructBegin(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusStructBeginField);
+    return f.scope;
+}
+
+void ADBusCheckStructEnd(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusStructEndField);
+}
+
+uint ADBusCheckDictEntryBegin(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusDictEntryBeginField);
+    return f.scope;
+}
+
+void ADBusCheckDictEntryEnd(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusDictEntryEndField);
+}
+
+const char* ADBusCheckVariantBegin(struct ADBusCallDetails* d, size_t* size)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusVariantBeginField);
+    if (size)
+        *size = f.size;
+    return f.string;
+}
+
+void ADBusCheckVariantEnd(struct ADBusCallDetails* d)
+{
+    struct ADBusField f;
+    CheckField(d, &f, ADBusVariantEndField);
+}
+
+
+
+

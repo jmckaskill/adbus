@@ -26,17 +26,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#if defined __WIN32__ || defined WIN32
-# include <windows.h>
-# ifdef __cplusplus
-#   define _EXPORT extern "C" __declspec(dllexport)
-# else
-#   define _EXPORT __declspec(dllexport)
-# endif
-#else
-# define _EXPORT
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -405,7 +394,20 @@ int Xml_encode(lua_State *L) {
     return 1;
 }
 
-_EXPORT int luaopen_LuaXML_lib (lua_State* L) {
+
+#ifdef __cplusplus
+extern "C"{
+#endif
+#   ifdef WIN32
+        __declspec(dllexport) int luaopen_LuaXML_lib (lua_State* L);
+#   else
+        extern int luaopen_LuaXML_lib (lua_State* L);
+#   endif
+#ifdef __cplusplus
+}
+#endif
+
+int luaopen_LuaXML_lib (lua_State* L) {
 	static const struct luaL_Reg funcs[] = {
 		{"load", Xml_load},
 		{"eval", Xml_eval},

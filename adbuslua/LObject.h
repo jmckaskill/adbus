@@ -25,32 +25,20 @@
 
 #pragma once
 
-#include "ADBusLua.h"
+#include "LADBus.h"
+#include "LConnection.h"
+
+#include "adbus/Connection.h"
+
 #include "LuaInclude.h"
 
-#ifdef WIN32
-# define NOMINMAX
-# include <Winsock2.h>
-# undef interface
-#endif
+LADBUSI_FUNC int LADBusBindInterface(lua_State* L);
+LADBUSI_FUNC int LADBusUnbindInterface(lua_State* L);
+LADBUSI_FUNC int LADBusEmit(lua_State* L);
 
-#ifdef WIN32
-    typedef SOCKET socket_t;
-#else
-    typedef int socket_t;
-#   define INVALID_SOCKET -1
-#endif
+LADBUSI_FUNC void LADBusMethodCallback(struct ADBusCallDetails* details);
+LADBUSI_FUNC void LADBusGetPropertyCallback(struct ADBusCallDetails* details);
+LADBUSI_FUNC void LADBusSetPropertyCallback( struct ADBusCallDetails* details);
 
-struct LADBusSocket
-{
-    socket_t    socket;
-};
 
-#ifndef WIN32
-LADBUSI_FUNC int LADBusNewUnixSocket(lua_State* L);
-#endif
 
-LADBUSI_FUNC int LADBusNewTcpSocket(lua_State* L);
-LADBUSI_FUNC int LADBusCloseSocket(lua_State* L);
-LADBUSI_FUNC int LADBusSocketSend(lua_State* L);
-LADBUSI_FUNC int LADBusSocketRecv(lua_State* L);
