@@ -4,14 +4,19 @@
 #include <stdio.h>
 
 #ifdef WIN32
+
+// visual studio does not provide va_copy but this should work
+#ifndef va_copy
+#   define va_copy(to, from) to = from
+#endif
 int ks_vprintf(kstring_t* s, const char* format, va_list ap)
 {
-    va_list aq;
+    va_list aq = ap;
     va_copy(aq, ap);
     int nchars = _vscprintf(format, aq);
     va_end(aq);
 
-    kv_pop(s, 1);
+    kv_pop(kstring, s, 1);
     char* dest = kv_push(kstring, s, nchars + 1);
     nchars = _vsnprintf(dest, nchars + 1, format, ap);
 

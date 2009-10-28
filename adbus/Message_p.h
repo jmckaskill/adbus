@@ -52,3 +52,6 @@ struct ADBusMessage
   char* sender;
   char* signature;
 };
+
+
+ADBUSI_FUNC void ADBusBuildMessage_(struct ADBusMessage* m);

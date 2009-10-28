@@ -31,6 +31,7 @@
 #include "Iterator.h"
 #include "Message.h"
 #include "Misc_p.h"
+#include "Message_p.h"
 #include "memory/kvector.h"
 #include "memory/kstring.h"
 
@@ -289,11 +290,9 @@ void ADBusSendMessage(
         struct ADBusConnection* c,
         struct ADBusMessage*    message)
 {
-    //struct Timer timer;
-    //TimerBegin(&timer);
+    ADBusBuildMessage_(message);
     if (c->sendCallback)
         c->sendCallback(message, c->sendCallbackData);
-    //TimerEnd(&timer, "Send");
 }
 
 // ----------------------------------------------------------------------------
@@ -369,9 +368,7 @@ static void DispatchMethodCall(
     if (!member)
         ThrowInvalidMethod(details);
 
-    // Errors will be handled further up in ADBusDispatch
-    if (!setjmp(details->jmpbuf))
-        ADBusCallMethod(member, details);
+    ADBusCallMethod(member, details);
 
 }
 
@@ -449,7 +446,7 @@ static void DispatchMatch(
 
                 // Ignore errors from match callbacks
                 if (!setjmp(details->jmpbuf))
-                    r->m.callback(details);
+                  r->m.callback(details);
             }
 
             if (r->m.removeOnFirstMatch) {
@@ -466,31 +463,33 @@ static void DispatchMatch(
 
 void ADBusRawDispatch(struct ADBusCallDetails*    details)
 {
+    // Reset the returnMessage field for the dispatch match so that matches 
+    // don't try and use it
+    struct ADBusMessage* returnMessage = details->returnMessage;
+
     size_t sz;
     ADBusGetMessageData(details->message, NULL, &sz);
     if (sz == 0)
-        return;
+        goto end;
+
 
     // Dispatch the method call
     if (ADBusGetMessageType(details->message) == ADBusMethodCallMessage) {
         ADBusArgumentIterator(details->message, details->arguments);
         ADBusSetupReturn(details->returnMessage, details->connection, details->message);
-        DispatchMethodCall(details);
+        if (!setjmp(details->jmpbuf))
+            DispatchMethodCall(details);
     }
 
     if (details->parseError)
-        return;
-
-    // Reset the returnMessage field for the dispatch match so that matches 
-    // don't try and use it
-    struct ADBusMessage* returnMessage = details->returnMessage;
-
-    details->returnMessage = NULL;
+        goto end;
 
     // Dispatch match
+    details->returnMessage = NULL;
     ADBusArgumentIterator(details->message, details->arguments);
     DispatchMatch(details);
 
+end:
     details->returnMessage = returnMessage;
 }
 
@@ -829,8 +828,7 @@ static void CloneMatch(const struct ADBusMatch* from,
         to->m.path     = ks_release(sanitised);
         ks_free(sanitised);
     }
-    size_t argsize = from->argumentsSize * sizeof(struct ADBusMatchArgument);
-    to->m.arguments = malloc(argsize);
+    to->m.arguments = NEW_ARRAY(struct ADBusMatchArgument, from->argumentsSize);
     to->m.argumentsSize = from->argumentsSize;
     for (size_t i = 0; i < from->argumentsSize; ++i) {
         to->m.arguments[i].number = from->arguments[i].number;

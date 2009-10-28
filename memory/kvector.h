@@ -56,7 +56,7 @@
         if (v->alloc < sz)                                                  \
             v->alloc = sz;                                                  \
                                                                             \
-        v->data = realloc(v->data, sizeof(type) * v->alloc);                \
+        v->data = (type*) realloc(v->data, sizeof(type) * v->alloc);        \
     }                                                                       \
     INLINE type* kv_push_##name(kv_##name##_t* v, size_t num)               \
     {                                                                       \

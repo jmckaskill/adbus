@@ -119,10 +119,6 @@ void ADBusResetMessage(struct ADBusMessage* m)
 
 // ----------------------------------------------------------------------------
 
-#ifdef WIN32
-#define strdup_ _strdup_
-#endif
-
 int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size)
 {
     // Reset the message internals first
@@ -358,7 +354,7 @@ static void AppendUInt32(struct ADBusMessage* m, uint8_t code, uint32_t field)
     ADBusEndStruct(m->marshaller);
 }
 
-static void BuildMessage(struct ADBusMessage* m)
+void ADBusBuildMessage_(struct ADBusMessage* m)
 {
     const char* signature;
     size_t sigsize;
@@ -406,12 +402,10 @@ static void BuildMessage(struct ADBusMessage* m)
         ADBusAppendData(m->marshaller, argumentData, argumentSize);
 }
 
+// ----------------------------------------------------------------------------
+
 void ADBusGetMessageData(struct ADBusMessage* m, const uint8_t** pdata, size_t* psize)
 {
-    size_t size;
-    ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &size);
-    if (size == 0)
-        BuildMessage(m);
     ADBusGetMarshalledData(m->marshaller, NULL, NULL, pdata, psize);
 }
 

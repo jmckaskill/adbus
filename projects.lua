@@ -34,6 +34,7 @@ local function c99_project(name, type, id)
     language 'c'
     configuration {"vs*"}
         buildoptions {"/TP"} -- force it to compile as c++
+        flags {"NoExceptions"}
     configuration {"linux"}
         buildoptions {"-std=gnu99"}
     configuration {}
@@ -44,11 +45,13 @@ local function cpp_project(name, type, id)
     language 'c++'
 end
 
-c99_project('memory', 'StaticLib')
+c99_project('memory', 'StaticLib', "A8F0E5F1-636F-604B-86F6-B0A164DF1C17")
 
 c99_project('adbus', 'SharedLib', "6A120200-37D4-FA48-9838-B343A13D98C1")
     defines {"ADBUS_LIBRARY"}
     links 'memory'
+    configuration {"windows"}
+        links {"ws2_32", "advapi32", "user32"}
 
 cpp_project("adbuscpp", "StaticLib", "903F096F-1B59-1546-93BA-9295493C7AA4")
     defines {"ADBUSCPP_LIBRARY"}
@@ -70,6 +73,10 @@ ansi_project("lua5.1", "SharedLib", "84C1D0B6-011F-B046-A5AA-EE30E0B8D214")
 ansi_project("lua", "ConsoleApp", "A1031290-BB35-CA4C-8F9E-F099DAA91ABA")
     files {"lua-5.1.4/src/lua.c"}
     links {"lua5.1", "adbuslua", 'luaxml'}
+
+ansi_project('luac', 'ConsoleApp', "F15C9AB9-69EA-5744-AA60-92FD175A17F5")
+    directory 'lua-5.1.4/src'
+    excludes {"lua-5.1.4/src/lua.c"}
 
 c99_project("luaxml", "SharedLib", "9B52ED3C-AA46-5843-81F3-4FFA3C6EADED")
     targetname "LuaXML_lib"

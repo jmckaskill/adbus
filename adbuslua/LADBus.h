@@ -27,6 +27,8 @@
 
 #include "LuaInclude.h"
 
+#undef interface
+
 #ifdef __cplusplus
 extern "C" {
 #endif

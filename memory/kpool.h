@@ -14,5 +14,6 @@ void kp_free(kpool_t* p);
 typedef void (*kp_free_function_t)(void*);
 void kp_register(kpool_t* p, kp_free_function_t func, void* data);
 
+#define NEW_ARRAY(TYPE, NUM) ((TYPE*) calloc(NUM, sizeof(TYPE)))
 #define NEW(TYPE) ((TYPE*) calloc(1, sizeof(TYPE)))
 #define PNEW(POOL, TYPE) ((TYPE*) kp_calloc(POOL, sizeof(TYPE)))

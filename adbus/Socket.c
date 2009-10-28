@@ -61,7 +61,7 @@ static void ParseFields(struct Fields* f, const char* bstr, size_t size)
 {
     const char* estr = bstr + size;
 
-    const char* p = memchr(bstr, ':', estr - bstr);
+    const char* p = (const char*) memchr(bstr, ':', estr - bstr);
     if (!p)
         return;
 
@@ -70,14 +70,14 @@ static void ParseFields(struct Fields* f, const char* bstr, size_t size)
 
     while (bstr < estr) {
         const char* bkey = bstr;
-        const char* ekey = memchr(bstr, '=', estr - bstr);
+        const char* ekey = (const char*) memchr(bstr, '=', estr - bstr);
         if (!ekey)
             return;
 
         bstr = ekey + 1;
 
         const char* bval = bstr;
-        const char* eval = memchr(bstr, ',', estr - bstr);
+        const char* eval = (const char*) memchr(bstr, ',', estr - bstr);
         if (eval) {
             bstr = eval + 1;
         } else {
@@ -222,6 +222,7 @@ ADBusSocket_t ADBusConnectSocket(
         const char*             envstr,
         int                     size)
 {
+    (void) systembus;
 #ifndef WIN32
     if (systembus && envstr == NULL) {
         envstr = "unix:file=/var/run/dbus/system_bus_socket";
