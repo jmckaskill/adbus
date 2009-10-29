@@ -29,6 +29,7 @@
 static int listing=0;			/* list bytecodes? */
 static int dumping=1;			/* dump bytecodes? */
 static int stripping=0;			/* strip debug information? */
+static int cdump=0;
 static char Output[]={ OUTPUT };	/* default output file name */
 static const char* output=Output;	/* actual output file name */
 static const char* progname=PROGNAME;	/* actual program name */
@@ -60,6 +61,7 @@ static void usage(const char* message)
  "  -p       parse only\n"
  "  -s       strip debug information\n"
  "  -v       show version information\n"
+ "  -c       dump embeddable c code\n"
  "  --       stop handling options\n",
  progname,Output);
  exit(EXIT_FAILURE);
@@ -96,6 +98,8 @@ static int doargs(int argc, char* argv[])
    dumping=0;
   else if (IS("-s"))			/* strip debug information */
    stripping=1;
+  else if (IS("-c"))
+   cdump=1;
   else if (IS("-v"))			/* show version */
    ++version;
   else					/* unknown option */
@@ -146,8 +150,32 @@ static const Proto* combine(lua_State* L, int n)
 
 static int writer(lua_State* L, const void* p, size_t size, void* u)
 {
- UNUSED(L);
- return (fwrite(p,size,1,(FILE*)u)!=1) && (size!=0);
+    const unsigned char* data = (const unsigned char*) p;
+    FILE* fp = (FILE*) u;
+    UNUSED(L);
+    if (cdump)
+    {
+        static int i = 0;
+        while (size > 0)
+        {
+            if (i == 0)
+                fprintf(fp, "  0x%02x", (int) *data);
+            else
+                fprintf(fp, ", 0x%02x", (int) *data);
+
+            ++data;
+            --size;
+            ++i;
+
+            if (i > 0 && (i % 8) == 0)
+                fprintf(fp, "\n");
+        }
+        return 0;
+    }
+    else
+    {
+        return (fwrite(p,size,1,fp)!=1) && (size!=0);
+    }
 }
 
 struct Smain {
@@ -177,6 +205,7 @@ static int pmain(lua_State* L)
   lua_lock(L);
   luaU_dump(L,f,writer,D,stripping);
   lua_unlock(L);
+  fprintf(D, "\n");
   if (ferror(D)) cannot("write");
   if (fclose(D)) cannot("close");
  }

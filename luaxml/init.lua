@@ -1,5 +1,4 @@
 require("LuaXML_lib")
-require 'adbuslua.pretty'
 
 local base = _G
 local luaxml = luaxml

@@ -77,6 +77,8 @@ ansi_project("lua", "ConsoleApp", "A1031290-BB35-CA4C-8F9E-F099DAA91ABA")
 ansi_project('luac', 'ConsoleApp', "F15C9AB9-69EA-5744-AA60-92FD175A17F5")
     directory 'lua-5.1.4/src'
     excludes {"lua-5.1.4/src/lua.c"}
+    configuration "linux"
+        links {"dl", "m", "readline"}
 
 c99_project("luaxml", "SharedLib", "9B52ED3C-AA46-5843-81F3-4FFA3C6EADED")
     targetname "LuaXML_lib"
