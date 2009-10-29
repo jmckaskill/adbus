@@ -60,7 +60,7 @@ static void SetupString(
         return;
 
     *target = source.c_str();
-    *targetSize = source.size();
+    *targetSize = (int) source.size();
 }
 
 uint32_t Object::addMatch(
@@ -132,7 +132,7 @@ void Object::doBind(
 {
     BindData bound;
     bound.connection = c;
-    bound.object     = ADBusAddObject(c, path.c_str(), path.size());
+    bound.object     = ADBusAddObject(c, path.c_str(), (int) path.size());
     bound.interface  = interface;
 
     int err = ADBusBindInterface(bound.object, bound.interface, user2);
@@ -147,7 +147,7 @@ void Object::unbind(
         const std::string&      path,
         ADBusInterface*         interface)
 {
-    ADBusObject* object = ADBusGetObject(c, path.c_str(), path.size());
+    ADBusObject* object = ADBusGetObject(c, path.c_str(), (int) path.size());
     if (!object)
         return;
 

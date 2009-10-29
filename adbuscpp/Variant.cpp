@@ -27,6 +27,10 @@
 #include "Message.h"
 
 
+#ifdef WIN32
+#   pragma warning(disable:4267) // conversion from size_t to int
+#endif
+
 
 using namespace adbus;
 
@@ -40,7 +44,7 @@ void Variant::setupIterator(struct ADBusIterator* iterator)const
   const uint8_t* data;
   size_t datasize;
   ADBusGetMarshalledData(m, &sig, &sigsize, &data, &datasize);
-  ADBusResetIterator(iterator, sig, sigsize, data, datasize);
+  ADBusResetIterator(iterator, sig, sigsize, data, (int) datasize);
 }
 
 // ----------------------------------------------------------------------------
@@ -50,7 +54,7 @@ void Variant::operator <<(ADBusIterator& iterator)
   struct ADBusField field;
   adbus::Iterate(&iterator, &field, ADBusVariantBeginField);
 
-  ADBusAppendArguments(m, field.string, field.size);
+  ADBusAppendArguments(m, field.string, (int) field.size);
   int err = ADBusAppendIteratorData(m, &iterator, field.scope);
   if (err) {
       throw ParseError(err);
@@ -66,7 +70,7 @@ void Variant::operator >>(ADBusMarshaller& marshaller) const
   const uint8_t* data;
   size_t datasize;
   ADBusGetMarshalledData(m, &sig, &sigsize, &data, &datasize);
-  ADBusSetMarshalledData(&marshaller, sig, sigsize, data, datasize);
+  ADBusSetMarshalledData(&marshaller, sig, sigsize, data, (int) datasize);
 }
 
 

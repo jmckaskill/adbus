@@ -341,7 +341,7 @@ static void DispatchMethodCall(
         struct ADBusInterface* interface = ADBusGetBoundInterface(
                 object,
                 interfaceName,
-                interfaceSize,
+                (int) interfaceSize,
                 &details->user2);
 
         if (!interface)
@@ -351,7 +351,7 @@ static void DispatchMethodCall(
                 interface,
                 ADBusMethodMember,
                 memberName,
-                memberSize);
+                (int) memberSize);
 
     } else {
         // We don't know the interface, try and find the first method on any
@@ -360,7 +360,7 @@ static void DispatchMethodCall(
                 object,
                 ADBusMethodMember,
                 memberName,
-                memberSize,
+                (int) memberSize,
                 &details->user2);
 
     }

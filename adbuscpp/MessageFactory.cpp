@@ -83,13 +83,13 @@ void MessageFactory::setupMessage()
     ADBusSetSerial(m_Message, m_Match.replySerial);
 
     if (!m_Destination.empty())
-        ADBusSetDestination(m_Message, m_Destination.c_str(), m_Destination.size());
+        ADBusSetDestination(m_Message, m_Destination.c_str(), (int) m_Destination.size());
     if (!m_Interface.empty())
-        ADBusSetInterface(m_Message, m_Interface.c_str(), m_Interface.size());
+        ADBusSetInterface(m_Message, m_Interface.c_str(), (int) m_Interface.size());
     if (!m_Path.empty())
-        ADBusSetPath(m_Message, m_Path.c_str(), m_Path.size());
+        ADBusSetPath(m_Message, m_Path.c_str(), (int) m_Path.size());
     if (!m_Member.empty())
-        ADBusSetMember(m_Message, m_Member.c_str(), m_Member.size());
+        ADBusSetMember(m_Message, m_Member.c_str(), (int) m_Member.size());
 }
 
 //-----------------------------------------------------------------------------

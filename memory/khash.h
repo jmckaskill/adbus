@@ -84,6 +84,11 @@ int main() {
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef WIN32
+#   pragma warning(disable:4127) // conditional expression is constant
+#endif
+
+
 typedef uint32_t khint_t;
 typedef khint_t khiter_t;
 

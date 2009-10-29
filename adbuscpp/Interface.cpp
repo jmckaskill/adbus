@@ -28,6 +28,10 @@
 #include "adbus/CommonMessages.h"
 #include <assert.h>
 
+#ifdef WIN32
+#   pragma warning(disable:4267) // conversion from size_t to int
+#endif
+
 using namespace adbus;
 
 // ----------------------------------------------------------------------------

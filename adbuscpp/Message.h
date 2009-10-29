@@ -227,7 +227,7 @@ inline void operator>>(const char* str, ADBusMarshaller& m)
 { adbus::CheckForMarshallError(ADBusAppendString(&m, str, -1)); }
 
 inline void operator>>(const std::string& str, ADBusMarshaller& m)
-{ adbus::CheckForMarshallError(ADBusAppendString(&m, str.c_str(), str.size())); }
+{ adbus::CheckForMarshallError(ADBusAppendString(&m, str.c_str(), (int) str.size())); }
 
 template<class T>
 void operator>>(const std::vector<T>& vec, ADBusMarshaller& m)

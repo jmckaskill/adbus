@@ -56,7 +56,7 @@ void ADBusSetupError(
             details->connection,
             serial,
             destination,
-            destSize,
+            (int) destSize,
             errorName,
             errorNameSize,
             errorMessage,
@@ -128,7 +128,7 @@ void ADBusSetupReturn(
             connection,
             replySerial,
             destination,
-            destinationSize);
+            (int) destinationSize);
 }
 
 // ----------------------------------------------------------------------------
@@ -177,7 +177,7 @@ static void Append(
         return;
 
     if (size < 0)
-        size = strlen(field);
+        size = (int) strlen(field);
 
     ks_cat(match, fieldName);
     ks_cat(match, "='");
@@ -251,7 +251,7 @@ void ADBusSetupAddBusMatch(
 
     struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
     ADBusAppendArguments(marshaller, "s", -1);
-    ADBusAppendString(marshaller, ks_cstr(mstr), ks_size(mstr));
+    ADBusAppendString(marshaller, ks_cstr(mstr), (int) ks_size(mstr));
 
     ks_free(mstr);
 }
@@ -271,7 +271,7 @@ void ADBusSetupRemoveBusMatch(
 
     struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
     ADBusAppendArguments(marshaller, "s", -1);
-    ADBusAppendString(marshaller, ks_cstr(mstr), ks_size(mstr));
+    ADBusAppendString(marshaller, ks_cstr(mstr), (int) ks_size(mstr));
 
     ks_free(mstr);
 }

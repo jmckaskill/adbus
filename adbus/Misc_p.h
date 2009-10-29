@@ -33,11 +33,12 @@
 extern "C" {
 #endif
 
+#ifdef WIN32
 // Stupid visual studio complains about interactions between setjmp and c++ 
 // exceptions even with exceptions turned off - all because we have to 
 // compile as c++ because it doesn't support c99
-#ifdef WIN32
 #   pragma warning(disable: 4611)
+#   pragma warning(disable: 4267) // conversion from size_t to int
 #endif
 
 // ----------------------------------------------------------------------------

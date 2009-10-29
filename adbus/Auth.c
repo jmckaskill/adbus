@@ -37,6 +37,8 @@
 // ----------------------------------------------------------------------------
 
 #ifdef WIN32
+#define WINVER 0x0500	// Allow use of features specific to Windows 2000 or later.
+#define _WIN32_WINNT 0x0501	// Allow use of features specific to Windows XP or later.
 #include <malloc.h>
 #include <windows.h>
 #include <sddl.h>
@@ -282,7 +284,7 @@ static void GenerateReply(const char*   hexserver,
 
     SHA1 sha;
     SHA1Init(&sha);
-    SHA1AddBytes(&sha, ks_cstr(shastr), ks_size(shastr));
+    SHA1AddBytes(&sha, ks_cstr(shastr), (int) ks_size(shastr));
 
     char* digest = (char*) SHA1GetDigest(&sha);
 

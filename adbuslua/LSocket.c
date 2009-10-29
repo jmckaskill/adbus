@@ -42,6 +42,10 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef WIN32
+#   pragma warning(disable:4267) // conversion from size_t to int
+#endif
+
 
 // ----------------------------------------------------------------------------
 

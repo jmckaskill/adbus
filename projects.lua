@@ -89,4 +89,49 @@ c99_project("test-adbus", "ConsoleApp", "F05DC97B-044A-1847-AC92-8E39F3A7C10D")
            "adbus/str.c"}
     links {"adbus", 'memory'}
 
+c99_project("luaembed", "SharedLib", "7F701628-F043-704E-A438-AC3114FADC6E")
+    links {"lua5.1"}
+
+
+function luaembed(luac, filemap)
+    if os.get() == "windows" then
+        luac = luac .. ".exe"
+        luac = path.translate(luac, "\\")
+    end
+
+    local f = io.open("luaembed/luaembed.auto.h", "w")
+
+    local function p(...)
+        f:write(string.format(...)) 
+    end
+    local function csymbol(lsym)
+        return "luaembed_" .. string.gsub(lsym, "%.", "_")
+    end
+
+    f:write("// WARNING: This is an auto-generated file \n")
+    f:write("// use premake4 embed to generate\n\n")
+
+    for lsym,file in pairs(filemap) do
+        os.execute(luac .. ' -c "' .. file .. '"')
+        local luacf = io.open("luac.out")
+        local code = luacf:read("*a")
+        luacf:close()
+        local csym = csymbol(lsym)
+        p("static const uint8_t %s[] = {\n", csym)
+        f:write(code)
+        f:write("};\n\n")
+    end
+
+    f:write("static int luaembed_load(lua_State* L, int table) {\n")
+
+    for lsym,file in pairs(filemap) do
+        local csym = csymbol(lsym)
+        p('   luaL_loadbuffer(L, (const char*) %s, sizeof(%s), "%s");\n', csym, csym, lsym)
+        p('   lua_setfield(L, table, "%s");\n', lsym)
+    end
+
+    f:write('   return 0;\n')
+    f:write('}\n')
+    f:close()
+end
 

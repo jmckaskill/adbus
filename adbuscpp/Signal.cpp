@@ -53,7 +53,7 @@ SignalBase::~SignalBase()
 
 void SignalBase::bind(ADBusConnection* connection, const std::string& path, ADBusMember* signal)
 {
-    struct ADBusObject* object = ADBusGetObject(connection, path.c_str(), path.size());
+    struct ADBusObject* object = ADBusGetObject(connection, path.c_str(), (int) path.size());
     if (!object)
         return;
 

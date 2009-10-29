@@ -140,7 +140,7 @@ INLINE void ks_remove_end(kstring_t* s, size_t n)
 INLINE int ks_cmp_n(const kstring_t* s, const char* r, size_t n)
 {
     if (ks_size(s) != n)
-        return ks_size(s) - n;
+        return (int) (ks_size(s) - n);
     else
         return memcmp(ks_cstr(s), r, n);
 }
@@ -174,7 +174,7 @@ INLINE bool ks_ends_with_n(const kstring_t* s, const char* r, size_t n)
     if (ks_size(s) < n)
         return false;
     else
-        return memcmp(ks_cstr(s) + ks_size(s) - n, r, n);
+      return memcmp(ks_cstr(s) + ks_size(s) - n, r, n) == 0;
 }
 
 INLINE bool ks_ends_with_s(const kstring_t* s, const kstring_t* r)
