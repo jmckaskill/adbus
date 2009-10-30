@@ -122,15 +122,24 @@ function luaembed(luac, filemap)
         f:write("};\n\n")
     end
 
-    f:write("static int luaembed_load(lua_State* L, int table) {\n")
+    f:write("static int luaembed_load(lua_State* L, const char* name)\n")
+    f:write("{\n")
 
+    local first = true
     for lsym,file in pairs(filemap) do
         local csym = csymbol(lsym)
-        p('   luaL_loadbuffer(L, (const char*) %s, sizeof(%s), "%s");\n', csym, csym, lsym)
-        p('   lua_setfield(L, table, "%s");\n', lsym)
+        if first then
+            p('    if (strcmp(name, "%s") == 0) {\n', lsym)
+        else
+            p('    } else if (strcmp(name, "%s") == 0) {\n', lsym)
+        end
+        p('        luaL_loadbuffer(L, (const char*) %s, sizeof(%s), "%s");\n', csym, csym, lsym)
+        p('        return 1;\n')
+        first = false
     end
+    p('    }\n')
 
-    f:write('   return 0;\n')
+    f:write('    return 0;\n')
     f:write('}\n')
     f:close()
 end

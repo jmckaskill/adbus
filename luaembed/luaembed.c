@@ -30,6 +30,7 @@ extern "C"{
 
 #include "lua.h"
 #include "lauxlib.h"
+#include <string.h>
 #include <stdint.h>
 #include "luaembed.auto.h"
 
@@ -44,24 +45,11 @@ static const char luaembed_handle[] = "luaembed";
 static int luaembed_require(lua_State* L)
 {
     const char* name = luaL_checkstring(L, 1);
-    lua_getfield(L, LUA_REGISTRYINDEX, luaembed_handle);
-    if (!lua_istable(L, -1))
-        return 0;
-
-    lua_getfield(L, -1, name);
-    if (!lua_isfunction(L, -1))
-        return 0;
-
-    lua_remove(L, -2);
-    return 1;
+    return luaembed_load(L, name);
 }
 
 int luaopen_luaembed(lua_State* L)
 {
-    lua_newtable(L);
-    luaembed_load(L, lua_gettop(L));
-    lua_setfield(L, LUA_REGISTRYINDEX, luaembed_handle);
-
     lua_getglobal(L, "package");
     if (!lua_istable(L, -1))
         return 0;
