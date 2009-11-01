@@ -16,23 +16,11 @@ local function c_project(name)
     configuration {}
 end
 
-c_project 'adbus'
-    kind 'SharedLib'
-    uuid '6A120200-37D4-FA48-9838-B343A13D98C1'
-    files 'adbus/*'
-    defines 'ADBUS_LIBRARY'
-    links 'memory'
-    configuration 'windows'
-        links {'ws2_32', 'advapi32', 'user32'}
-
-c_project 'adbuslua_core'
-    kind 'SharedLib'
-    uuid 'EE40C960-59A7-C849-92F2-14024DC8181A'
-    files 'adbuslua/*'
-    defines 'ADBUSLUA_LIBRARY'
-    links {'adbus', 'lua5.1'}
-    configuration {'windows'}
-        links {'ws2_32', 'advapi32', 'user32'}
+c_project 'adbus_test'
+    kind 'ConsoleApp'
+    uuid 'F05DC97B-044A-1847-AC92-8E39F3A7C10D'
+    files 'test/*'
+    links {'adbus', 'memory'}
 
 
 

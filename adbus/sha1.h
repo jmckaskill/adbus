@@ -10,7 +10,10 @@ accompanying LICENSE file.
 
 #ifndef SHA1_HEADER
 
-#include "Common.h"
+#include <adbus/adbus.h>
+#include "misc.h"
+
+#include <stdint.h>
 
 typedef struct SHA1
 {
