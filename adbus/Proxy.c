@@ -23,54 +23,79 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Signal.h"
 
-#include <adbus/CommonMessages.h>
-#include <adbus/Connection.h>
-
-using namespace adbus;
+#include "Proxy.h"
+#include "Factory.h"
+#include "Misc_p.h"
+#include "memory/kpool.h"
 
 // ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
 
-SignalBase::SignalBase()
-:   m_Signal(NULL)
+struct ADBusProxy
 {
+    struct ADBusConnection* connection;
+    struct ADBusMessage*    message;
+    char*                   service;
+    char*                   path;
+    char*                   interface;
+};
+
+// ----------------------------------------------------------------------------
+
+struct ADBusProxy* ADBusCreateProxy(
+        struct ADBusConnection* connection,
+        const char*             service,
+        int                     ssize,
+        const char*             path,
+        int                     psize,
+        const char*             interface,
+        int                     isize)
+{
+    struct ADBusProxy* p = NEW(struct ADBusProxy);
+    p->connection = connection;
+    p->message = ADBusCreateMessage();
+
+    p->service   = (ssize >= 0)
+                 ? strndup_(service, ssize)
+                 : strdup_(service);
+    p->path      = (psize >= 0)
+                 ? strndup_(path, psize)
+                 : strdup_(path);
+    p->interface = (isize >= 0)
+                 ? strndup_(interface, isize)
+                 : strdup_(interface);
+
+    return p;
 }
 
 // ----------------------------------------------------------------------------
 
-SignalBase::~SignalBase()
+void ADBusFreeProxy(struct ADBusProxy* p)
 {
-    ADBusFreeSignal(m_Signal);
-}
-
-// ----------------------------------------------------------------------------
-
-void SignalBase::bind(
-        ADBusConnection*    connection,
-        const std::string&  path,
-        ADBusMember*        signal)
-{
-    struct ADBusObjectPath* opath = ADBusGetObjectPath(
-            connection,
-            path.c_str(),
-            (int) path.size());
-
-    if (opath) {
-        bind(opath, signal);
+    if (p) {
+        ADBusFreeMessage(p->message);
+        free(p->service);
+        free(p->path);
+        free(p->interface);
+        free(p);
     }
 }
 
 // ----------------------------------------------------------------------------
 
-void SignalBase::bind(
-        ADBusObjectPath*    path,
-        ADBusMember*        signal)
+void ADBusProxyFactory(
+        struct ADBusProxy*      p,
+        struct ADBusFactory*    f)
 {
-    ADBusFreeSignal(m_Signal);
-    m_Signal = ADBusNewSignal(path, signal);
+    ADBusInitFactory(f, p->connection, p->message);
+    f->destination = p->service;
+    f->interface = p->interface;
+    f->path = p->path;
 }
+
+
+
+
+
 
 

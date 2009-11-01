@@ -33,6 +33,13 @@ struct ADBusIterator;
 
 namespace adbus
 {
+
+    /** Something about variant.
+     *
+     * \ingroup adbuscpp
+     *
+     */
+
     class Variant
     {
     public:

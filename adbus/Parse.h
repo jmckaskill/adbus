@@ -27,31 +27,12 @@
 
 #include "Common.h"
 
-typedef char* str_t;
+ADBUS_API struct ADBusStreamBuffer* ADBusCreateStreamBuffer();
+ADBUS_API void ADBusFreeStreamBuffer(struct ADBusStreamBuffer* buffer);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+ADBUS_API int ADBusParse(
+        struct ADBusStreamBuffer*   buffer,
+        struct ADBusMessage*        message,
+        const uint8_t**             pdata,
+        size_t*                     size);
 
-ADBUSI_FUNC size_t str_size(const str_t* pstring);
-
-ADBUSI_FUNC void   str_append(str_t* pstring, const char* str);
-ADBUSI_FUNC void   str_append_n(str_t* pstring, const char* str, size_t n);
-ADBUSI_FUNC void   str_append_char(str_t* pstring, int ch);
-
-ADBUSI_FUNC void   str_insert(str_t* pstring, size_t index, const char* str);
-ADBUSI_FUNC void   str_insert_n(str_t* pstring, size_t index, const char* str, size_t n);
-
-ADBUSI_FUNC void   str_remove(str_t* pstring, size_t index, size_t number);
-ADBUSI_FUNC void   str_remove_end(str_t* pstring, size_t number);
-
-ADBUSI_FUNC void   str_set(str_t* pstring, const char* str);
-ADBUSI_FUNC void   str_set_n(str_t* pstring, const char* str, size_t n);
-
-ADBUSI_FUNC void   str_clear(str_t* pstring);
-ADBUSI_FUNC void   str_free(str_t* pstring);
-ADBUSI_FUNC int    str_printf(str_t* pstring, const char* format, ...);
-
-#ifdef __cplusplus
-}
-#endif

@@ -27,4 +27,3 @@
 
 void TestIterator();
 void TestVector();
-void TestInterface();

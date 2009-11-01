@@ -41,6 +41,7 @@
 #include "adbus/Interface.h"
 
 #include <assert.h>
+#include <string.h>
 
 #define LADBUSCONNECTION_HANDLE "LADBusConnection"
 #define LADBUSINTERFACE_HANDLE  "ADBusInterface*"

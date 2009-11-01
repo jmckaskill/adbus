@@ -35,11 +35,19 @@
 extern "C" {
 #endif
 
+/**
+ *
+ * \ingroup adbuslua
+ */
 LADBUS_API int LADBusMarshallMessage(
         lua_State*              L,
         int                     messageIndex,
         struct ADBusMessage*    message);
 
+/**
+ *
+ * \ingroup adbuslua
+ */
 LADBUS_API int LADBusMarshallArgument(
         lua_State*              L,
         int                     argumentIndex,
@@ -47,11 +55,19 @@ LADBUS_API int LADBusMarshallArgument(
         int                     signatureSize,
         struct ADBusMarshaller* marshaller);
 
+/**
+ *
+ * \ingroup adbuslua
+ */
 LADBUS_API int LADBusPushMessage(
         lua_State*              L,
         struct ADBusMessage*    message,
         struct ADBusIterator*   iterator);
 
+/**
+ *
+ * \ingroup adbuslua
+ */
 LADBUS_API int LADBusPushArgument(
         lua_State*              L,
         struct ADBusIterator*   iterator);

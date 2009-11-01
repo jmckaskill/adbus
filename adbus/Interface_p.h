@@ -66,8 +66,8 @@ struct ADBusMember
     struct ADBusUser*           getPropertyData;
     struct ADBusUser*           setPropertyData;
 };
-typedef struct ADBusMember* ADBusMemberPtr;
-KHASH_MAP_INIT_STR(MemberPtr, ADBusMemberPtr)
+
+KHASH_MAP_INIT_STR(MemberPtr, struct ADBusMember*)
 
 // ----------------------------------------------------------------------------
 
@@ -76,6 +76,13 @@ struct ADBusInterface
     char*                   name;
     khash_t(MemberPtr)*     members;
 };
+
+// ----------------------------------------------------------------------------
+
+int IntrospectCallback(struct ADBusCallDetails* details);
+int GetPropertyCallback(struct ADBusCallDetails* details);
+int GetAllPropertiesCallback(struct ADBusCallDetails* details);
+int SetPropertyCallback(struct ADBusCallDetails* details);
 
 
 

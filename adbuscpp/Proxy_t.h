@@ -35,66 +35,66 @@
 #define CAT(x,y) CAT2(x,y)
 
 #define CLASS_DECL_ITEM(NUM) class A ## NUM
-#define CLASS_DECL_ITEM_TRAILING_COMMA(NUM) class A ## NUM,
-#define CLASS_LIST_ITEM(NUM) A ## NUM
-#define APPEND_ARGUMENT(NUM) adbus::AppendArgument<A ## NUM>(marshaller, a ## NUM);
-#define CONST_REF_ARG(NUM) const A ## NUM & a ## NUM
+#define CLASS_DECL_ITEM_TC(NUM) class A ## NUM,
+#define CLASS_LIST_ITEM_LC(NUM) , A ## NUM
+#define APPEND_ARGUMENT(NUM) adbus::AppendArgument<A ## NUM>(m_Factory.args, a ## NUM);
+#define CONST_REF_ARG_LC(NUM) , const A ## NUM & a ## NUM
 
 // creates: template<class A0, class A1>
 #define TEMPLATE_CLASS_DECL REPEAT(CLASS_DECL_ITEM, COMMA, template<, >)
 
 // creates: class A0, class A1,
-#define CLASS_DECL_TRAILING_COMMA REP(CLASS_DECL_ITEM_TRAILING_COMMA)
+#define CLASS_DECL_TC REP(CLASS_DECL_ITEM_TC)
 
-// creates: A0, A1
-#define CLASS_LIST REPEAT(CLASS_LIST_ITEM, COMMA, EMPTY, EMPTY)
+// creates: , A0, A1
+#define CLASS_LIST_LC REP(CLASS_LIST_ITEM_LC)
 
 // creates: adbus::appendArgument<A0>(marshaller, a0); ...
 #define APPEND_ARGUMENTS REP(APPEND_ARGUMENT)
 
 // creates: const A0& a0, const A1& a0
-#define CONST_REF_ARG_LIST REPEAT(CONST_REF_ARG, COMMA, EMPTY, EMPTY)
+#define CONST_REF_ARG_LIST_LC REP(CONST_REF_ARG_LC)
 
-    template<CLASS_DECL_TRAILING_COMMA
-             class MemFun, class M>
-    void CAT(setCallback,NUM) (Object* object, M* mfObject, MemFun mf)
-    { 
-        setupMatch(ADBusMethodReturnMessage);
-        object->CAT(addMatch,NUM) < CLASS_LIST > (&m_Match, mf, mfObject);
+    template<CLASS_DECL_TC class MF, class O>
+    void CAT(setCallback,NUM) (Object* object, O* o, MF mf)
+    {
+        CAT(detail::CreateMFCallback,NUM) <MF, O CLASS_LIST_LC> (
+                mf, o, &m_Factory.user1, &m_Factory.user2);
+
+        m_Factory.callback = &detail::CallMethod;
     } 
 
-    template<CLASS_DECL_TRAILING_COMMA
-             class MemFun, class M>
-    void CAT(setErrorCallback,NUM) (Object* object, M* mfObject, MemFun mf)
+    template<CLASS_DECL_TC class MF, class O>
+    void CAT(setErrorCallback,NUM) (Object* object, O* o, MF mf)
     { 
-        setupMatch(ADBusErrorMessage);
-        object->CAT(addMatch,NUM) < CLASS_LIST > (&m_Match, mf, mfObject);
+        CAT(detail::CreateMFCallback,NUM) <MF, O CLASS_LIST_LC> (
+                mf, o, &m_Factory.errorUser1, &m_Factory.errorUser2);
+
+        m_Factory.callback = &detail::CallMethod;
     } 
 
     // template<class A0, class A1>
     TEMPLATE_CLASS_DECL
-    void call( CONST_REF_ARG_LIST ) // const A0& a0, const A1& a1
+    void call(const std::string& member CONST_REF_ARG_LIST_LC ) // const A0& a0, const A1& a1
     {
-        setupMessage();
-        struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(m_Message);
-        (void) marshaller;
-        // adbus::AppendArgument<A0>(marshaller, a0);
-        // adbus::AppendArgument<A1>(marshaller, a1);
+        // adbus::AppendArgument<A0>(m_Factory.args, a0);
+        // adbus::AppendArgument<A1>(m_Factory.args, a1);
         APPEND_ARGUMENTS;
-        sendMessage();
+        ADBusCallFactory(&m_Factory);
+        ADBusProxyFactory(m_Proxy, &m_Factory);
     }
 
 #undef CLASS_DECL_ITEM
-#undef CLASS_DECL_ITEM_TRAILING_COMMA
-#undef CLASS_LIST_ITEM
+#undef CLASS_DECL_ITEM_TC
+#undef CLASS_LIST_ITEM_LC
 #undef APPEND_ARGUMENT
-#undef CONST_REF_ARG
+#undef CONST_REF_ARG_LC
 
 #undef TEMPLATE_CLASS_DECL
-#undef CLASS_DECL_TRAILING_COMMA
-#undef CLASS_LIST
+#undef CLASS_DECL_TC
+#undef CLASS_LIST_LC
 #undef APPEND_ARGUMENTS
-#undef CONST_REF_ARG_LIST
+#undef CONST_REF_ARG_LIST_LC
 
 #undef EMPTY
 #undef COMMA

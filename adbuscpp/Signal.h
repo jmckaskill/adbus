@@ -27,39 +27,52 @@
 
 #include "Common.h"
 #include "Object.h"
+
 #include "adbus/Message.h"
+#include "adbus/Signal.h"
 
 namespace adbus
 {
+
+    /** \addtogroup adbuscpp
+     *
+     * @{
+     */
+
     class SignalBase
     {
         ADBUSCPP_NON_COPYABLE(SignalBase);
     public:
         SignalBase();
         ~SignalBase();
-        void bind(ADBusConnection* connection, const std::string& path, ADBusMember* signal);
-        bool isBound()const{return m_Object != NULL;}
+
+        void bind(
+                ADBusConnection*    connection,
+                const std::string&  path,
+                ADBusMember*        signal);
+
+        void bind(
+                ADBusObjectPath*    path,
+                ADBusMember*        signal);
+
+        bool isBound()const {return m_Signal != NULL;}
 
     protected:
-        void setupMessage();
-        void sendMessage();
-        ADBusMessage*       m_Message;
-
-    private:
-        ADBusConnection*    m_Connection;
-        ADBusObject*        m_Object;
-        ADBusMember*        m_Signal;
+        struct ADBusSignal* m_Signal;
     };
 
-    // This now defines a whole bunch of Signal types like:
-    //
-    // template<class A0, class A1>
-    // class Signal2 : public SignalBase
-    // {
-    //      ADBUSCPP_NON_COPYABLE(Signal2);
-    // public:
-    //      void emit(const A0& a0, const A1& a1);
-    // };
+#ifdef DOC
+
+    template<class A0 ...>
+    class SignalX : public SignalBase
+    {
+    public:
+        SignalX(){}
+        void trigger(const A0& a0 ...);
+        void operator()(const A0& a0 ...);
+    };
+
+#else
 
 #define NUM 0
 #define REPEAT(x, sep, lead, tail)
@@ -100,6 +113,10 @@ namespace adbus
 #define NUM 9
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8) tail
 #include "Signal_t.h"
+
+#endif
+
+    /** @} */
 
 
 }

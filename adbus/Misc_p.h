@@ -27,11 +27,10 @@
 
 #include "Common.h"
 
+#include "memory/kstring.h"
 #include <string.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+// ----------------------------------------------------------------------------
 
 #ifdef WIN32
 // Stupid visual studio complains about interactions between setjmp and c++ 
@@ -43,28 +42,18 @@ extern "C" {
 
 // ----------------------------------------------------------------------------
 
-#ifndef NDEBUG
-#   define LOGD ADBusPrintDebug_
-#else
-#   define LOGD if(0) {} else ADBusPrintDebug_
-#endif
+ADBUSI_DATA const char NativeEndianness;
+ADBUSI_DATA const uint8_t MajorProtocolVersion;
 
-ADBUSI_FUNC void ADBusPrintDebug_(const char* format, ...);
+ADBUSI_FUNC int RequiredAlignment(char type);
 
-// ----------------------------------------------------------------------------
-
-ADBUSI_DATA const char ADBusNativeEndianness_;
-ADBUSI_DATA const uint8_t ADBusMajorProtocolVersion_;
-
-ADBUSI_FUNC int ADBusRequiredAlignment_(char type);
-
-ADBUSI_FUNC uint ADBusRequiresServiceLookup_(const char* name, int size);
+ADBUSI_FUNC uint RequiresServiceLookup(const char* name, int size);
 
 // ----------------------------------------------------------------------------
 
 #pragma pack(push)
 #pragma pack(1)
-struct ADBusHeader_
+struct Header
 {
   // 8 byte begin padding
   uint8_t   endianness;
@@ -75,7 +64,7 @@ struct ADBusHeader_
   uint32_t  serial;
 };
 
-struct ADBusExtendedHeader_
+struct ExtendedHeader
 {
   // 8 byte begin padding
   uint8_t   endianness;
@@ -132,11 +121,9 @@ ADBUSI_FUNC void TimerEnd(uint64_t begin, const char* what);
  *    ~(boundary - 1)
  */
 
-#define ADBUS_ALIGN_VALUE_(TYPE, PTR, BOUNDARY)                       \
-  ((TYPE) ( (((uintptr_t) (PTR)) + (((uintptr_t) (BOUNDARY)) - 1))    \
-                 & (~(((uintptr_t)(BOUNDARY))-1))                     \
-                 )                                                    \
-  )
+#define ALIGN_VALUE(PTR, BOUNDARY) \
+  ((((uintptr_t) (PTR)) + (((uintptr_t) (BOUNDARY)) - 1)) & (~(((uintptr_t)(BOUNDARY))-1)))
+
 // ----------------------------------------------------------------------------
 
 // where b0 is the lowest byte
@@ -159,17 +146,33 @@ ADBUSI_FUNC void TimerEnd(uint64_t begin, const char* what);
 
 // ----------------------------------------------------------------------------
 
-ADBUSI_FUNC uint ADBusIsValidObjectPath_(const char* str, size_t len);
-ADBUSI_FUNC uint ADBusIsValidInterfaceName_(const char* str, size_t len);
-ADBUSI_FUNC uint ADBusIsValidBusName_(const char* str, size_t len);
-ADBUSI_FUNC uint ADBusIsValidMemberName_(const char* str, size_t len);
-ADBUSI_FUNC uint ADBusHasNullByte_(const uint8_t* str, size_t len);
-ADBUSI_FUNC uint ADBusIsValidUtf8_(const uint8_t* str, size_t len);
-ADBUSI_FUNC const char* ADBusFindArrayEnd_(const char* arrayBegin);
+ADBUSI_FUNC uint IsValidObjectPath(const char* str, size_t len);
+ADBUSI_FUNC uint IsValidInterfaceName(const char* str, size_t len);
+ADBUSI_FUNC uint IsValidBusName(const char* str, size_t len);
+ADBUSI_FUNC uint IsValidMemberName(const char* str, size_t len);
+ADBUSI_FUNC uint HasNullByte(const uint8_t* str, size_t len);
+ADBUSI_FUNC uint IsValidUtf8(const uint8_t* str, size_t len);
+ADBUSI_FUNC const char* FindArrayEnd(const char* arrayBegin);
 
 // ----------------------------------------------------------------------------
 
-#ifdef __cplusplus
-}
-#endif
+ADBUSI_FUNC int InvalidArgumentError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int InvalidPathError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int InvalidInterfaceError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int InvalidMethodError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int InvalidPropertyError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int PropWriteError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int PropReadError(struct ADBusCallDetails* d);
+ADBUSI_FUNC int PropTypeError(struct ADBusCallDetails* d);
+
+// ----------------------------------------------------------------------------
+
+
+ADBUSI_FUNC struct ADBusUser* CreateUserPointer(void* p);
+ADBUSI_FUNC void* GetUserPointer(const struct ADBusUser* data);
+
+ADBUSI_FUNC void SanitisePath(kstring_t* out, const char* path1, int size1, const char* path2, int size2);
+ADBUSI_FUNC void ParentPath(char* path, size_t size, size_t* parentSize);
+
+ADBUSI_FUNC void AppendMatchString(struct ADBusMarshaller* mar, const struct ADBusMatch* match);
 

@@ -233,8 +233,7 @@ template<class T>
 void operator>>(const std::vector<T>& vec, ADBusMarshaller& m)
 {
     adbus::CheckForMarshallError(ADBusBeginArray(&m));
-    for (size_t i = 0; i < vec.size(); ++i)
-    {
+    for (size_t i = 0; i < vec.size(); ++i) {
         vec[i] >> m;
     }
     adbus::CheckForMarshallError(ADBusEndArray(&m));
@@ -246,8 +245,7 @@ void operator>>(const std::map<K,V>& Map, ADBusMarshaller& m)
     adbus::CheckForMarshallError(ADBusBeginArray(&m));
     typedef typename std::map<K,V>::const_iterator iterator;
     iterator mi;
-    for (mi = Map.begin(); mi != Map.end(); ++mi)
-    {
+    for (mi = Map.begin(); mi != Map.end(); ++mi) {
         adbus::CheckForMarshallError(ADBusBeginDictEntry(&m));
         mi->first >> m;
         mi->second >> m;
@@ -289,8 +287,7 @@ void operator<<(std::vector<T>& vector, ADBusIterator& i)
     adbus::Iterate(&i, &field, ADBusArrayBeginField);
 
     vector.clear();
-    while(!ADBusIsScopeAtEnd(&i,field.scope))
-    {
+    while(!ADBusIsScopeAtEnd(&i,field.scope)) {
         vector.resize(vector.size() + 1);
         vector[vector.size() - 1] << i;
     }
@@ -305,7 +302,7 @@ void operator<<(adbus::ArrayReference<T>& array, ADBusIterator& i)
     adbus::Iterate(&i, &field, ADBusArrayBeginField);
 
     array.size = field.size / sizeof(T);
-    array.data = ADBusCurrentIteratorData(&i, NULL);
+    ADBusGetIteratorData(&i, NULL, NULL, &array.data, NULL);
 
     int err = ADBusJumpToEndOfArray(&i, field.scope);
     if (err)

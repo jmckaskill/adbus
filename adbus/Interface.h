@@ -25,18 +25,12 @@
 
 #pragma once
 #include "Common.h"
-#include "User.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct ADBusUser;
-struct ADBusIterator;
-struct ADBusMessage;
-struct ADBusConnection;
-struct ADBusMarshaller;
-
+/** \defgroup ADBusInterface Interface
+ *  \ingroup adbus
+ *
+ * @{
+ */
 
 // ----------------------------------------------------------------------------
 // Interface management
@@ -45,13 +39,6 @@ struct ADBusInterface;
 
 ADBUS_API struct ADBusInterface* ADBusCreateInterface(const char* name, int size); 
 ADBUS_API void ADBusFreeInterface(struct ADBusInterface* interface);
-
-enum ADBusMemberType
-{
-    ADBusMethodMember,
-    ADBusSignalMember,
-    ADBusPropertyMember,
-};
 
 ADBUS_API struct ADBusMember* ADBusAddMember(
         struct ADBusInterface*      interface,
@@ -107,16 +94,6 @@ ADBUS_API void ADBusSetPropertyType(
         const char*                 type,
         int                         typeSize);
 
-ADBUS_API const char* ADBusPropertyType(
-        struct ADBusMember*         member,
-        size_t*                     size);
-
-ADBUS_API uint ADBusIsPropertyReadable(
-        struct ADBusMember*         member);
-
-ADBUS_API uint ADBusIsPropertyWritable(
-        struct ADBusMember*         member);
-
 ADBUS_API void ADBusSetPropertyGetCallback(
         struct ADBusMember*         member,
         ADBusMessageCallback        callback,
@@ -127,22 +104,7 @@ ADBUS_API void ADBusSetPropertySetCallback(
         ADBusMessageCallback        callback,
         struct ADBusUser*           user1);
 
-// Call callbacks
 
-ADBUS_API void ADBusCallMethod(
-        struct ADBusMember*         member,
-        struct ADBusCallDetails*    details);
-
-ADBUS_API void ADBusCallSetProperty(
-        struct ADBusMember*         member,
-        struct ADBusCallDetails*    details);
-
-ADBUS_API void ADBusCallGetProperty(
-        struct ADBusMember*         member,
-        struct ADBusCallDetails*    details);
-#ifdef __cplusplus
-}
-#endif
 
 
 

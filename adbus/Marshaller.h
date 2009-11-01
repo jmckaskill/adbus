@@ -27,49 +27,49 @@
 
 #include "Common.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// ----------------------------------------------------------------------------
-
-struct ADBusMarshaller;
-// Marshalls arguments into a dbus marshalled block and signature
-// The marshaller owns the data internally, but it can be copied out via
-// GetMarshalledData to another owner
-//
-// The various append functions can return an error code if they are used
-// incorrectly eg. appending an array of uint8_t where the first item is a
-// uint8_t but the second is a uint16_t or where the append does not match the
-// signature
-//
-// The signature must be set before appending any data. This is because
-// certain cases have a signature but no data to figure out the sig from eg
-// an empty list
-//
-// All functions taking a string take both a const char* and a size. The size
-// can be set to the actual string length or -1 at which point strlen is used
-// to find the string length.
+/** \defgroup ADBusMarshaller Marshaller
+ *  \ingroup adbus
+ *
+ * \brief Functions to marshall data into dbus form.
+ *
+ * Marshalls arguments into a dbus marshalled block and signature. The
+ * marshaller owns the data internally, but it can be copied out via
+ * GetMarshalledData to another owner
+ *
+ * The various append functions can return an error code if they are used
+ * incorrectly eg. appending an array of uint8_t where the first item is a
+ * uint8_t but the second is a uint16_t or where the append does not match the
+ * signature
+ *
+ * The signature must be set before appending any data. This is because
+ * certain cases have a signature but no data to figure out the sig from eg an
+ * empty list.
+ *
+ * All functions taking a string take both a const char* and a size. The size
+ * can be set to the actual string length or -1 at which point strlen is used
+ * to find the string length.
+ *
+ * @{
+ */
 
 ADBUS_API struct ADBusMarshaller* ADBusCreateMarshaller();
-ADBUS_API void ADBusFreeMarshaller(struct ADBusMarshaller* m);
-
-ADBUS_API void ADBusResetMarshaller(struct ADBusMarshaller* m);
+ADBUS_API void ADBusFreeMarshaller(struct ADBusMarshaller* marshaller);
+ADBUS_API void ADBusResetMarshaller(struct ADBusMarshaller* marshaller);
 
 // Data and string is valid until the marshaller is reset, freed, or updated
 ADBUS_API void ADBusGetMarshalledData(
-        const struct ADBusMarshaller* m,
-        const char**            sig,
-        size_t*                 sigsize,
-        const uint8_t**         data,
-        size_t*                 datasize);
+        const struct ADBusMarshaller*   marshaller,
+        const char**                    sig,
+        size_t*                         sigsize,
+        const uint8_t**                 data,
+        size_t*                         datasize);
 
 ADBUS_API void ADBusSetMarshalledData(
-        struct ADBusMarshaller* m,
-        const char*             sig,
-        int                     sigsize,
-        const uint8_t*          data,
-        size_t                  datasize);
+        struct ADBusMarshaller*         marshaller,
+        const char*                     sig,
+        int                             sigsize,
+        const uint8_t*                  data,
+        size_t                          datasize);
 
 ADBUS_API int ADBusAppendArguments(struct ADBusMarshaller* m, const char* sig, int size);
 
@@ -106,8 +106,5 @@ ADBUS_API int ADBusEndVariant(struct ADBusMarshaller* m);
 
 ADBUS_API int ADBusAppendIteratorData(struct ADBusMarshaller* m, struct ADBusIterator* i, uint scope);
 
-// ----------------------------------------------------------------------------
+/** @} */
 
-#ifdef __cplusplus
-}
-#endif

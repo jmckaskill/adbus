@@ -26,30 +26,53 @@
 #pragma once
 
 #include "Common.h"
-#include "Interface.h"
-#include "Marshaller.h"
-#include "Message.h"
-#include "User.h"
 
-ADBUS_API struct ADBusConnection* ADBusCreateConnection();
-ADBUS_API void ADBusFreeConnection(struct ADBusConnection* connection);
+struct ADBusObjectPath
+{
+    struct ADBusConnection* connection;
+    const char*             path;
+    size_t                  pathSize;
+};
 
-ADBUS_API void ADBusSetSendCallback(
+
+
+ADBUS_API struct ADBusObjectPath* ADBusGetObjectPath(
         struct ADBusConnection*     connection,
-        ADBusSendCallback           callback,
-        struct ADBusUser*           data);
+        const char*                 path,
+        int                         size);
 
-ADBUS_API void ADBusSendMessage(
-        struct ADBusConnection*     connection,
-        struct ADBusMessage*        message);
+ADBUS_API struct ADBusObjectPath* ADBusRelativePath(
+        struct ADBusObjectPath*     path,
+        const char*                 relpath,
+        int                         size);
 
-ADBUS_API uint32_t ADBusNextSerial(
-        struct ADBusConnection*     connection);
 
-ADBUS_API int ADBusDispatch(
-        struct ADBusConnection*     connection,
-        struct ADBusMessage*        message);
 
-ADBUS_API int ADBusRawDispatch(
-        struct ADBusCallDetails*    details);
+ADBUS_API int ADBusBindInterface(
+        struct ADBusObjectPath*     path,
+        struct ADBusInterface*      interface,
+        struct ADBusUser*           user2);
+
+ADBUS_API int ADBusUnbindInterface(
+        struct ADBusObjectPath*     path,
+        struct ADBusInterface*      interface);
+
+
+
+ADBUS_API struct ADBusInterface* ADBusGetBoundInterface(
+        struct ADBusObjectPath*     path,
+        const char*                 interface,
+        int                         interfaceSize,
+        const struct ADBusUser**    user2);
+
+ADBUS_API struct ADBusMember* ADBusGetBoundMember(
+        struct ADBusObjectPath*     path,
+        enum ADBusMemberType        type,
+        const char*                 member,
+        int                         memberSize,
+        const struct ADBusUser**    user2);
+
+
+
+
 

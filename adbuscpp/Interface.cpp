@@ -38,56 +38,27 @@ using namespace adbus;
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-void adbus::CallMethod(struct ADBusCallDetails* details)
-{
-    UserDataBase* data = (UserDataBase*) details->user1;
-    assert(data->chainedFunction);
-
-    try
-    {
-        data->chainedFunction(details);
-    }
-    catch (ParseError& e)
-    {
-        details->parseError = e.parseError;
-    }
-    catch (Error& e)
-    {
-        if (!details->returnMessage)
-            return;
-
-        const char* errorName = e.errorName();
-        const char* errorMessage = e.errorMessage();
-
-        ADBusSetupError(
-                details,
-                errorName,
-                -1,
-                errorMessage,
-                -1);
-    }
-}
-
-// ----------------------------------------------------------------------------
-
 Interface::Interface(const std::string& name)
 {
-  m_I = ADBusCreateInterface(name.c_str(), name.size());
+  m_Interface = ADBusCreateInterface(name.c_str(), name.size());
 }
 
 // ----------------------------------------------------------------------------
 
 Interface::~Interface()
 {
-  ADBusFreeInterface(m_I);
+  ADBusFreeInterface(m_Interface);
 }
 
 // ----------------------------------------------------------------------------
 
 Member Interface::addMethod(const std::string& name)
 {
-  struct ADBusMember* member 
-    = ADBusAddMember(m_I, ADBusMethodMember, name.c_str(), name.size());
+  struct ADBusMember* member = ADBusAddMember(
+          m_Interface,
+          ADBusMethodMember,
+          name.c_str(),
+          (int) name.size());
 
   return Member(member, ADBusMethodMember);
 }
@@ -96,8 +67,11 @@ Member Interface::addMethod(const std::string& name)
 
 Member Interface::addSignal(const std::string& name)
 {
-  struct ADBusMember* member 
-    = ADBusAddMember(m_I, ADBusSignalMember, name.c_str(), name.size());
+  struct ADBusMember* member = ADBusAddMember(
+          m_Interface,
+          ADBusSignalMember,
+          name.c_str(),
+          (int) name.size());
 
   return Member(member, ADBusSignalMember);
 }
@@ -106,10 +80,13 @@ Member Interface::addSignal(const std::string& name)
 
 Member Interface::addProperty(const std::string& name, const std::string& type)
 {
-  struct ADBusMember* member 
-    = ADBusAddMember(m_I, ADBusPropertyMember, name.c_str(), name.size());
+  struct ADBusMember* member = ADBusAddMember(
+          m_Interface,
+          ADBusPropertyMember,
+          name.c_str(),
+          (int) name.size());
 
-  ADBusSetPropertyType(member, type.c_str(), type.size());
+  ADBusSetPropertyType(member, type.c_str(), (int) type.size());
 
   return Member(member, ADBusPropertyMember);
 }
@@ -118,22 +95,34 @@ Member Interface::addProperty(const std::string& name, const std::string& type)
 
 Member Interface::method(const std::string& name)
 {
-  struct ADBusMember* member =
-      ADBusGetInterfaceMember(m_I, ADBusMethodMember, name.c_str(), name.size());
+  struct ADBusMember* member = ADBusGetInterfaceMember(
+          m_Interface,
+          ADBusMethodMember,
+          name.c_str(),
+          (int) name.size());
+
   return Member(member, ADBusMethodMember);
 }
 
 Member Interface::signal(const std::string& name)
 {
-  struct ADBusMember* member =
-      ADBusGetInterfaceMember(m_I, ADBusSignalMember, name.c_str(), name.size());
+  struct ADBusMember* member = ADBusGetInterfaceMember(
+          m_Interface,
+          ADBusSignalMember,
+          name.c_str(),
+          (int) name.size());
+
   return Member(member, ADBusSignalMember);
 }
 
 Member Interface::property(const std::string& name)
 {
-  struct ADBusMember* member =
-      ADBusGetInterfaceMember(m_I, ADBusMethodMember, name.c_str(), name.size());
+  struct ADBusMember* member = ADBusGetInterfaceMember(
+          m_Interface,
+          ADBusMethodMember,
+          name.c_str(),
+          (int) name.size());
+
   return Member(member, ADBusPropertyMember);
 }
 
@@ -142,7 +131,7 @@ Member Interface::property(const std::string& name)
 // ----------------------------------------------------------------------------
 
 Member::Member(ADBusMember* member, ADBusMemberType type)
-: m(member),
+: m_Member(member),
   m_Type(type)
 {
 }
@@ -151,7 +140,11 @@ Member::Member(ADBusMember* member, ADBusMemberType type)
 
 Member& Member::addAnnotation(const std::string& name, const std::string& value)
 {
-  ADBusAddAnnotation(m, name.c_str(), name.size(), value.c_str(), value.size());
+  ADBusAddAnnotation(
+          m_Member,
+          name.c_str(), (int) name.size(),
+          value.c_str(), (int) value.size());
+
   return *this;
 }
 
@@ -163,7 +156,12 @@ Member& Member::addArgument(const std::string& name, const std::string& type)
                              ? ADBusSignalArgument
                              : ADBusInArgument;
 
-  ADBusAddArgument(m, dir, name.c_str(), name.size(), type.c_str(), type.size());
+  ADBusAddArgument(
+          m_Member,
+          dir,
+          name.c_str(), (int) name.size(),
+          type.c_str(), (int) type.size());
+
   return *this;
 }
 
@@ -171,8 +169,12 @@ Member& Member::addArgument(const std::string& name, const std::string& type)
 
 Member& Member::addReturn(const std::string& name, const std::string& type)
 {
-  ADBusArgumentDirection dir = ADBusOutArgument;
-  ADBusAddArgument(m, dir, name.c_str(), name.size(), type.c_str(), type.size());
+  ADBusAddArgument(
+          m_Member,
+          ADBusOutArgument,
+          name.c_str(), (int) name.size(),
+          type.c_str(), (int) type.size());
+
   return *this;
 }
 
@@ -180,7 +182,7 @@ Member& Member::addReturn(const std::string& name, const std::string& type)
 
 Member& Member::setMethod(ADBusMessageCallback callback, ADBusUser* user1)
 {
-  ADBusSetMethodCallback(m, callback, user1);
+  ADBusSetMethodCallback(m_Member, callback, user1);
   return *this;
 }
 
@@ -188,7 +190,7 @@ Member& Member::setMethod(ADBusMessageCallback callback, ADBusUser* user1)
 
 Member& Member::setSetter(ADBusMessageCallback callback, ADBusUser* user1)
 {
-  ADBusSetPropertySetCallback(m, callback, user1);
+  ADBusSetPropertySetCallback(m_Member, callback, user1);
   return *this;
 }
 
@@ -196,7 +198,7 @@ Member& Member::setSetter(ADBusMessageCallback callback, ADBusUser* user1)
 
 Member& Member::setGetter(ADBusMessageCallback callback, ADBusUser* user1)
 {
-  ADBusSetPropertyGetCallback(m, callback, user1);
+  ADBusSetPropertyGetCallback(m_Member, callback, user1);
   return *this;
 }
 

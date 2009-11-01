@@ -37,11 +37,13 @@
 
 namespace adbus
 {
-    class SignalBase;
-
-    void CallMethod(struct ADBusCallDetails* details);
 
     // ----------------------------------------------------------------------------
+
+    /** Something about member.
+     *
+     * \ingroup adbuscpp
+     */
 
     class Member
     {
@@ -62,11 +64,12 @@ namespace adbus
         Member& setGetter(ADBusMessageCallback callback, ADBusUser* user1);
         Member& setSetter(ADBusMessageCallback callback, ADBusUser* user1);
 
-        // M is the type of the object bound in
+        // O is the type of the object bound in
         // T is the type of the property
-        template<class M, class T, class MemFun> Member& setGetter(MemFun f);
-        template<class M, class T, class MemFun> Member& setSetter(MemFun f);
+        template<class O, class T, class MF> Member& setGetter(MF f);
+        template<class O, class T, class MF> Member& setSetter(MF f);
 
+#ifdef DOC
         // This now includes a whole bunch of method callback set functions
         // like:
         //
@@ -74,16 +77,14 @@ namespace adbus
         // A0, A1 ... are the base types of the arguments
         // arg0, arg1 .. are the names of the arguments given in the
         // introspection
-        //
-        // template<class M, class A0, class A1, class MemFun>
-        // Member& setMethod2(MemFun f,
-        //                    const std::string& arg0,
-        //                    const std::string& arg1);
-        //
-        // template<class M, class R, class A0, class A1, class MemFun>
-        // Member& setMethodReturn2(MemFun f,
-        //                    const std::string& arg0,
-        //                    const std::string& arg1);
+
+        template<class O, class A0 ..., class MF>
+        Member& setMethodX(MF f, const std::string& arg0 ...);
+
+        template<class O, class R, class A0 ..., class MF>
+        Member& setMethodReturnX(MF f, const std::string& arg0 ...);
+
+#else
 
 #define NUM 0
 #define REPEAT_SEPERATOR(x, sep)
@@ -125,14 +126,20 @@ namespace adbus
 #define REPEAT_SEPERATOR(x, sep) x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8)
 #include "Interface_t.h"
 
-        operator ADBusMember*()const{return m;}
+#endif
+
+        operator ADBusMember*()const {return m_Member;}
     private:
-        ADBusMember* m;
+        ADBusMember*    m_Member;
         ADBusMemberType m_Type;
     };
 
     // ----------------------------------------------------------------------------
 
+    /** Something about interface.
+     *
+     * \ingroup adbuscpp
+     */
 
     class Interface
     {
@@ -151,59 +158,59 @@ namespace adbus
         Member signal(const std::string& name);
         Member property(const std::string& name);
 
-        operator ADBusInterface*()const{return m_I;}
+        operator ADBusInterface*()const {return m_Interface;}
 
     private:
-        ADBusInterface* m_I;
+        ADBusInterface* m_Interface;
     };
 
     // ----------------------------------------------------------------------------
     // ----------------------------------------------------------------------------
     // ----------------------------------------------------------------------------
 
-    template<class M, class T, class F>
-    void SetPropertyCallback(
-            struct ADBusCallDetails*    details)
+    template<class O, class T, class MF>
+    int SetPropertyCallback(struct ADBusCallDetails* d)
     {
-        UserData<F>* functionData = (UserData<F>*) details->user1;
-        UserData<M*>* objectData = (UserData<M*>*) details->user2;
-        F function = functionData->data;
-        M* object = objectData->data;
+        UserData<MF>* functionData = (UserData<MF>*) d->user1;
+        UserData<O*>* objectData   = (UserData<O*>*) d->user2;
+        MF function = functionData->data;
+        O* object   = objectData->data;
 
         T value;
-        value << *details->propertyIterator;
+        value << *d->propertyIterator;
         (object->*function)(value);
+        return 0;
     }
 
-    template<class M, class T, class F>
-    void GetPropertyCallback(
-            struct ADBusCallDetails*    details)
+    template<class O, class T, class MF>
+    int GetPropertyCallback(struct ADBusCallDetails* d)
     {
-        UserData<F>* functionData = (UserData<F>*) details->user1;
-        UserData<M*>* objectData = (UserData<M*>*) details->user2;
-        F function = functionData->data;
-        M* object = objectData->data;
+        UserData<MF>* functionData = (UserData<MF>*) d->user1;
+        UserData<O*>* objectData   = (UserData<O*>*) d->user2;
+        MF function = functionData->data;
+        O* object   = objectData->data;
 
         T value = (object->*function)();
-        value >> *details->propertyMarshaller;
+        value >> *d->propertyMarshaller;
+        return 0;
     }
 
 
-    template<class M, class T, class MemFun>
-    Member& Member::setGetter(MemFun f)
+    template<class O, class T, class MF>
+    Member& Member::setGetter(MF f)
     {
-        UserData<MemFun>* functionData = new UserData<MemFun>(f);
-        functionData->chainedFunction = &GetPropertyCallback<M, T, MemFun>;
-        setGetter(&CallMethod, functionData);
+        UserData<MF>* functionData = new UserData<MF>(f);
+        functionData->chainedFunction = &GetPropertyCallback<O, T, MF>;
+        setGetter(&detail::CallMethod, functionData);
         return *this;
     }
 
-    template<class M, class T, class MemFun>
-    Member& Member::setSetter(MemFun f)
+    template<class O, class T, class MF>
+    Member& Member::setSetter(MF f)
     {
-        UserData<MemFun>* functionData = new UserData<MemFun>(f);
-        functionData->chainedFunction = &SetPropertyCallback<M, T, MemFun>;
-        setSetter(&CallMethod, functionData);
+        UserData<MF>* functionData = new UserData<MF>(f);
+        functionData->chainedFunction = &SetPropertyCallback<O, T, MF>;
+        setSetter(&detail::CallMethod, functionData);
         return *this;
     }
 

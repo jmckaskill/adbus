@@ -24,6 +24,8 @@
  */
 
 #include "Connection.h"
+#include "Match.h"
+#include "ObjectPath.h"
 #include "User.h"
 #include "memory/khash.h"
 #include "memory/kvector.h"
@@ -31,10 +33,30 @@
 #include <setjmp.h>
 #include <stdint.h>
 
-// ----------------------------------------------------------------------------
-// Struct definitions
+
 // ----------------------------------------------------------------------------
 
+struct Bind
+{
+    struct ADBusInterface*  interface;
+    struct ADBusUser*       user2;
+};
+
+// ----------------------------------------------------------------------------
+
+struct ObjectPath;
+
+KVECTOR_INIT(ObjectPtr, struct ObjectPath*)
+KHASH_MAP_INIT_STR(ObjectPtr, struct ObjectPath*)
+KHASH_MAP_INIT_STR(Bind, struct Bind)
+
+struct ObjectPath
+{
+    struct ADBusObjectPath      h;
+    khash_t(Bind)*              interfaces;
+    kvector_t(ObjectPtr)*       children;
+    struct ObjectPath*          parent;
+};
 
 // ----------------------------------------------------------------------------
 
@@ -51,29 +73,6 @@ struct Match
 {
     struct ADBusMatch       m;
     struct Service*         service;
-};
-
-// ----------------------------------------------------------------------------
-
-struct Bind
-{
-    struct ADBusInterface*  interface;
-    struct ADBusUser*       user2;
-};
-
-// ----------------------------------------------------------------------------
-
-KVECTOR_INIT(ObjectPtr, struct ADBusObject*)
-KHASH_MAP_INIT_STR(ObjectPtr, struct ADBusObject*)
-KHASH_MAP_INIT_STR(Bind, struct Bind)
-
-struct ADBusObject
-{
-    struct ADBusConnection*     connection;
-    char*                       name;
-    khash_t(Bind)*              interfaces;
-    kvector_t(ObjectPtr)*       children;
-    struct ADBusObject*         parent;
 };
 
 // ----------------------------------------------------------------------------
@@ -103,7 +102,8 @@ struct ADBusConnection
     struct ADBusUser*           sendMessageData;
 
     struct ADBusMessage*        returnMessage;
-    struct ADBusMessage*        outgoingMessage;
+
+    struct ADBusProxy*          bus;
 
     struct ADBusIterator*       dispatchIterator;
 
@@ -112,16 +112,12 @@ struct ADBusConnection
 
     khash_t(Service)*           services;
 
-    jmp_buf                     errorJmpBuf;
+    jmp_buf                     jmpbuf;
 };
 
-// ----------------------------------------------------------------------------
 
-KVECTOR_INIT(uint8_t, uint8_t)
-
-struct ADBusStreamBuffer
-{
-    kvector_t(uint8_t)*         buf;
-};
+void FreeMatchData(struct Match* m);
+void FreeObjectPath(struct ObjectPath* o);
+void FreeService(struct Service* s);
 
 

@@ -1,0 +1,40 @@
+PROJECT_NAME = ADBus
+INPUT = adbus/Auth.h \
+        adbus/Common.h \
+        adbus/CommonMessages.h \
+        adbus/Connection.h \
+        adbus/Factory.h \
+        adbus/Interface.h \
+        adbus/Iterator.h \
+        adbus/Marshaller.h \
+        adbus/Message.h \
+        adbus/Proxy.h \
+        adbus/Socket.h \
+        adbus/User.h \
+        adbuscpp/Bind.h \
+        adbuscpp/Common.h \
+        adbuscpp/Factory.h \
+        adbuscpp/Interface.h \
+        adbuscpp/Message.h \
+        adbuscpp/Object.h \
+        adbuscpp/Signal.h \
+        adbuscpp/Variant.h \
+        adbuslua/LMessage.h \
+        adbuslua/LADBus.h
+
+EXCLUDE = luaembed/luaembed.auto.h
+OUTPUT_DIRECTORY = build/docs
+      
+OPTIMIZE_OUTPUT_FOR_C = YES
+GENERATE_HTML = YES
+GENERATE_LATEX = NO
+EXTRACT_ALL = YES
+JAVADOC_AUTOBRIEF = YES
+MACRO_EXPANSION = YES
+EXPAND_ONLY_PREDEF = YES
+PREDEFINED = DOC ADBUS_API LADBUS_API
+HTML_DYNAMIC_SECTIONS = YES
+GENERATE_TREEVIEW = YES
+SEARCHENGINE = YES
+SHOW_NAMESPACES = NO
+ENUM_VALUES_PER_LINE = 1

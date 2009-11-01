@@ -107,14 +107,14 @@ static uint64_t Get64BitData(struct ADBusIterator *i)
 #ifndef NDEBUG
 static uint IsAligned(struct ADBusIterator *i)
 {
-    return (((uintptr_t)(i->data)) % ADBusRequiredAlignment_(*i->signature)) == 0;
+    return (((uintptr_t)(i->data)) % RequiredAlignment(*i->signature)) == 0;
 }
 #endif
 
 static void ProcessAlignment(struct ADBusIterator *i)
 {
-    size_t padding = ADBusRequiredAlignment_(*i->signature);
-    i->data = ADBUS_ALIGN_VALUE_(uint8_t*, i->data, padding);
+    size_t padding = RequiredAlignment(*i->signature);
+    i->data = (const uint8_t*) ALIGN_VALUE(i->data, padding);
 }
 
 
@@ -226,13 +226,13 @@ static int ProcessStringData(struct ADBusIterator *i, struct ADBusField* f)
         return ADBusInvalidData;
 
     const uint8_t* str = GetData(i, size + 1);
-    if (ADBusHasNullByte_(str, size))
+    if (HasNullByte(str, size))
         return ADBusInvalidData;
 
     if (*(str + size) != '\0')
         return ADBusInvalidData;
 
-    if (!ADBusIsValidUtf8_(str, size))
+    if (!IsValidUtf8(str, size))
         return ADBusInvalidData;
 
     f->string = (const char*) str;
@@ -257,7 +257,7 @@ static int ProcessObjectPath(struct ADBusIterator *i, struct ADBusField* f)
     if (err)
         return err;
 
-    if (!ADBusIsValidObjectPath_(f->string, f->size))
+    if (!IsValidObjectPath(f->string, f->size))
         return ADBusInvalidData;
 
     return 0;
@@ -459,7 +459,7 @@ static int NextArrayField(struct ADBusIterator *i, struct ADBusField* f)
         return ProcessField(i,f);
     }
 
-    i->signature = ADBusFindArrayEnd_(e->data.array.typeBegin);
+    i->signature = FindArrayEnd(e->data.array.typeBegin);
     if (i->signature == NULL)
         return 1;
 
@@ -625,25 +625,26 @@ void ADBusSetIteratorEndianness(
         struct ADBusIterator*       i,
         enum ADBusEndianness        endianness)
 {
-    i->alternateEndian = ((char) endianness != ADBusNativeEndianness_);
+    i->alternateEndian = ((char) endianness != NativeEndianness);
 }
 
 // ----------------------------------------------------------------------------
 
-const uint8_t* ADBusCurrentIteratorData(struct ADBusIterator* i, size_t* size)
+void ADBusGetIteratorData(
+        const struct ADBusIterator* i,
+        const char**                sig,
+        size_t*                     sigsize,
+        const uint8_t**             data,
+        size_t*                     datasize)
 {
-    if (size)
-        *size = i->dataEnd - i->data;
-    return i->data;
-}
-
-// ----------------------------------------------------------------------------
-
-const char* ADBusCurrentIteratorSignature(struct ADBusIterator *i, size_t* size)
-{
-    if (size)
-        *size = strlen(i->signature);
-    return i->signature;
+    if (sig)
+        *sig = i->signature;
+    if (sigsize)
+        *sigsize = strlen(i->signature);
+    if (data)
+        *data = i->data;
+    if (datasize)
+        *datasize = i->dataEnd - i->data;
 }
 
 // ----------------------------------------------------------------------------
@@ -736,22 +737,17 @@ int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope)
 // ----------------------------------------------------------------------------
 
 static void CheckField(
-        struct ADBusCallDetails*    details,
+        struct ADBusCallDetails*    d,
         struct ADBusField*          field,
         enum ADBusFieldType         type)
 {
-    int err = ADBusIterate(details->arguments, field);
+    int err = ADBusIterate(d->args, field);
     if (err) {
-        details->parseError = err;
-        longjmp(details->jmpbuf, 0);
+        longjmp(d->jmpbuf, err);
     }
 
     if (field->type != type) {
-        ADBusSetupError(
-                details,
-                "nz.co.foobar.ADBus.Error.InvalidArgument", -1,
-                "Invalid arguments passed to a method call.", -1);
-        longjmp(details->jmpbuf, 0);
+        InvalidArgumentError(d);
     }
 }
 

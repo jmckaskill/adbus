@@ -28,101 +28,101 @@
 #include "Common.h"
 #include "Object.h"
 
-#include "adbus/Marshaller.h"
 #include "adbus/Message.h"
+#include "adbus/Proxy.h"
 
 #include <string>
 
-struct ADBusMessage;
+namespace adbus
+{
 
-namespace adbus{
+    /** \addtogroup adbuscpp
+     *
+     * @{
+     */
 
-    //-----------------------------------------------------------------------------
-
-    class MessageFactory
+    class Proxy
     {
-        ADBUSCPP_NON_COPYABLE(MessageFactory);
+        ADBUSCPP_NON_COPYABLE(Proxy);
     public:
-        MessageFactory();
-        ~MessageFactory();
-        void reset();
-        void setConnection(ADBusConnection* connection)      {m_Connection = connection;}
-        void setDestination(const std::string& dest)    {m_Destination = dest;}
-        void setPath(const std::string& path)           {m_Path = path;}
-        void setInterface(const std::string& interface) {m_Interface = interface;}
-        void setMember(const std::string& member)       {m_Member = member;}
-        void setFlag(uint8_t flag)                      {m_Flags |= flag;}
+        Proxy();
+        ~Proxy();
 
-        void setNoReply()                               {setFlag(ADBusNoReplyExpectedFlag);}
-        void setNoAutostart()                           {setFlag(ADBusNoAutoStartFlag);}
+        void bind(
+                struct ADBusConnection* connection,
+                const std::string&      service,
+                const std::string&      path);
 
-        // This now includes a whole bunch of method callback set functions
-        // like:
-        //
-        // template<class A0, class A1, class A2, class U, class MemFun>
-        // void setCallback2(Object* object, U* mfObject, MemFun mf);
-        //
-        // template<class A0, class A1, class A2, class U, class MemFun>
-        // void setErrorCallback2(Object* object, U* mfObject, MemFun mf);
-        //
-        // template<class A0, class A1, class A2>
-        // void call(const A0& a0, const A1& a1, const A2& a2);
+        void bind(
+                struct ADBusConnection* connection,
+                const std::string&      service,
+                const std::string&      path,
+                const std::string&      interface);
+
+        bool isBound()const {return m_Proxy != NULL;}
+
+#ifdef DOC
+
+        template<class A0 ..., class MF, class O>
+        void setCallbackX(Object* object, O* o, MF mf);
+
+        template<class A0 ..., class MF, class O>
+        void setErrorCallbackX(Object* object, O* o, MF mf);
+
+        template<class A0 ...>
+        void call(const std::string& member, const A0& a0 ...);
+
+#else
 
 #define NUM 0
 #define REPEAT(x, sep, lead, tail)
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 1
 #define REPEAT(x, sep, lead, tail) lead x(0) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 2
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 3
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 4
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 5
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 6
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 7
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 8
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
 
 #define NUM 9
 #define REPEAT(x, sep, lead, tail) lead x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8) tail
-#include "MessageFactory_t.h"
+#include "Proxy_t.h"
+
+#endif
 
     private:
-        void setupMatch(enum ADBusMessageType type);
-        void setupMessage();
-        void sendMessage();
-        ADBusConnection*    m_Connection;
-        Match               m_Match;
-        uint8_t             m_Flags;
-        std::string         m_Destination;
-        std::string         m_Path;
-        std::string         m_Interface;
-        std::string         m_Member;
-        ADBusMessage*       m_Message;
+        struct ADBusFactory m_Factory;
+        struct ADBusProxy*  m_Proxy;
     };
 
-    //-----------------------------------------------------------------------------
+
+    /** @} */
+
 
 }
-

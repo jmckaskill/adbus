@@ -85,8 +85,6 @@ c99_project("luaxml", "SharedLib", "9B52ED3C-AA46-5843-81F3-4FFA3C6EADED")
     links "lua5.1"
 
 c99_project("test-adbus", "ConsoleApp", "F05DC97B-044A-1847-AC92-8E39F3A7C10D")
-    files {"adbus/vector.c",
-           "adbus/str.c"}
     links {"adbus", 'memory'}
 
 c99_project("luaembed", "SharedLib", "7F701628-F043-704E-A438-AC3114FADC6E")

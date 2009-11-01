@@ -13,13 +13,13 @@ newaction {
         local builddir = _OPTIONS.to or "build"
         local luac = path.join(builddir, "luac")
         luaembed(luac, {
-            ["adbuslua"]             = "adbuslua/init.lua",
-            ["adbuslua.connection"]  = "adbuslua/connection.lua",
-            ["adbuslua.interface"]   = "adbuslua/interface.lua",
-            ["adbuslua.object"]      = "adbuslua/object.lua",
-            ["adbuslua.pretty"]      = "adbuslua/pretty.lua",
-            ["adbuslua.proxy"]       = "adbuslua/proxy.lua",
-            ["luaxml"]               = "luaxml/init.lua",
+            ["adbus"]            = "adbuslua/adbus/init.lua",
+            ["adbus.connection"] = "adbuslua/adbus/connection.lua",
+            ["adbus.interface"]  = "adbuslua/adbus/interface.lua",
+            ["adbus.object"]     = "adbuslua/adbus/object.lua",
+            ["adbus.pretty"]     = "adbuslua/adbus/pretty.lua",
+            ["adbus.proxy"]      = "adbuslua/adbus/proxy.lua",
+            ["luaxml"]           = "luaxml/init.lua",
         })
     end
 }

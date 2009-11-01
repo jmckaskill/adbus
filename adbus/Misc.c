@@ -25,6 +25,12 @@
 
 #include "Misc_p.h"
 
+#include "CommonMessages.h"
+#include "Marshaller.h"
+#include "Match.h"
+#include "Message.h"
+#include "User.h"
+
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -39,19 +45,7 @@
 
 // ----------------------------------------------------------------------------
 
-void ADBusPrintDebug_(const char* format, ...)
-{
-    va_list ap;
-    va_start(ap, format);
-    fprintf(stderr, "[adbus] ");
-    vfprintf(stderr, format, ap);
-    fprintf(stderr, "\n");
-    va_end(ap);
-}
-
-// ----------------------------------------------------------------------------
-
-uint ADBusRequiresServiceLookup_(const char* name, int size)
+uint RequiresServiceLookup(const char* name, int size)
 {
     if (size < 0)
         size = strlen(name);
@@ -129,7 +123,7 @@ static const char sRequiredAlignment[256] =
 };
 
 
-int ADBusRequiredAlignment_(char ch)
+int RequiredAlignment(char ch)
 {
     assert(sRequiredAlignment[(int)ch] > 0);
     return sRequiredAlignment[ch & 0x7F];
@@ -138,20 +132,20 @@ int ADBusRequiredAlignment_(char ch)
 // ----------------------------------------------------------------------------
 
 #ifdef ADBUS_LITTLE_ENDIAN
-const char ADBusNativeEndianness_ = 'l';
+const char NativeEndianness = 'l';
 #elif defined(ADBUS_BIG_ENDIAN)
-const char ADBusNativeEndianness_ = 'B';
+const char NativeEndianness = 'B';
 #else
 #error Please define ADBUS_LITTLE_ENDIAN or ADBUS_BIG_ENDIAN
 #endif
 
 // ----------------------------------------------------------------------------
 
-const uint8_t ADBusMajorProtocolVersion_ = 1;
+const uint8_t MajorProtocolVersion = 1;
 
 // ----------------------------------------------------------------------------
 
-uint ADBusIsValidObjectPath_(const char* str, size_t len)
+uint IsValidObjectPath(const char* str, size_t len)
 {
     if (!str || len == 0)
         return 0;
@@ -190,7 +184,7 @@ uint ADBusIsValidObjectPath_(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-uint ADBusIsValidInterfaceName_(const char* str, size_t len)
+uint IsValidInterfaceName(const char* str, size_t len)
 {
     if (!str || len == 0 || len > 255)
         return 0;
@@ -237,7 +231,7 @@ uint ADBusIsValidInterfaceName_(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-uint ADBusIsValidBusName_(const char* str, size_t len)
+uint IsValidBusName(const char* str, size_t len)
 {
     if (!str || len == 0 || len > 255)
         return 0;
@@ -287,7 +281,7 @@ uint ADBusIsValidBusName_(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-uint ADBusIsValidMemberName_(const char* str, size_t len)
+uint IsValidMemberName(const char* str, size_t len)
 {
     if (!str || len == 0 || len > 255)
         return 0;
@@ -322,14 +316,14 @@ uint ADBusIsValidMemberName_(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-uint ADBusHasNullByte_(const uint8_t* str, size_t len)
+uint HasNullByte(const uint8_t* str, size_t len)
 {
     return memchr(str, '\0', len) != NULL;
 }
 
 // ----------------------------------------------------------------------------
 
-uint ADBusIsValidUtf8_(const uint8_t* str, size_t len)
+uint IsValidUtf8(const uint8_t* str, size_t len)
 {
     if (!str)
         return 1;
@@ -423,7 +417,7 @@ uint ADBusIsValidUtf8_(const uint8_t* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-const char* ADBusFindArrayEnd_(const char* arrayBegin)
+const char* FindArrayEnd(const char* arrayBegin)
 {
     int dictEntries = 0;
     int structs = 0;
@@ -447,7 +441,7 @@ const char* ADBusFindArrayEnd_(const char* arrayBegin)
             break;
         case ADBusArrayBeginField:
             arrayBegin++;
-            arrayBegin = ADBusFindArrayEnd_(arrayBegin);
+            arrayBegin = FindArrayEnd(arrayBegin);
             break;
         case ADBusStructBeginField:
             structs++;
@@ -468,6 +462,258 @@ const char* ADBusFindArrayEnd_(const char* arrayBegin)
         arrayBegin++;
     }
     return (structs == 0 && dictEntries == 0) ? arrayBegin : NULL;
+}
+
+// ----------------------------------------------------------------------------
+
+struct UserPointer
+{
+    struct ADBusUser header;
+    void* pointer;
+};
+
+static void FreeUserPointer(struct ADBusUser* data)
+{
+    free(data);
+}
+
+struct ADBusUser* CreateUserPointer(void* p)
+{
+    struct UserPointer* u = NEW(struct UserPointer);
+    u->header.free = &FreeUserPointer;
+    u->pointer = p;
+    return &u->header;
+}
+
+void* GetUserPointer(const struct ADBusUser* data)
+{
+    return ((struct UserPointer*) data)->pointer;
+}
+
+// ----------------------------------------------------------------------------
+
+void SanitisePath(
+        kstring_t*  out,
+        const char* path1,
+        int         size1,
+        const char* path2,
+        int         size2)
+{
+    ks_clear(out);
+    if (size1 < 0)
+        size1 = strlen(path1);
+    if (size2 < 0)
+        size2 = strlen(path2);
+
+    // Make sure it starts with a /
+    if (size1 > 0 && path1[0] != '/')
+        ks_cat(out, "/");
+    if (size1 > 0)
+        ks_cat_n(out, path1, size1);
+
+    // Make sure it has a / seperator
+    if (size2 > 0 && path2[0] != '/')
+        ks_cat(out, "/");
+    if (size2 > 0)
+        ks_cat_n(out, path2, size2);
+
+    // Remove repeating slashes
+    for (size_t i = 1; i < ks_size(out); ++i) {
+        if (ks_a(out, i) == '/' && ks_a(out, i-1) == '/') {
+            ks_remove(out, i, 1);
+        }
+    }
+
+    // Remove trailing /
+    if (ks_size(out) > 1 && ks_a(out, ks_size(out) - 1) == '/')
+        ks_remove_end(out, 1);
+}
+
+// ----------------------------------------------------------------------------
+
+void ParentPath(
+        char*   path,
+        size_t  size,
+        size_t* parentSize)
+{
+    // Path should have already been sanitised so double /'s should not happen
+#ifndef NDEBUG
+    kstring_t* sanitised = ks_new();
+    SanitisePath(sanitised, path, size, NULL, 0);
+    assert(path[size] == '\0');
+    assert(ks_cmp(sanitised, path) == 0);
+    ks_free(sanitised);
+#endif
+
+    --size;
+
+    while (size > 1 && path[size] != '/') {
+        --size;
+    }
+
+    path[size] = '\0';
+
+    if (parentSize)
+        *parentSize = size;
+}
+
+// ----------------------------------------------------------------------------
+
+static void Append(kstring_t* s, const char* key, const char* value, int vsize)
+{
+    if (value) {
+        ks_cat(s, key);
+        ks_cat(s, "='");
+        if (vsize >= 0)
+            ks_cat_n(s, value, vsize);
+        else
+            ks_cat(s, value);
+        ks_cat(s, "',");
+    }
+}
+
+void AppendMatchString(
+        struct ADBusMarshaller* mar,
+        const struct ADBusMatch* m)
+{
+    kstring_t* mstr = ks_new();
+    if (m->type == ADBusMethodCallMessage) {
+        ks_cat(mstr, "type='method_call',");
+    } else if (m->type == ADBusMethodReturnMessage) {
+        ks_cat(mstr, "type='method_return',");
+    } else if (m->type == ADBusErrorMessage) {
+        ks_cat(mstr, "type='error',");
+    } else if (m->type == ADBusSignalMessage) {
+        ks_cat(mstr, "type='signal',");
+    }
+
+    // We only want to add the sender field if we are not going to have to do
+    // a lookup conversion
+    if (m->sender
+     && !RequiresServiceLookup(m->sender, m->senderSize))
+    {
+        Append(mstr, "sender", m->sender, m->senderSize);
+    }
+    Append(mstr, "interface", m->interface, m->interfaceSize);
+    Append(mstr, "member", m->member, m->memberSize);
+    Append(mstr, "path", m->path, m->pathSize);
+    Append(mstr, "destination", m->destination, m->destinationSize);
+
+    for (size_t i = 0; i < m->argumentsSize; ++i) {
+        struct ADBusMatchArgument* arg = &m->arguments[i];
+        ks_printf(mstr, "arg%d='", arg->number);
+        if (arg->valueSize < 0) {
+            ks_cat(mstr, arg->value);
+        } else {
+            ks_cat_n(mstr, arg->value, arg->valueSize);
+        }
+        ks_cat(mstr, "',");
+    }
+
+    // Remove the trailing ','
+    if (ks_size(mstr) > 0)
+        ks_remove_end(mstr, 1);
+
+    ADBusAppendArguments(mar, "s", -1);
+    ADBusAppendString(mar, ks_cstr(mstr), (int) ks_size(mstr));
+    ks_free(mstr);
+}
+
+// ----------------------------------------------------------------------------
+
+int InvalidArgumentError(struct ADBusCallDetails* d)
+{
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.InvalidArgument",
+            "Invalid argument to the method '%s.%s' on %s",
+            ADBusGetInterface(d->message, NULL),
+            ADBusGetMember(d->message, NULL),
+            ADBusGetPath(d->message, NULL));
+}
+
+int InvalidPathError(struct ADBusCallDetails* d)
+{
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.InvalidPath",
+            "The path '%s' does not exist.",
+            ADBusGetPath(d->message, NULL));
+}
+
+int InvalidInterfaceError(struct ADBusCallDetails* d)
+{
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.InvalidInterface",
+            "The path '%s' does not export the interface '%s'.",
+            ADBusGetPath(d->message, NULL),
+            ADBusGetInterface(d->message, NULL),
+            ADBusGetMember(d->message, NULL));
+}
+
+int InvalidMethodError(struct ADBusCallDetails* d)
+{
+    if (ADBusGetInterface(d->message, NULL)) {
+        return ADBusError(
+                d,
+                "nz.co.foobar.ADBus.Error.InvalidMethod",
+                "The path '%s' does not export the method '%s.%s'.",
+                ADBusGetPath(d->message, NULL),
+                ADBusGetInterface(d->message, NULL),
+                ADBusGetMember(d->message, NULL));
+    } else {
+        return ADBusError(
+                d,
+                "nz.co.foobar.ADBus.Error.InvalidMethod",
+                "The path '%s' does not export the method '%s'.",
+                ADBusGetPath(d->message, NULL),
+                ADBusGetMember(d->message, NULL));
+    }
+}
+
+int InvalidPropertyError(struct ADBusCallDetails* d)
+{
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.InvalidProperty",
+            "The path '%s' does not export the property '%s.%s'.",
+            ADBusGetPath(d->message, NULL),
+            ADBusGetInterface(d->message, NULL),
+            ADBusGetMember(d->message, NULL));
+}
+
+int PropWriteError(struct ADBusCallDetails* d)
+{
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.ReadOnlyProperty",
+            "The property '%s.%s' on '%s' is read only.",
+            ADBusGetInterface(d->message, NULL),
+            ADBusGetMember(d->message, NULL),
+            ADBusGetPath(d->message, NULL));
+}
+
+int PropReadError(struct ADBusCallDetails* d)
+{
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.WriteOnlyProperty",
+            "The property '%s.%s' on '%s' is write only.",
+            ADBusGetInterface(d->message, NULL),
+            ADBusGetMember(d->message, NULL),
+            ADBusGetPath(d->message, NULL));
+}
+
+int PropTypeError(struct ADBusCallDetails* d)
+{ 
+    return ADBusError(
+            d,
+            "nz.co.foobar.ADBus.Error.InvalidPropertyType",
+            "Incorrect property type for '%s.%s' on %s.",
+            ADBusGetInterface(d->message, NULL),
+            ADBusGetMember(d->message, NULL),
+            ADBusGetPath(d->message, NULL));
 }
 
 

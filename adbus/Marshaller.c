@@ -64,7 +64,7 @@ static size_t StackSize(struct ADBusMarshaller* m)
 static void AlignData(struct ADBusMarshaller* m, size_t align)
 {
     size_t old = kv_size(m->data);
-    size_t sz = ADBUS_ALIGN_VALUE_(size_t, old, align);
+    size_t sz = ALIGN_VALUE(old, align);
     kv_push(u8, m->data, sz - old);
 }
 
@@ -463,7 +463,7 @@ int ADBusBeginArray(struct ADBusMarshaller* m)
     AlignData(m, 4);
     size_t isize = kv_size(m->data);
     kv_push(u8, m->data, 4);
-    AlignData(m, ADBusRequiredAlignment_(*m->sigp));
+    AlignData(m, RequiredAlignment(*m->sigp));
     size_t idata = kv_size(m->data);
 
     struct StackEntry* s = StackPush(m);
@@ -493,7 +493,7 @@ int ADBusEndArray(struct ADBusMarshaller* m)
 
     ASSERT_RETURN_ERR(*psize < ADBusMaximumArrayLength);
 
-    m->sigp = ADBusFindArrayEnd_(s->d.array.sigBegin);
+    m->sigp = FindArrayEnd(s->d.array.sigBegin);
     assert(m->sigp);
 
     StackPop(m);
@@ -646,7 +646,7 @@ int ADBusAppendVariant(struct ADBusMarshaller* m,
     AppendShortString(m, sig, sigsize);
 
     // Append the data
-    AlignData(m, ADBusRequiredAlignment_(*sig));
+    AlignData(m, RequiredAlignment(*sig));
     uint8_t* dest = kv_push(u8, m->data, datasize);
     memcpy(dest, data, datasize);
 

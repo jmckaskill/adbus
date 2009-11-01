@@ -27,22 +27,31 @@
 
 #include "Common.h"
 
-ADBUS_API int ADBusError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        const char*                 errorMsgFormat,
-        ...);
+ADBUS_API void ADBusConnectToBus(
+        struct ADBusConnection*         connection,
+        ADBusConnectionCallback         callback,
+        struct ADBusUser*               user);
 
-ADBUS_API void ADBusSetupError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
+ADBUS_API uint ADBusIsConnectedToBus(
+        const struct ADBusConnection*   connection);
 
-ADBUS_API void ADBusSetupSignal(
-        struct ADBusMessage*        message,
-        struct ADBusObjectPath*     path,
-        struct ADBusMember*         signal);
+ADBUS_API const char* ADBusGetUniqueServiceName(
+        const struct ADBusConnection*   connection,
+        size_t*                         size);
+
+ADBUS_API uint32_t ADBusRequestServiceName(
+        struct ADBusConnection*         connection,
+        const char*                     service,
+        int                             size,
+        uint32_t                        flags,
+        ADBusServiceCallback            callback,
+        struct ADBusUser*               user);
+
+ADBUS_API uint32_t ADBusReleaseServiceName(
+        struct ADBusConnection*         connection,
+        const char*                     service,
+        int                             size,
+        ADBusServiceCallback            callback,
+        struct ADBusUser*               user);
 
 

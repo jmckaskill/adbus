@@ -25,17 +25,20 @@
 
 #pragma once
 
-#include <string.h>
-
 #include "Common.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/** \defgroup ADBusUser User Data
+ *  \ingroup adbus
+ *
+ * @{
+ */
 
-struct ADBusUser;
+ADBUS_EXTERN_BLOCK_BEGIN
 
 typedef void (*ADBusUserFreeFunction)(struct ADBusUser*);
+
+ADBUS_EXTERN_BLOCK_END
+
 
 struct ADBusUser
 {
@@ -44,6 +47,5 @@ struct ADBusUser
 
 ADBUS_API void ADBusUserFree(struct ADBusUser* data);
 
-#ifdef __cplusplus
-}
-#endif
+/** @} */
+

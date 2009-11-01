@@ -23,26 +23,43 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+#include "Bind.h"
 
-#include "Common.h"
+#include "adbus/CommonMessages.h"
 
-ADBUS_API int ADBusError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        const char*                 errorMsgFormat,
-        ...);
+#include <assert.h>
 
-ADBUS_API void ADBusSetupError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
+// ----------------------------------------------------------------------------
 
-ADBUS_API void ADBusSetupSignal(
-        struct ADBusMessage*        message,
-        struct ADBusObjectPath*     path,
-        struct ADBusMember*         signal);
+int adbus::detail::CallMethod(struct ADBusCallDetails* details)
+{
+    int err = 0;
+    UserDataBase* data = (UserDataBase*) details->user1;
+    assert(data->chainedFunction);
 
+    try
+    {
+        err = data->chainedFunction(details);
+    }
+    catch (ParseError& e)
+    {
+        err = e.parseError;
+    }
+    catch (Error& e)
+    {
+        if (details->retmessage) {
+            const char* errorName = e.errorName();
+            const char* errorMessage = e.errorMessage();
+
+            ADBusSetupError(
+                    details,
+                    errorName,
+                    -1,
+                    errorMessage,
+                    -1);
+        }
+    }
+
+    return err;
+}
 

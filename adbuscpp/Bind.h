@@ -25,8 +25,44 @@
 
 #pragma once
 
+#include "Common.h"
 #include "Message.h"
 #include "adbus/Message.h"
+
+namespace adbus
+{
+    namespace detail
+    {
+
+        int CallMethod(struct ADBusCallDetails* details);
+
+#ifdef DOC
+
+        /** Something
+         *
+         * \ingroup adbuscpp
+         */
+
+        template<class MF, class O, class A0 ...>
+        void CreateMFCallbackX(
+                MF          function,
+                O*          object,
+                ADBusUser** user1,
+                ADBusUser** user2);
+
+        /** Something
+         *
+         * \ingroup adbuscpp
+         */
+
+        template<class MF, class O, class R, class A0 ...>
+        void CreateMFReturnCallbackX(
+                MF          function,
+                O*          object,
+                ADBusUser** user1,
+                ADBusUser** user2);
+
+#else
 
 #define NUM 0
 #define REPEAT_SEPERATOR(x, sep)
@@ -68,3 +104,7 @@
 #define REPEAT_SEPERATOR(x, sep) x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8)
 #include "Bind_t.h"
 
+#endif
+
+    }
+}

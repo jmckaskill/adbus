@@ -26,23 +26,20 @@
 #pragma once
 
 #include "Common.h"
+#include "Factory.h"
 
-ADBUS_API int ADBusError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        const char*                 errorMsgFormat,
-        ...);
+ADBUS_API struct ADBusProxy* ADBusCreateProxy(
+        struct ADBusConnection* connection,
+        const char*             service,
+        int                     ssize,
+        const char*             path,
+        int                     psize,
+        const char*             interface,
+        int                     isize);
 
-ADBUS_API void ADBusSetupError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
+ADBUS_API void ADBusFreeProxy(
+        struct ADBusProxy*      proxy);
 
-ADBUS_API void ADBusSetupSignal(
-        struct ADBusMessage*        message,
-        struct ADBusObjectPath*     path,
-        struct ADBusMember*         signal);
-
-
+ADBUS_API void ADBusProxyFactory(
+        struct ADBusProxy*      proxy,
+        struct ADBusFactory*    factory);

@@ -170,11 +170,8 @@ static ADBusSocket_t Abstract(struct Fields* f)
 
     return sfd;
 }
-#endif
 
-// ----------------------------------------------------------------------------
 
-#ifndef WIN32
 static ADBusSocket_t Unix(struct Fields* f)
 {
     size_t psize = min(UNIX_PATH_MAX, strlen(f->file));
@@ -218,9 +215,9 @@ static uint8_t Rand(void* socket)
 // ----------------------------------------------------------------------------
 
 ADBusSocket_t ADBusConnectSocket(
-        uint                    systembus,
-        const char*             envstr,
-        int                     size)
+        uint        systembus,
+        const char* envstr,
+        int         size)
 {
     (void) systembus;
 #ifndef WIN32

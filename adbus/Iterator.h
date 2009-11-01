@@ -27,21 +27,39 @@
 
 #include "Common.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
+/** \defgroup ADBusIterator Iterator
+ *  \ingroup adbus
+ *
+ * \brief Iterator brief 
+ *
+ * Iterator description
+ *
+ *  @{
+ */
 
 // ----------------------------------------------------------------------------
 
+/** Iterator over a given block of marshalled memory that it does _not_ own.
+ */
 struct ADBusIterator;
-// Iterator over a given block of marshalled memory that it does _not_ own
 
 ADBUS_API struct ADBusIterator* ADBusCreateIterator();
-ADBUS_API void ADBusFreeIterator(struct ADBusIterator* i);
+ADBUS_API void ADBusFreeIterator(struct ADBusIterator* iterator);
 
-ADBUS_API void ADBusResetIterator(struct ADBusIterator* i,
-                                  const char* sig, int sigsize,
-                                  const uint8_t* data, size_t size);
+ADBUS_API void ADBusResetIterator(
+        struct ADBusIterator*       iterator,
+        const char*                 sig,
+        int                         sigsize,
+        const uint8_t*              data,
+        size_t                      size);
+
+ADBUS_API void ADBusGetIteratorData(
+        const struct ADBusIterator* iterator,
+        const char**                sig,
+        size_t*                     sigsize,
+        const uint8_t**             data,
+        size_t*                     datasize);
 
 enum ADBusEndianness
 {
@@ -49,55 +67,93 @@ enum ADBusEndianness
     ADBusBigEndian = 'B',
 };
 
-ADBUS_API void ADBusSetIteratorEndianness(struct ADBusIterator* i,
-                                          enum ADBusEndianness endianness);
-
-ADBUS_API const uint8_t* ADBusCurrentIteratorData(struct ADBusIterator* i, size_t* size);
-ADBUS_API const char* ADBusCurrentIteratorSignature(struct ADBusIterator* i, size_t* size);
-
-ADBUS_API uint ADBusIsScopeAtEnd(struct ADBusIterator* i, uint scope);
+ADBUS_API void ADBusSetIteratorEndianness(
+        struct ADBusIterator*   iterator,
+        enum ADBusEndianness    endianness);
 
 // ----------------------------------------------------------------------------
 
 struct ADBusField
 {
+    /** The type of field returned.
+     *
+     * Based on this only the related fields will be initialised.
+     */
     enum ADBusFieldType   type;
 
-    // Entries used for simple types
-    uint                  b;
-    uint8_t               u8;
-    int16_t               i16;
-    uint16_t              u16;
-    int32_t               i32;
-    uint32_t              u32;
-    int64_t               i64;
-    uint64_t              u64;
-    double                d;
+    uint     b;     /**< boolean data */
+    uint8_t  u8;    /**< uint8 data */
+    int16_t  i16;   /**< int16 data */
+    uint16_t u16;   /**< uint16 data */
+    int32_t  i32;   /**< int32 data */
+    uint32_t u32;   /**< uint32 data */
+    int64_t  i64;   /**< int64 data */
+    uint64_t u64;   /**< uint64 data */
+    double   d;     /**< double data */
 
-    // Data is filled out for arrays, string for string types, size for both
-    // in bytes. The string is guarenteed by dbus protocol to be valid utf8
-    // with a trailing null (not included in size) and no embedded nulls.
-    // Data can be used for array of fixed sized correctly padded simple types
-    // and structs for very quick decomposing (use ADBusIterate with array
-    // begin, then ADBusJumpToEndOfArray, then ADBusIterate with array end) to
-    // quickly get the array data.
+    /** Data pointer for the array begin field.
+     *
+     * The size is specified in the size field.
+     *
+     * This can be used in combination with \ref ADBusJumpToEndOfArray with a
+     * fixed size data member to reference the array data directly in the
+     * buffer.
+     *
+     * For example (this should really also be checking error codes or using
+     * the check functions - \ref ADBusCheckArrayBegin):
+     *
+     * \code
+     * struct ADBusField field;
+     * ADBusIterate(iter, &field); // field.type == ADBusArrayBeginField
+     * struct my_struct_t* p = (struct my_struct_t*) field->data;
+     * size_t count = field->size / sizeof(struct my_struct_t);
+     * ADBusJumpToEndOfArray(iter, field.scope);
+     * ADBusIterate(iter, &field); // field.type == ADBusArrayEndField
+     * \endcode
+     */
     const uint8_t*        data;
+
+    /** String pointer for string fields (string, object path, signature) and the
+     * type of variants.
+     *
+     * The string is guarenteed by the dbus protocol and the iterator to be
+     * valid UTF8, contain no embedded nulls and have a terminating null.
+     */
     const char*           string;
+
+    /** Indicates the size of the data.
+     *  This is used for both the string and data fields.
+     */
     size_t                size;
 
-    // Filled out by all scoped begins/ends (arrays, struct, dict, variant)
+    /** The scope of the current field.
+     *
+     * The scoped begin/end functions all increment this when returning their
+     * begin field (eg \ref ADBusBeginArrayField) and decrement this when
+     * returning their end field (eg \ref ADBusEndArrayField).
+     *
+     * The scoped types are:
+     * - variant
+     * - struct
+     * - array
+     * - dict entry
+     *
+     */
     uint                  scope;
 };
 
+ADBUS_API uint ADBusIsScopeAtEnd(struct ADBusIterator* i, uint scope);
 ADBUS_API int ADBusIterate(struct ADBusIterator* i, struct ADBusField* field);
 ADBUS_API int ADBusJumpToEndOfArray(struct ADBusIterator* i, uint scope);
 
 // ----------------------------------------------------------------------------
 
-// Check functions in the style of the lua check functions (eg
-// luaL_checkstring). They will longjmp back to throw an invalid argument
-// error. Thus they should only be used to pull out the arguments at the very
-// beginning of a message callback.
+/* Check functions in the style of the lua check functions (eg luaL_checkint).
+ *
+ * They will longjmp back to throw an invalid argument
+ * error. Thus they should only be used to pull out the arguments at the very
+ * beginning of a message callback.
+ */
 
 ADBUS_API void        ADBusCheckMessageEnd(struct ADBusCallDetails* d);
 ADBUS_API uint        ADBusCheckBoolean(struct ADBusCallDetails* d);
@@ -121,8 +177,5 @@ ADBUS_API void        ADBusCheckDictEntryEnd(struct ADBusCallDetails* d);
 ADBUS_API const char* ADBusCheckVariantBegin(struct ADBusCallDetails* d, size_t* size);
 ADBUS_API void        ADBusCheckVariantEnd(struct ADBusCallDetails* d);
 
-// ----------------------------------------------------------------------------
+/* @} */
 
-#ifdef __cplusplus
-}
-#endif

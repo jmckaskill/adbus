@@ -35,7 +35,7 @@
 #define CAT(x,y) CAT2(x,y)
 
 #define CLASS_DECL_ITEM(NUM) class A ## NUM
-#define APPEND_ARGUMENT(NUM) adbus::AppendArgument<A ## NUM>(marshaller, a ## NUM);
+#define APPEND_ARGUMENT(NUM) adbus::AppendArgument<A ## NUM>(f.args, a ## NUM);
 #define CONST_REF_ARG(NUM) const A ## NUM & a ## NUM
 #define ARG(NUM) a ## NUM
 
@@ -62,18 +62,19 @@
 
         void trigger( CONST_REF_ARG_LIST ) // const A0& a0, const A1& a1
         { 
-            setupMessage();
-            ADBusMarshaller* marshaller = ADBusArgumentMarshaller(m_Message);
-            (void) marshaller;
-            // adbus::AppendArgument<A0>(marshaller, a0);
-            // adbus::AppendArgument<A1>(marshaller, a1);
-            APPEND_ARGUMENTS;
-            sendMessage();
+            if (m_Signal) {
+                struct ADBusFactory f;
+                ADBusSignalFactory(m_Signal, &f);
+                // adbus::AppendArgument<A0>(marshaller, a0);
+                // adbus::AppendArgument<A1>(marshaller, a1);
+                APPEND_ARGUMENTS;
+                ADBusCallFactory(&f);
+            }
         }
 
         void operator()( CONST_REF_ARG_LIST ) // const A0& a0, const A1& a1
         {
-          trigger( ARG_LIST ); // a0, a1
+            trigger( ARG_LIST ); // a0, a1
         }
     };
 

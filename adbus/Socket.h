@@ -27,9 +27,11 @@
 
 #include "Common.h"
 
-#ifdef __cplusplus
-extern "C"{
-#endif
+/** \defgroup ADBusSocket Socket
+ *  \ingroup adbus
+ *
+ * @{
+ */
 
 #ifdef WIN32
     typedef uintptr_t ADBusSocket_t;
@@ -40,10 +42,9 @@ extern "C"{
 #endif
 
 ADBUS_API ADBusSocket_t ADBusConnectSocket(
-        uint                    systembus,
-        const char*             envstr,
-        int                     size);
+        uint        systembus,
+        const char* envstr,
+        int         size);
 
-#ifdef __cplusplus
-}
-#endif
+/** @} */
+

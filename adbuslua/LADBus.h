@@ -62,6 +62,9 @@ extern "C" {
   #endif
 #endif
 
+/** \defgroup adbuslua adbuslua
+ */
+
 LADBUSI_FUNC void LADBusPrintDebug(const char* format, ...);
 
 LADBUSI_FUNC int LADBusCheckFields(
@@ -80,6 +83,9 @@ struct ADBusInterface;
 struct ADBusObject;
 struct LADBusSocket;
 
+/**
+ * \ingroup adbuslua
+ */
 LADBUS_API void LADBusPushExistingConnection(lua_State* L, struct ADBusConnection* connection);
 
 
@@ -93,6 +99,10 @@ LADBUSI_FUNC struct LADBusSocket*       LADBusCheckSocket(lua_State* L, int inde
 LADBUSI_FUNC struct ADBusInterface*     LADBusCheckInterface(lua_State* L, int index);
 
 
+/** Main lua entry function
+ *
+ * \ingroup adbuslua
+ */
 LADBUS_API int luaopen_adbuslua_core(lua_State* L);
 
 

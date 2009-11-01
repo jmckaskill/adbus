@@ -32,8 +32,10 @@
 #include "LMessage.h"
 
 #include "adbus/Connection.h"
+#include "adbus/Match.h"
 
 #include <assert.h>
+#include <string.h>
 
 
 // ----------------------------------------------------------------------------
@@ -274,10 +276,9 @@ static int UnpackMatch(
                               "id",
                               &match->id);
 
-    match->checkReplySerial = UnpackOptionalUInt32Field(L,
-                              offset,
-                              "reply_serial",
-                              &match->replySerial);
+    uint32_t reply;
+    if (UnpackOptionalUInt32Field(L, offset, "reply_serial", &reply))
+        match->replySerial = reply;
 
     UnpackOptionalStringField(L,
                               offset,
@@ -340,9 +341,9 @@ static int UnpackMatch(
 
 // ----------------------------------------------------------------------------
 
-static void MatchCallback(struct ADBusCallDetails* details)
+static int MatchCallback(struct ADBusCallDetails* d)
 {
-    const struct LADBusData* data = (const struct LADBusData*) details->user1;
+    const struct LADBusData* data = (const struct LADBusData*) d->user1;
 
     lua_State* L = data->L;
     int top = lua_gettop(L);
@@ -351,14 +352,15 @@ static void MatchCallback(struct ADBusCallDetails* details)
     if (data->argument)
         LADBusPushRef(L, data->argument);
 
-    int err = LADBusPushMessage(L, details->message, details->arguments);
+    int err = LADBusPushMessage(L, d->message, d->args);
     if (err) {
         lua_settop(L, top);
-        return;
+        return err;
     }
 
     // function itself is not included in the arg count
     lua_call(L, lua_gettop(L) - top - 1, 0);
+    return 0;
 }
 
 // ----------------------------------------------------------------------------

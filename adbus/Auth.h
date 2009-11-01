@@ -27,13 +27,19 @@
 
 #include "Common.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/** \defgroup ADBusAuth Auth
+ *  \ingroup adbus
+ *
+ *
+ */
+
+ADBUS_EXTERN_BLOCK_BEGIN
 
 typedef void    (*ADBusAuthSendCallback)(void*, const char*, size_t);
 typedef int     (*ADBusAuthRecvCallback)(void*, char*, size_t);
 typedef uint8_t (*ADBusAuthRandCallback)(void*);
+
+ADBUS_EXTERN_BLOCK_END
 
 // Performs a dbus cookie sha1 auth. Using blocking callbacks.
 ADBUS_API int ADBusAuthDBusCookieSha1(
@@ -47,6 +53,4 @@ ADBUS_API int ADBusAuthExternal(
         ADBusAuthRecvCallback   recv,
         void*                   data);
 
-#ifdef __cplusplus
-}
-#endif
+

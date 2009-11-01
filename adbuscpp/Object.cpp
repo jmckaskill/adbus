@@ -27,6 +27,7 @@
 
 #include "adbus/CommonMessages.h"
 #include "adbus/Connection.h"
+#include "adbus/Object.h"
 
 #include <assert.h>
 
@@ -39,138 +40,80 @@ using namespace adbus;
 
 Object::Object()
 {
+    m_Object = ADBusCreateObject();
 }
 
 // ----------------------------------------------------------------------------
 
 Object::~Object()
 {
-    removeAllMatches();
-    unbindAll();
+    ADBusFreeObject(m_Object);
 }
 
 // ----------------------------------------------------------------------------
 
-static void SetupString(
-        const std::string&  source,
-        const char**        target,
-        int*                targetSize)
+void Object::reset()
 {
-    if (source.empty())
-        return;
-
-    *target = source.c_str();
-    *targetSize = (int) source.size();
+    ADBusResetObject(m_Object);
 }
 
+// ----------------------------------------------------------------------------
+
 uint32_t Object::addMatch(
-        ADBusConnection*             c,
-        Match*                  m,
-        ADBusMessageCallback    function,
-        struct ADBusUser*       user1,
-        struct ADBusUser*       user2)
+        ADBusConnection*    connection,
+        ADBusMatch*         match)
 {
-    ADBusMatch adbusmatch;
-    ADBusInitMatch(&adbusmatch);
+    return ADBusAddObjectMatch(m_Object, connection, match);
+}
 
-    adbusmatch.type = m->type;
-    adbusmatch.addMatchToBusDaemon = m->addMatchToBusDaemon;
-    adbusmatch.removeOnFirstMatch = m->removeOnFirstMatch;
-    SetupString(m->sender, &adbusmatch.sender, &adbusmatch.senderSize);
-    SetupString(m->destination, &adbusmatch.destination, &adbusmatch.destinationSize);
-    SetupString(m->interface, &adbusmatch.interface, &adbusmatch.interfaceSize);
-    SetupString(m->path, &adbusmatch.path, &adbusmatch.pathSize);
-    SetupString(m->member, &adbusmatch.member, &adbusmatch.memberSize);
-    SetupString(m->errorName, &adbusmatch.errorName, &adbusmatch.errorNameSize);
+// ----------------------------------------------------------------------------
 
-    adbusmatch.callback = function;
-    adbusmatch.user1 = user1;
-    adbusmatch.user2 = user2;
-
-    uint32_t matchId = ADBusAddMatch(c, &adbusmatch);
-
-    MatchData match;
-    match.connection = c;
-    match.matchId    = matchId;
-    m_Matches.push_back(match);
-
-    return matchId;
+void Object::addMatch(
+        ADBusConnection*    connection,
+        uint32_t            matchId)
+{
+    ADBusAddObjectMatchId(m_Object, connection, matchId);
 }
 
 // ----------------------------------------------------------------------------
 
 void Object::removeMatch(
-        ADBusConnection*             c,
-        uint32_t                id)
+        ADBusConnection*    connection,
+        uint32_t            matchId)
 {
-    for (size_t i = 0; i < m_Matches.size(); ++i) {
-        MatchData& m = m_Matches[i];
-        if (m.connection == c && m.matchId == id) {
-            ADBusRemoveMatch(c, id);
-            m_Matches.erase(m_Matches.begin() + i);
-        }
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-void Object::removeAllMatches()
-{
-    for (size_t i = 0; i < m_Matches.size(); ++i) {
-        ADBusRemoveMatch(m_Matches[i].connection, m_Matches[i].matchId);
-    }
-    m_Matches.clear();
+    ADBusRemoveObjectMatch(m_Object, connection, matchId);
 }
 
 // ----------------------------------------------------------------------------
 
 void Object::doBind(
-        ADBusConnection*        c,
-        const std::string&      path,
-        ADBusInterface*         interface,
-        struct ADBusUser*       user2)
+        ADBusObjectPath*    path,
+        ADBusInterface*     interface,
+        struct ADBusUser*   user2)
 {
-    BindData bound;
-    bound.connection = c;
-    bound.object     = ADBusAddObject(c, path.c_str(), (int) path.size());
-    bound.interface  = interface;
-
-    int err = ADBusBindInterface(bound.object, bound.interface, user2);
-    if (!err)
-        m_Interfaces.push_back(bound);
+    ADBusBindObject(m_Object, path, interface, user2);
 }
 
 // ----------------------------------------------------------------------------
 
 void Object::unbind(
-        ADBusConnection*        c,
-        const std::string&      path,
-        ADBusInterface*         interface)
+        ADBusObjectPath*    path,
+        ADBusInterface*     interface)
 {
-    ADBusObject* object = ADBusGetObject(c, path.c_str(), (int) path.size());
-    if (!object)
-        return;
-
-    for (size_t i = 0; i < m_Interfaces.size(); ++i) {
-        BindData& b = m_Interfaces[i];
-        if (b.connection == c 
-         && b.interface == interface 
-         && b.object == object)
-        {
-            ADBusUnbindInterface(object, b.interface);
-            m_Interfaces.erase(m_Interfaces.begin() + i);
-            break;
-        }
-    }
+    ADBusUnbindObject(m_Object, path, interface);
 }
 
 // ----------------------------------------------------------------------------
 
-void Object::unbindAll()
+void Object::unbind(
+        ADBusConnection*    c,
+        const std::string&  path,
+        ADBusInterface*     interface)
 {
-    for (size_t i = 0; i < m_Interfaces.size(); ++i) {
-        BindData& b = m_Interfaces[i];
-        ADBusUnbindInterface(b.object, b.interface);
+    ADBusObjectPath* opath = ADBusGetObjectPath(c, path.c_str(), (int) path.size());
+    if (opath) {
+        unbind(opath, interface);
     }
-    m_Interfaces.clear();
 }
+
+

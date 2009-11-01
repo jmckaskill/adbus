@@ -34,82 +34,119 @@
 #define CAT2(x,y) x ## y 
 #define CAT(x,y) CAT2(x,y)
 
-#define DEMARSHALL(NUM) A ## NUM a ## NUM; a ## NUM << *details->arguments;
+#define DEMARSHALL(NUM) A ## NUM a ## NUM; a ## NUM << *d->args;
 #define ARGUMENT(NUM) a ## NUM
-#define CLASS_DECL_ITEM(NUM) , class A ## NUM
+#define CLASS_DECL_LC_ITEM(NUM) , class A ## NUM
+#define CLASS_LIST_LC_ITEM(NUM) , A ## NUM
 
 // creates: , class A0, class A1 ...
-#define CLASS_DECL_LEADING_COMMA REPEAT( CLASS_DECL_ITEM )
+#define CLASS_DECL_LC REPEAT( CLASS_DECL_LC_ITEM )
 
-// creates: A0 a0; a0 << *details->arguments; A1 a1; a1 << *details->arguments; ...
+// creates: , A0, A1
+#define CLASS_LIST_LC REPEAT( CLASS_LIST_LC_ITEM )
+
+// creates: A0 a0; a0 << *d->args; A1 a1; a1 << *d->args; ...
 #define DEMARSHALL_ARGUMENTS REPEAT( DEMARSHALL )
 
 // creates: a0, a1, a2 ...
 #define ARG_LIST REPEAT_SEPERATOR( ARGUMENT, COMMA_SEPERATOR ) 
 
-namespace adbus
+template<class MF, class O CLASS_DECL_LC >
+int CAT(MFCallback,NUM) (struct ADBusCallDetails* d)
 {
-    namespace detail
-    {
+    UserData<MF>* function = (UserData<MF>*) d->user1;
+    UserData<O*>* object   = (UserData<O*>*) d->user2;
+    MF mf = function->data;
+    O* o  = object->data;
+    // A0 a0;
+    // a0 << *d->args;
+    // A1 a1;
+    // a1 << *d->args;
+    // ...
+    DEMARSHALL_ARGUMENTS;
 
-        template<class F, class M CLASS_DECL_LEADING_COMMA >
-        void CAT(MemberFunction,NUM) (struct ADBusCallDetails* details)
-        {
-            UserData<F>* function = (UserData<F>*) details->user1;
-            UserData<M*>* object = (UserData<M*>*) details->user2;
-            F f = function->data;
-            M* m = object->data;
-            // A0 a0;
-            // a0 << *details->arguments;
-            // A1 a1;
-            // a1 << *details->arguments;
-            // ...
-            DEMARSHALL_ARGUMENTS;
+    adbus::MessageEnd end;
+    end << *d->args;
 
-            adbus::MessageEnd end;
-            end << *details->arguments;
+    // (o->*mf)( a0, a1, a2 ...);
+    (o->*mf)( ARG_LIST );
 
-            // (m->*f)( a0, a1, a2 ...);
-            (m->*f)( ARG_LIST );
-        }
+    return 0;
+}
 
-        template<class F, class M, class R CLASS_DECL_LEADING_COMMA >
-        void CAT(MemberFunctionReturn,NUM) (struct ADBusCallDetails* details)
-        {
-            UserData<F>* function = (UserData<F>*) details->user1;
-            UserData<M*>* object = (UserData<M*>*) details->user2;
-            F f = function->data;
-            M* m = object->data;
-            // A0 a0;
-            // a0 << *details->arguments;
-            // A1 a1;
-            // a1 << *details->arguments;
-            // ...
-            DEMARSHALL_ARGUMENTS;
+template<class MF, class O CLASS_DECL_LC >
+void CAT(CreateMFCallback,NUM) (MF          function,
+                                O*          object,
+                                ADBusUser** user1,
+                                ADBusUser** user2)
+{
+    if (user1) {
+        UserData<MF>* fdata = new UserData<MF>(function);
+        fdata->chainedFunction = & CAT(MFCallback,NUM) <MF, O CLASS_LIST_LC>;
+        *user1 = fdata;
+    }
 
-            adbus::MessageEnd end;
-            end << *details->arguments;
-
-            // R r = (m->*f)( a0, a1, a2 ...);
-            R r = (m->*f)( ARG_LIST );
-            if (details->returnMessage)
-            {
-                struct ADBusMarshaller* m =
-                        ADBusArgumentMarshaller(details->returnMessage);
-                std::string type = ADBusTypeString((R*) NULL);
-                ADBusAppendArguments(m, type.c_str(), type.size());
-                r >> *m;
-            }
-        }
-
+    if (user2) {
+        UserData<O*>* odata = new UserData<O*>(object);
+        *user2 = odata;
     }
 }
 
+template<class MF, class O, class R CLASS_DECL_LC >
+int CAT(MFReturnCallback,NUM) (struct ADBusCallDetails* d)
+{
+    UserData<MF>* function  = (UserData<MF>*) d->user1;
+    UserData<O*>* object    = (UserData<O*>*) d->user2;
+    MF mf = function->data;
+    O* o  = object->data;
+    // A0 a0;
+    // a0 << *details->arguments;
+    // A1 a1;
+    // a1 << *details->arguments;
+    // ...
+    DEMARSHALL_ARGUMENTS;
+
+    adbus::MessageEnd end;
+    end << *d->args;
+
+    // R r = (o->*mf)( a0, a1, a2 ...);
+    R r = (o->*mf)( ARG_LIST );
+    if (d->retargs)
+    {
+        std::string type = ADBusTypeString((R*) NULL);
+        ADBusAppendArguments(d->retargs, type.c_str(), (int) type.size());
+        r >> *d->retargs;
+    }
+
+    return 0;
+}
+
+template<class MF, class O, class R CLASS_DECL_LC>
+void CAT(CreateMFReturnCallback,NUM) (MF            function,
+                                      O*            object,
+                                      ADBusUser**   user1,
+                                      ADBusUser**   user2)
+{
+    if (user1) {
+        UserData<MF>* fdata = new UserData<MF>(function);
+        fdata->chainedFunction = & CAT(MFReturnCallback,NUM) <MF, O, R CLASS_LIST_LC>;
+        *user1 = fdata;
+    }
+
+    if (user2) {
+        UserData<O*>* odata = new UserData<O*>(object);
+        *user2 = odata;
+    }
+}
+
+
 #undef DEMARSHALL
 #undef ARGUMENT
-#undef CLASS_DECL_ITEM
+#undef CLASS_DECL_LC_ITEM
+#undef CLASS_LIST_LC_ITEM
 
-#undef CLASS_DECL_LEADING_COMMA
+#undef CLASS_DECL_LC
+#undef CLASS_LIST_LC
 #undef DEMARSHALL_ARGUMENTS
 #undef ARG_LIST
 

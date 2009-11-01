@@ -29,8 +29,9 @@
 #include "LInterface.h"
 #include "LMessage.h"
 
-#include "adbus/Interface.h"
 #include "adbus/CommonMessages.h"
+#include "adbus/Interface.h"
+#include "adbus/ObjectPath.h"
 
 #include <assert.h>
 
@@ -40,12 +41,12 @@
 
 // ----------------------------------------------------------------------------
 
-static struct ADBusObject* GetObject(lua_State* L, struct LADBusConnection* c, int pathIndex)
+static struct ADBusObjectPath* GetPath(lua_State* L, struct LADBusConnection* c, int pathIndex)
 {
     size_t size;
     const char* path = luaL_checklstring(L, pathIndex, &size);
-    struct ADBusObject* o = ADBusAddObject(c->connection, path, size);
-    return o;
+    struct ADBusObjectPath* opath = ADBusGetObjectPath(c->connection, path, size);
+    return opath;
 }
 
 // ----------------------------------------------------------------------------
@@ -53,14 +54,15 @@ static struct ADBusObject* GetObject(lua_State* L, struct LADBusConnection* c, i
 int LADBusBindInterface(lua_State* L)
 {
     struct LADBusConnection* connection = LADBusCheckConnection(L, 1);
-    struct ADBusObject* object = GetObject(L, connection, 2);
+    struct ADBusObjectPath* path = GetPath(L, connection, 2);
     struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
 
     struct LADBusData* data = LADBusCreateData();
     data->L = L;
     // If the user provides an object/argument then we need to add that as well
-    if (!lua_isnoneornil(L, 4))
+    if (!lua_isnoneornil(L, 4)) {
         data->argument = LADBusGetRef(L, 4);
+    }
 
     // We need a handle on the connection so that we can fill out
     // _connectiondata in the message (so we can send delayed replies)
@@ -71,7 +73,7 @@ int LADBusBindInterface(lua_State* L)
     data->interface = LADBusGetRef(L, 3);
 
 
-    ADBusBindInterface(object, interface, &data->header);
+    ADBusBindInterface(path, interface, &data->header);
 
     return 0;
 }
@@ -81,10 +83,10 @@ int LADBusBindInterface(lua_State* L)
 int LADBusUnbindInterface(lua_State* L)
 {
     struct LADBusConnection* connection = LADBusCheckConnection(L, 1);
-    struct ADBusObject* object = GetObject(L, connection, 2);
+    struct ADBusObjectPath* path = GetPath(L, connection, 2);
     struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
 
-    ADBusUnbindInterface(object, interface);
+    ADBusUnbindInterface(path, interface);
 
     return 0;
 }
@@ -93,8 +95,8 @@ int LADBusUnbindInterface(lua_State* L)
 
 int LADBusEmit(lua_State* L)
 {
-    struct LADBusConnection* c  = LADBusCheckConnection(L, 1);
-    struct ADBusObject* object  = GetObject(L, c, 2);
+    struct LADBusConnection* c = LADBusCheckConnection(L, 1);
+    struct ADBusObjectPath* path = GetPath(L, c, 2);
     struct ADBusInterface* interface = LADBusCheckInterface(L, 3);
     size_t signalSize;
     const char* signalstr = luaL_checklstring(L, 4, &signalSize);
@@ -110,7 +112,7 @@ int LADBusEmit(lua_State* L)
                           signalstr);
     }
 
-    ADBusSetupSignal(c->message, c->connection, object, signal);
+    ADBusSetupSignal(c->message, path, signal);
 
     uint havesig  = lua_istable(L, 5) && lua_objlen(L, 5) > 0;
     uint haveargs = lua_istable(L, 6) && lua_objlen(L, 6) > 0;
@@ -159,10 +161,10 @@ int LADBusEmit(lua_State* L)
 // For the callbacks, we get the function to call from the member data and the
 // first argument from the bind data if its valid
 
-void LADBusMethodCallback(struct ADBusCallDetails* details)
+int LADBusMethodCallback(struct ADBusCallDetails* d)
 {
-    const struct LADBusData* method_data = (const struct LADBusData*) details->user1;
-    const struct LADBusData* bind_data = (const struct LADBusData*) details->user2;
+    const struct LADBusData* method_data = (const struct LADBusData*) d->user1;
+    const struct LADBusData* bind_data = (const struct LADBusData*) d->user2;
 
     assert(method_data
         && bind_data
@@ -178,10 +180,10 @@ void LADBusMethodCallback(struct ADBusCallDetails* details)
         LADBusPushRef(L, bind_data->argument);
 
 
-    int err = LADBusPushMessage(L, details->message, details->arguments);
+    int err = LADBusPushMessage(L, d->message, d->args);
     if (err) {
         lua_settop(L, top);
-        return;
+        return err;
     }
 
     // Now we need to set a few fields in the message for use with replies
@@ -197,19 +199,20 @@ void LADBusMethodCallback(struct ADBusCallDetails* details)
 
     // If the function returns a message, we pack it off and send it back
     // via the call details mechanism
-    if (lua_istable(L, top + 1) && details->returnMessage) {
-        LADBusMarshallMessage(L, top + 1, details->returnMessage);
-        details->manualReply = 0;
+    if (lua_istable(L, top + 1) && d->retmessage) {
+        LADBusMarshallMessage(L, top + 1, d->retmessage);
+        d->manualReply = 0;
     } else {
-        details->manualReply = 1;
+        d->manualReply = 1;
     }
     lua_pop(L, 1);
 
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void LADBusGetPropertyCallback(struct ADBusCallDetails* details)
+int LADBusGetPropertyCallback(struct ADBusCallDetails* details)
 {
     const struct LADBusData* method_data = (const struct LADBusData*) details->user1;
     const struct LADBusData* bind_data = (const struct LADBusData*) details->user2;
@@ -243,11 +246,12 @@ void LADBusGetPropertyCallback(struct ADBusCallDetails* details)
             details->propertyMarshaller);
 
     lua_pop(L, 2); // pop the signature and value
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void LADBusSetPropertyCallback(struct ADBusCallDetails* details)
+int LADBusSetPropertyCallback(struct ADBusCallDetails* details)
 {
     const struct LADBusData* method_data = (const struct LADBusData*) details->user1;
     const struct LADBusData* bind_data = (const struct LADBusData*) details->user2;
@@ -268,11 +272,12 @@ void LADBusSetPropertyCallback(struct ADBusCallDetails* details)
     int err = LADBusPushArgument(L, details->propertyIterator);
     if (err) {
         lua_settop(L, top);
-        return;
+        return err;
     }
 
     // function itself is not included in arg count
     lua_call(L, lua_gettop(L) - top - 1, 0);
+    return 0;
 }
 
 

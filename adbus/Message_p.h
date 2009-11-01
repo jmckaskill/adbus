@@ -54,4 +54,4 @@ struct ADBusMessage
 };
 
 
-ADBUSI_FUNC void ADBusBuildMessage_(struct ADBusMessage* m);
+ADBUSI_FUNC void BuildMessage(struct ADBusMessage* m);

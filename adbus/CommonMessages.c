@@ -35,62 +35,61 @@
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetupError(
-        struct ADBusCallDetails*    details,
+int ADBusError(
+        struct ADBusCallDetails*    d,
         const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize)
+        const char*                 errorMsgFormat,
+        ...)
 {
-    if (!details->returnMessage)
-        return;
+    kstring_t* msg = ks_new();
+    va_list ap;
+    va_start(ap, errorMsgFormat);
+    ks_vprintf(msg, errorMsgFormat, ap);
+    va_end(ap);
 
-    details->manualReply = 0;
+    ADBusSetupError(d, errorName, -1, ks_cstr(msg), ks_size(msg));
 
-    size_t destSize;
-    const char* destination = ADBusGetSender(details->message, &destSize);
-    int serial = ADBusGetSerial(details->message);
+    ks_free(msg);
 
-    ADBusSetupErrorExpanded(
-            details->returnMessage,
-            details->connection,
-            serial,
-            destination,
-            (int) destSize,
-            errorName,
-            errorNameSize,
-            errorMessage,
-            errorMessageSize);
+    longjmp(d->jmpbuf, ADBusErrorJmp);
+    return ADBusErrorMessage;
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusSetupErrorExpanded(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        uint32_t                    replySerial,
-        const char*                 destination,
-        int                         destinationSize,
+void ADBusSetupError(
+        struct ADBusCallDetails*    d,
         const char*                 errorName,
         int                         errorNameSize,
         const char*                 errorMessage,
         int                         errorMessageSize)
 {
-    ADBusResetMessage(message);
-    ADBusSetMessageType(message, ADBusErrorMessage);
-    ADBusSetFlags(message, ADBusNoReplyExpectedFlag);
-    ADBusSetSerial(message, ADBusNextSerial(connection));
+    if (!d->retmessage)
+        return;
 
-    ADBusSetReplySerial(message, replySerial);
-    ADBusSetErrorName(message, errorName, errorNameSize);
-    if (destination)
-        ADBusSetDestination(message, destination, destinationSize);
+    d->manualReply = 0;
 
-    if (errorMessage)
-    {
-        struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-        ADBusAppendArguments(marshaller, "s", -1);
-        ADBusAppendString(marshaller, errorMessage, errorMessageSize);
+    size_t destsize;
+    const char* dest = ADBusGetSender(d->message, &destsize);
+    int serial = ADBusGetSerial(d->message);
+
+    struct ADBusMessage* m = d->retmessage;
+    ADBusResetMessage(m);
+    ADBusSetMessageType(m, ADBusErrorMessage);
+    ADBusSetFlags(m, ADBusNoReplyExpectedFlag);
+    ADBusSetSerial(m, ADBusNextSerial(d->connection));
+
+    ADBusSetReplySerial(m, serial);
+    ADBusSetErrorName(m, errorName, errorNameSize);
+
+    if (dest) {
+        ADBusSetDestination(m, dest, destsize);
+    }
+
+    if (errorMessage) {
+        struct ADBusMarshaller* mar = ADBusArgumentMarshaller(m);
+        ADBusAppendArguments(mar, "s", -1);
+        ADBusAppendString(mar, errorMessage, errorMessageSize);
     }
 }
 
@@ -98,226 +97,17 @@ void ADBusSetupErrorExpanded(
 
 void ADBusSetupSignal(
         struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        struct ADBusObject*         object,
+        struct ADBusObjectPath*     path,
         struct ADBusMember*         signal)
 {
     ADBusResetMessage(message);
     ADBusSetMessageType(message, ADBusSignalMessage);
     ADBusSetFlags(message, ADBusNoReplyExpectedFlag);
-    ADBusSetSerial(message, ADBusNextSerial(connection));
+    ADBusSetSerial(message, ADBusNextSerial(path->connection));
 
-    ADBusSetPath(message, object->name, -1);
+    ADBusSetPath(message, path->path, path->pathSize);
     ADBusSetInterface(message, signal->interface->name, -1);
     ADBusSetMember(message, signal->name, -1);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupReturn(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        struct ADBusMessage*        originalMessage)
-{
-    size_t destinationSize;
-    const char* destination = ADBusGetSender(originalMessage, &destinationSize);
-    int replySerial = ADBusGetSerial(originalMessage);
-
-    ADBusSetupReturnExpanded(
-            message,
-            connection,
-            replySerial,
-            destination,
-            (int) destinationSize);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupReturnExpanded(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        uint32_t                    replySerial,
-        const char*                 destination,
-        int                         destinationSize)
-{
-    ADBusResetMessage(message);
-    ADBusSetMessageType(message, ADBusMethodReturnMessage);
-    ADBusSetFlags(message, ADBusNoReplyExpectedFlag);
-    ADBusSetSerial(message, ADBusNextSerial(connection));
-
-    ADBusSetReplySerial(message, replySerial);
-    if (destination)
-        ADBusSetDestination(message, destination, destinationSize);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupMethodCall(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        uint32_t                    serial)
-{
-    ADBusResetMessage(message);
-    ADBusSetMessageType(message, ADBusMethodCallMessage);
-    if (serial)
-        ADBusSetSerial(message, serial);
-    else
-        ADBusSetSerial(message, ADBusNextSerial(connection));
-}
-
-// ----------------------------------------------------------------------------
-
-static void Append(
-        kstring_t* match,
-        const char* fieldName,
-        const char* field,
-        int size)
-{
-    if (!field)
-        return;
-
-    if (size < 0)
-        size = (int) strlen(field);
-
-    ks_cat(match, fieldName);
-    ks_cat(match, "='");
-    ks_cat_n(match, field, size);
-    ks_cat(match, "',");
-}
-
-static void GetMatchString(const struct ADBusMatch* match, kstring_t* matchString)
-{
-    if (match->type == ADBusMethodCallMessage)
-        ks_cat(matchString, "type='method_call',");
-    else if (match->type == ADBusMethodReturnMessage)
-        ks_cat(matchString, "type='method_return',");
-    else if (match->type == ADBusErrorMessage)
-        ks_cat(matchString, "type='error',");
-    else if (match->type == ADBusSignalMessage)
-        ks_cat(matchString, "type='signal',");
-
-    // We only want to add the sender field if we are not going to have to do
-    // a lookup conversion
-    if (match->sender
-     && !ADBusRequiresServiceLookup_(match->sender, match->senderSize))
-    {
-        Append(matchString, "sender", match->sender, match->senderSize);
-    }
-    Append(matchString, "interface", match->interface, match->interfaceSize);
-    Append(matchString, "member", match->member, match->memberSize);
-    Append(matchString, "path", match->path, match->pathSize);
-    Append(matchString, "destination", match->destination, match->destinationSize);
-
-    for (size_t i = 0; i < match->argumentsSize; ++i) {
-        struct ADBusMatchArgument* arg = &match->arguments[i];
-        ks_printf(matchString, "arg%d='", arg->number);
-        if (arg->valueSize < 0) {
-            ks_cat(matchString, arg->value);
-        } else {
-            ks_cat_n(matchString, arg->value, arg->valueSize);
-        }
-        ks_cat(matchString, "',");
-    }
-
-    // Remove the trailing ','
-    if (ks_size(matchString) > 0)
-        ks_remove_end(matchString, 1);
-}
-
-// ----------------------------------------------------------------------------
-
-static void SetupBusCall(
-        struct ADBusMessage* message,
-        struct ADBusConnection* connection)
-{
-    ADBusSetupMethodCall(message, connection, 0);
-    ADBusSetDestination(message, "org.freedesktop.DBus", -1);
-    ADBusSetPath(message, "/", -1);
-    ADBusSetInterface(message, "org.freedesktop.DBus", -1);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupAddBusMatch(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        const struct ADBusMatch*    match)
-{
-    SetupBusCall(message, connection);
-    ADBusSetMember(message, "AddMatch", -1);
-
-    kstring_t* mstr = ks_new();
-    GetMatchString(match, mstr);
-
-    struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusAppendArguments(marshaller, "s", -1);
-    ADBusAppendString(marshaller, ks_cstr(mstr), (int) ks_size(mstr));
-
-    ks_free(mstr);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupRemoveBusMatch(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        const struct ADBusMatch*    match)
-{
-    SetupBusCall(message, connection);
-    ADBusSetMember(message, "RemoveMatch", -1);
-
-    kstring_t* mstr = ks_new();
-    GetMatchString(match, mstr);
-
-    struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusAppendArguments(marshaller, "s", -1);
-    ADBusAppendString(marshaller, ks_cstr(mstr), (int) ks_size(mstr));
-
-    ks_free(mstr);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupRequestServiceName(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        const char*                 service,
-        int                         size,
-        uint32_t                    flags)
-{
-    SetupBusCall(message, connection);
-    ADBusSetMember(message, "RequestName", -1);
-
-    struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusAppendArguments(marshaller, "su", -1);
-    ADBusAppendString(marshaller, service, size);
-    ADBusAppendUInt32(marshaller, flags);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupReleaseServiceName(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection,
-        const char*                 service,
-        int                         size)
-{
-    SetupBusCall(message, connection);
-    ADBusSetMember(message, "ReleaseName", -1);
-
-    struct ADBusMarshaller* marshaller = ADBusArgumentMarshaller(message);
-    ADBusAppendArguments(marshaller, "s", -1);
-    ADBusAppendString(marshaller, service, size);
-}
-
-// ----------------------------------------------------------------------------
-
-void ADBusSetupHello(
-        struct ADBusMessage*        message,
-        struct ADBusConnection*     connection)
-{
-    SetupBusCall(message, connection);
-    ADBusSetMember(message, "Hello", -1);
 }
 
 

@@ -24,53 +24,56 @@
  */
 
 #include "Signal.h"
-
-#include <adbus/CommonMessages.h>
-#include <adbus/Connection.h>
-
-using namespace adbus;
+#include "Factory.h"
+#include "Interface_p.h"
+#include "Message.h"
+#include "ObjectPath.h"
 
 // ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
 
-SignalBase::SignalBase()
-:   m_Signal(NULL)
+struct ADBusSignal
 {
+    struct ADBusMessage*    message;
+    struct ADBusObjectPath* path;
+    struct ADBusMember*     signal;
+};
+
+// ----------------------------------------------------------------------------
+
+struct ADBusSignal* ADBusNewSignal(
+        struct ADBusObjectPath* path, 
+        struct ADBusMember*     member)
+{
+    struct ADBusSignal* s = NEW(struct ADBusSignal);
+    s->message  = ADBusCreateMessage();
+    s->path     = path;
+    s->signal   = member;
+    return s;
 }
 
 // ----------------------------------------------------------------------------
 
-SignalBase::~SignalBase()
+void ADBusFreeSignal(struct ADBusSignal* s)
 {
-    ADBusFreeSignal(m_Signal);
-}
-
-// ----------------------------------------------------------------------------
-
-void SignalBase::bind(
-        ADBusConnection*    connection,
-        const std::string&  path,
-        ADBusMember*        signal)
-{
-    struct ADBusObjectPath* opath = ADBusGetObjectPath(
-            connection,
-            path.c_str(),
-            (int) path.size());
-
-    if (opath) {
-        bind(opath, signal);
+    if (s) {
+        ADBusFreeMessage(s->message);
+        free(s);
     }
 }
 
 // ----------------------------------------------------------------------------
 
-void SignalBase::bind(
-        ADBusObjectPath*    path,
-        ADBusMember*        signal)
+void ADBusSignalFactory(
+        struct ADBusSignal*     s,
+        struct ADBusFactory*    f)
 {
-    ADBusFreeSignal(m_Signal);
-    m_Signal = ADBusNewSignal(path, signal);
+    ADBusInitFactory(f, s->path->connection, s->message);
+    f->type         = ADBusSignalMessage;
+    f->flags        = ADBusNoReplyExpectedFlag;
+    f->path         = s->path->path;
+    f->interface    = s->signal->interface->name;
+    f->member       = s->signal->name;
 }
+
 
 

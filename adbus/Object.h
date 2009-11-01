@@ -27,22 +27,35 @@
 
 #include "Common.h"
 
-ADBUS_API int ADBusError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        const char*                 errorMsgFormat,
-        ...);
 
-ADBUS_API void ADBusSetupError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
+ADBUS_API struct ADBusObject* ADBusCreateObject();
+ADBUS_API void ADBusFreeObject(struct ADBusObject* object);
+ADBUS_API void ADBusResetObject(struct ADBusObject* object);
 
-ADBUS_API void ADBusSetupSignal(
-        struct ADBusMessage*        message,
+ADBUS_API int ADBusBindObject(
+        struct ADBusObject*         object,
         struct ADBusObjectPath*     path,
-        struct ADBusMember*         signal);
+        struct ADBusInterface*      interface,
+        struct ADBusUser*           user2);
+
+ADBUS_API int ADBusUnbindObject(
+        struct ADBusObject*         object,
+        struct ADBusObjectPath*     path,
+        struct ADBusInterface*      interface);
+
+ADBUS_API uint32_t ADBusAddObjectMatch(
+        struct ADBusObject*         object,
+        struct ADBusConnection*     connection,
+        const struct ADBusMatch*    match);
+
+ADBUS_API void ADBusAddObjectMatchId(
+        struct ADBusObject*         object,
+        struct ADBusConnection*     connection,
+        uint32_t                    id);
+
+ADBUS_API void ADBusRemoveObjectMatch(
+        struct ADBusObject*         object,
+        struct ADBusConnection*     connection,
+        uint32_t                    id);
 
 

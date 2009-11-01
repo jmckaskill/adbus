@@ -26,34 +26,28 @@
 #pragma once
 
 #include "Common.h"
-#include <stdio.h>
 
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// ----------------------------------------------------------------------------
-
-struct ADBusIterator;
-struct ADBusMarshaller;
-
-// ----------------------------------------------------------------------------
-
-struct ADBusMessage;
-// Encapsulates a complete message including a set of header fields
-// and a block of marshalled argument data
-//
-// It owns its internal data:
-// - Will copy any data given to it
-// - Any memory referenced is still owned by the message and should be copied
-// or used immediately
-//
-// After setting the full message data or the argument data, headers can only
-// be read
-//
-// On setting the data, the data is endian flipped to the native endianness if
-// needed
+/** \defgroup ADBusMessage Message
+ *  \ingroup adbus
+ *
+ * \brief Functions to get/set message attributes/data.
+ *
+ * Encapsulates a complete message including a set of header fields and a
+ * block of marshalled argument data.
+ *
+ * It owns its internal data:
+ * - Will copy any data given to it
+ * - Any memory referenced is still owned by the message and should be copied
+ *   or used immediately
+ *
+ * After setting the full message data or the argument data, headers can only
+ * be read.
+ *
+ * On setting the data, the data is endian flipped to the native endianness if
+ * needed.
+ *
+ * @{
+ */
 
 ADBUS_API size_t ADBusNextMessageSize(const uint8_t* data, size_t size);
 
@@ -73,10 +67,10 @@ ADBUS_API const char* ADBusGetErrorName(struct ADBusMessage* m, size_t* len);
 ADBUS_API const char* ADBusGetSignature(struct ADBusMessage* m, size_t* len);
 
 ADBUS_API enum ADBusMessageType ADBusGetMessageType(struct ADBusMessage* m);
-ADBUS_API uint8_t     ADBusGetFlags(struct ADBusMessage* m);
-ADBUS_API uint32_t    ADBusGetSerial(struct ADBusMessage* m);
-ADBUS_API uint        ADBusHasReplySerial(struct ADBusMessage* m);
-ADBUS_API uint32_t    ADBusGetReplySerial(struct ADBusMessage* m);
+ADBUS_API uint8_t  ADBusGetFlags(struct ADBusMessage* m);
+ADBUS_API uint32_t ADBusGetSerial(struct ADBusMessage* m);
+ADBUS_API uint     ADBusHasReplySerial(struct ADBusMessage* m);
+ADBUS_API uint32_t ADBusGetReplySerial(struct ADBusMessage* m);
 
 ADBUS_API void ADBusGetArgumentData(struct ADBusMessage* m, const uint8_t** data, size_t* size);
 
@@ -96,11 +90,7 @@ ADBUS_API struct ADBusMarshaller* ADBusArgumentMarshaller(struct ADBusMessage* m
 ADBUS_API void  ADBusArgumentIterator(struct ADBusMessage* m, struct ADBusIterator* iterator);
 ADBUS_API char* ADBusNewMessageSummary(struct ADBusMessage* m, size_t* size);
 
-// ----------------------------------------------------------------------------
+/** @} */
 
-
-#ifdef __cplusplus
-}
-#endif
 
 

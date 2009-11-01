@@ -31,35 +31,53 @@
 #include "Interface.h"
 #include "Message.h"
 
+#include "adbus/Connection.h"
+#include "adbus/Match.h"
+#include "adbus/ObjectPath.h"
+
 #include <string>
 #include <vector>
 
 namespace adbus
 {
-    struct Match
+
+    class ObjectPath
     {
-        Match()
-        :   type(ADBusInvalidMessage),
-            addMatchToBusDaemon(0),
-            removeOnFirstMatch(0),
-            replySerial(0xFFFFFFFF)
-        {}
+    public:
+        ObjectPath()
+        { m_Path = NULL; }
 
-        enum ADBusMessageType type;
+        ObjectPath(ADBusObjectPath* p)
+        { m_Path = p; }
 
-        bool            addMatchToBusDaemon;
-        bool            removeOnFirstMatch;
+        ObjectPath(ADBusConnection* c, const std::string& p)
+        { m_Path = ADBusGetObjectPath(c, p.c_str(), (int) p.size()); }
 
-        uint32_t        replySerial;
+        ObjectPath operator/(const std::string& p) const
+        { return ObjectPath(ADBusRelativePath(m_Path, p.c_str(), (int) p.size())); }
 
-        std::string     sender;
-        std::string     destination;
-        std::string     interface;
-        std::string     path;
-        std::string     member;
-        std::string     errorName;
+        ADBusConnection* connection() const
+        {return m_Path->connection;}
+
+        bool isValid() const
+        {return m_Path != NULL;}
+
+        std::string pathString() const
+        {return std::string(m_Path->path, m_Path->pathSize);}
+
+        const char* path() const
+        {return m_Path->path;}
+
+        operator ADBusObjectPath*() const
+        {return m_Path;}
+    private:
+        ADBusObjectPath*    m_Path;
     };
 
+    /** Something about Object.
+     *
+     * \ingroup adbuscpp
+     */
 
     class Object
     {
@@ -68,33 +86,40 @@ namespace adbus
         Object();
         virtual ~Object();
 
-        template<class M> 
-        void bind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, M* object);
+        void reset();
 
-        void unbind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface);
-        void unbindAll();
+        template<class O>
+        void bind(
+                ADBusConnection*    connection,
+                const std::string&  path,
+                ADBusInterface*     interface,
+                O*                  object);
 
-        uint32_t addMatch(ADBusConnection*           connection,
-                          Match*                match,
-                          ADBusMessageCallback  function,
-                          struct ADBusUser*     user1,
-                          struct ADBusUser*     user2);
-        
-        void removeMatch(ADBusConnection*        connection,
-                         uint32_t           id);
+        template<class O>
+        void bind(
+                ADBusObjectPath*    path,
+                ADBusInterface*     interface,
+                O*                  object);
 
-        void removeAllMatches();
+        void unbind(
+                ADBusConnection*    connection,
+                const std::string&  path,
+                ADBusInterface*     interface);
 
-        // This now includes a whole bunch of match callback functions like:
-        //
-        // template<class MemFun, class M>
-        // void addMatch0(Match* m, MemFun mf, M* m);
-        //
-        // template<class A0, class MemFun, class M>
-        // void addMatch1(Match* m, MemFun mf, M* m);
-        //
-        // template<class A0, class A1, class MemFun, class M>
-        // void addMatch2(Match* m, MemFun mf, M* m);
+        void unbind(
+                ADBusObjectPath*    path,
+                ADBusInterface*     interface);
+
+        uint32_t addMatch(ADBusConnection* connection, ADBusMatch* match);
+        void addMatch(ADBusConnection* connection, uint32_t matchId);
+        void removeMatch(ADBusConnection* connection, uint32_t matchId);
+
+#ifdef DOC
+
+        template<class A0 ..., class MF, class O>
+        void addMatchX(ADBusConnection* c, ADBusMatch* m, MF mf, O* m);
+
+#else
 
 #define NUM 0
 #define REPEAT_SEPERATOR(x, sep)
@@ -136,33 +161,45 @@ namespace adbus
 #define REPEAT_SEPERATOR(x, sep) x(0) sep x(1) sep x(2) sep x(3) sep x(4) sep x(5) sep x(6) sep x(7) sep x(8)
 #include "Object_t.h"
 
+#endif
+
+        operator struct ADBusObject*()const {return m_Object;}
+
     private:
-        void doBind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, struct ADBusUser* user2);
+        void doBind(
+                ADBusObjectPath*    path,
+                ADBusInterface*     interface,
+                struct ADBusUser*   user2);
 
-        struct BindData
-        {
-            ADBusConnection*  connection;
-            ADBusObject*      object;
-            ADBusInterface*   interface;
-        };
-
-        struct MatchData
-        {
-            ADBusConnection*    connection;
-            uint32_t            matchId;
-        };
-
-        std::vector<MatchData>  m_Matches;
-        std::vector<BindData>   m_Interfaces;
+        struct ADBusObject*     m_Object;
     };
 
-    template<class M>
-    void Object::bind(ADBusConnection* connection, const std::string& path, ADBusInterface* interface, M* object)
+    template<class O>
+    void Object::bind(
+            ADBusConnection*    connection,
+            const std::string&  path,
+            ADBusInterface*     interface,
+            O*                  object)
     {
-        UserData<M*>* objectData = new UserData<M*>(object);
-        doBind(connection, path, interface, objectData);
+        ADBusObjectPath* o = ADBusGetObjectPath(
+                connection,
+                path.c_str(),
+                (int) path.size());
+
+        UserData<O*>* odata = new UserData<O*>(object);
+        doBind(o, interface, odata);
     }
 
+    template<class O>
+    void Object::bind(
+            ADBusObjectPath*    path,
+            ADBusInterface*     interface,
+            O*                  object)
+    {
+        UserData<O*>* odata = new UserData<O*>(object);
+        doBind(path, interface, odata);
+    }
 
 }
+
 

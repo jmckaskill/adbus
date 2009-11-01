@@ -23,26 +23,52 @@
  * ----------------------------------------------------------------------------
  */
 
+
 #pragma once
 
 #include "Common.h"
+#include "Connection.h"
+#include "Message.h"
 
-ADBUS_API int ADBusError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        const char*                 errorMsgFormat,
-        ...);
 
-ADBUS_API void ADBusSetupError(
-        struct ADBusCallDetails*    details,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize);
+struct ADBusFactory
+{
+    struct ADBusConnection*     connection;
+    struct ADBusMessage*        message;
+    struct ADBusMarshaller*     args;
 
-ADBUS_API void ADBusSetupSignal(
-        struct ADBusMessage*        message,
-        struct ADBusObjectPath*     path,
-        struct ADBusMember*         signal);
+    enum ADBusMessageType       type;
+    uint32_t                    serial;
+    uint8_t                     flags;
+
+    const char*                 destination;
+    int                         destinationSize;
+    const char*                 path;
+    int                         pathSize;
+    const char*                 interface;
+    int                         interfaceSize;
+    const char*                 member;
+    int                         memberSize;
+
+    ADBusMessageCallback        callback;
+    struct ADBusUser*           user1;
+    struct ADBusUser*           user2;
+
+    ADBusMessageCallback        errorCallback;
+    struct ADBusUser*           errorUser1;
+    struct ADBusUser*           errorUser2;
+
+    uint32_t                    matchId;
+    uint32_t                    errorMatchId;
+
+};
+
+ADBUS_API void ADBusInitFactory(
+        struct ADBusFactory*    factory,
+        struct ADBusConnection* connection,
+        struct ADBusMessage*    message);
+
+ADBUS_API uint32_t ADBusCallFactory(
+        struct ADBusFactory*    factory);
 
 

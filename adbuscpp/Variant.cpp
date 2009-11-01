@@ -27,9 +27,6 @@
 #include "Message.h"
 
 
-#ifdef WIN32
-#   pragma warning(disable:4267) // conversion from size_t to int
-#endif
 
 
 using namespace adbus;

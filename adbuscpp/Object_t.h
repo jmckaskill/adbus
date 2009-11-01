@@ -34,36 +34,42 @@
 #define CAT2(x,y) x ## y
 #define CAT(x,y) CAT2(x,y)
 
-#define CLASS_DECL_ITEM(NUM) class A ## NUM,
-#define CLASS_LIST_ITEM(NUM) , A ## NUM
+#define CLASS_DECL_ITEM_TC(NUM) class A ## NUM,
+#define CLASS_LIST_ITEM_LC(NUM) , A ## NUM
+#define CLASS_LIST_ITEM_TC(NUM) A ## NUM,
 
 // creates: class A0, class A1, ...
-#define CLASS_DECL_TRAILING_COMMA REPEAT( CLASS_DECL_ITEM )
+#define CLASS_DECL_TC REPEAT( CLASS_DECL_ITEM_TC )
+
+// creates: A0, A1, ...
+#define CLASS_LIST_TC REPEAT( CLASS_LIST_ITEM_TC )
 
 // creates: , A0, A1 ...
-#define CLASS_LIST_LEADING_COMMA REPEAT( CLASS_LIST_ITEM )
+#define CLASS_LIST_LC REPEAT( CLASS_LIST_ITEM_LC )
 
-    template<CLASS_DECL_TRAILING_COMMA
-             class MemFun, class M>
-    void CAT(addMatch,NUM) (ADBusConnection* connection, Match* match, MemFun f, M* m)
+    template<CLASS_DECL_TC class MF, class O>
+    uint32_t CAT(addMatch,NUM) (
+            struct ADBusConnection* connection,
+            struct ADBusMatch*      match,
+            MF                      mf,
+            O*                      o)
     { 
-        UserData<M*>* objectData = new UserData<M*>(m);
-        UserData<MemFun>* functionData = new UserData<MemFun>(f);
-        functionData->chainedFunction
-            = & CAT(adbus::detail::MemberFunction,NUM) <MemFun, M CLASS_LIST_LEADING_COMMA>;
+        CAT(detail::CreateMFCallback, NUM) <MF, O CLASS_LIST_LC> (
+                mf, o, &match->user1, &match->user2);
 
-        addMatch(connection,
-                 match,
-                 &CallMethod,
-                 functionData,
-                 objectData);
-    } 
+        match->callback = &detail::CallMethod;
 
-#undef CLASS_DECL_ITEM
-#undef CLASS_LIST_ITEM
+        return addMatch(connection, match);
+    }
 
-#undef CLASS_DECL_TRAILING_COMMA
-#undef CLASS_LIST_LEADING_COMMA
+
+#undef CLASS_DECL_ITEM_TC
+#undef CLASS_LIST_ITEM_TC
+#undef CLASS_LIST_ITEM_LC
+
+#undef CLASS_DECL_TC
+#undef CLASS_LIST_TC
+#undef CLASS_LIST_LC
 
 #undef EMPTY_SEPERATOR
 #undef COMMA_SEPERATOR

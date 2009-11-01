@@ -23,7 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Signal.h"
+#include "Proxy.h"
 
 #include <adbus/CommonMessages.h>
 #include <adbus/Connection.h>
@@ -34,43 +34,52 @@ using namespace adbus;
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-SignalBase::SignalBase()
-:   m_Signal(NULL)
+Proxy::Proxy()
+:   m_Proxy(NULL)
 {
 }
 
 // ----------------------------------------------------------------------------
 
-SignalBase::~SignalBase()
+Proxy::~Proxy()
 {
-    ADBusFreeSignal(m_Signal);
+    ADBusFreeProxy(m_Proxy);
 }
 
 // ----------------------------------------------------------------------------
 
-void SignalBase::bind(
+void Proxy::bind(
         ADBusConnection*    connection,
-        const std::string&  path,
-        ADBusMember*        signal)
+        const std::string&  service,
+        const std::string&  path)
 {
-    struct ADBusObjectPath* opath = ADBusGetObjectPath(
+    ADBusFreeProxy(m_Proxy);
+    m_Proxy = ADBusCreateProxy(
             connection,
-            path.c_str(),
-            (int) path.size());
+            service.c_str(), (int) service.size(),
+            path.c_str(), (int) path.size(),
+            NULL, -1);
 
-    if (opath) {
-        bind(opath, signal);
-    }
+    ADBusProxyFactory(m_Proxy, &m_Factory);
 }
 
 // ----------------------------------------------------------------------------
 
-void SignalBase::bind(
-        ADBusObjectPath*    path,
-        ADBusMember*        signal)
+void Proxy::bind(
+        ADBusConnection*    connection,
+        const std::string&  service,
+        const std::string&  path,
+        const std::string&  interface)
 {
-    ADBusFreeSignal(m_Signal);
-    m_Signal = ADBusNewSignal(path, signal);
+    ADBusFreeProxy(m_Proxy);
+    m_Proxy = ADBusCreateProxy(
+            connection,
+            service.c_str(), (int) service.size(),
+            path.c_str(), (int) path.size(),
+            interface.c_str(), (int) interface.size());
+
+    ADBusProxyFactory(m_Proxy, &m_Factory);
 }
+
 
 

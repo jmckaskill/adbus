@@ -42,12 +42,12 @@
 size_t ADBusNextMessageSize(const uint8_t* data, size_t size)
 {
     // Check that we have enough correct data to decode the header
-    if (size < sizeof(struct ADBusExtendedHeader_))
+    if (size < sizeof(struct ExtendedHeader))
         return 0;
 
-    struct ADBusExtendedHeader_* header = (struct ADBusExtendedHeader_*) data;
+    struct ExtendedHeader* header = (struct ExtendedHeader*) data;
 
-    uint nativeEndian = (header->endianness == ADBusNativeEndianness_);
+    uint nativeEndian = (header->endianness == NativeEndianness);
 
     size_t length = nativeEndian
         ? header->length
@@ -57,9 +57,9 @@ size_t ADBusNextMessageSize(const uint8_t* data, size_t size)
         ? header->headerFieldLength
         : ENDIAN_CONVERT32(header->headerFieldLength);
 
-    size_t headerSize = sizeof(struct ADBusExtendedHeader_) + headerFieldLength;
+    size_t headerSize = sizeof(struct ExtendedHeader) + headerFieldLength;
     // Note the header size is 8 byte aligned even if there is no argument data
-    size_t messageSize = ADBUS_ALIGN_VALUE_(size_t, headerSize, 8) + length;
+    size_t messageSize = ALIGN_VALUE(headerSize, 8) + length;
 
     return messageSize;
 }
@@ -130,13 +130,13 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
     ADBusGetMarshalledData(m->marshaller, NULL, NULL, &data, &size);
 
     // Check that we have enough correct data to decode the header
-    if (size < sizeof(struct ADBusExtendedHeader_))
+    if (size < sizeof(struct ExtendedHeader))
         return ADBusInvalidData;
 
-    struct ADBusExtendedHeader_* header = (struct ADBusExtendedHeader_*) data;
+    struct ExtendedHeader* header = (struct ExtendedHeader*) data;
 
     // Check the single byte header fields
-    if (header->version != ADBusMajorProtocolVersion_)
+    if (header->version != MajorProtocolVersion)
         return ADBusInvalidData;
     if (header->type == ADBusInvalidMessage)
         return ADBusInvalidData;
@@ -144,7 +144,7 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
         return ADBusInvalidData;
 
     m->messageType = (enum ADBusMessageType) header->type;
-    m->nativeEndian = (header->endianness == ADBusNativeEndianness_);
+    m->nativeEndian = (header->endianness == NativeEndianness);
 
     // Get the non single byte fields out of the header
     size_t length = m->nativeEndian
@@ -165,8 +165,8 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
         return ADBusInvalidData;
 
     // Figure out the message size and see if we have the right amount
-    size_t headerSize = sizeof(struct ADBusExtendedHeader_) + headerFieldLength;
-    headerSize = ADBUS_ALIGN_VALUE_(size_t, headerSize, 8);
+    size_t headerSize = sizeof(struct ExtendedHeader) + headerFieldLength;
+    headerSize = ALIGN_VALUE(headerSize, 8);
     size_t messageSize = headerSize + length;
 
     if (size != messageSize)
@@ -181,8 +181,8 @@ int ADBusSetMessageData(struct ADBusMessage* m, const uint8_t* data, size_t size
     }
 
     // Parse the header fields
-    const uint8_t* fieldBegin = data + sizeof(struct ADBusHeader_);
-    size_t fieldSize = headerSize - sizeof(struct ADBusHeader_);
+    const uint8_t* fieldBegin = data + sizeof(struct Header);
+    size_t fieldSize = headerSize - sizeof(struct Header);
 
     struct ADBusIterator* iterator =  m->headerIterator;
     ADBusResetIterator(iterator, "a(yv)", -1, fieldBegin, fieldSize);
@@ -354,7 +354,7 @@ static void AppendUInt32(struct ADBusMessage* m, uint8_t code, uint32_t field)
     ADBusEndStruct(m->marshaller);
 }
 
-void ADBusBuildMessage_(struct ADBusMessage* m)
+void BuildMessage(struct ADBusMessage* m)
 {
     const char* signature;
     size_t sigsize;
@@ -365,15 +365,27 @@ void ADBusBuildMessage_(struct ADBusMessage* m)
                            &argumentData, &argumentSize);
 
     ADBusResetMarshaller(m->marshaller);
-    struct ADBusHeader_ header;
 
-    header.endianness   = ADBusNativeEndianness_;
+    if (m->messageType == ADBusMethodCallMessage) {
+        assert(m->path && m->member);
+    } else if (m->messageType == ADBusMethodReturnMessage) {
+        assert(m->hasReplySerial);
+    } else if (m->messageType == ADBusSignalMessage) {
+        assert(m->interface && m->member);
+    } else if (m->messageType == ADBusErrorMessage) {
+        assert(m->errorName);
+    } else {
+        assert(0);
+    }
+
+    struct Header header;
+    header.endianness   = NativeEndianness;
     header.type         = (uint8_t) m->messageType;
     header.flags        = m->flags;
-    header.version      = ADBusMajorProtocolVersion_;
+    header.version      = MajorProtocolVersion;
     header.length       = argumentSize;
     header.serial       = m->serial;
-    ADBusAppendData(m->marshaller, (const uint8_t*) &header, sizeof(struct ADBusHeader_));
+    ADBusAppendData(m->marshaller, (const uint8_t*) &header, sizeof(struct Header));
 
     ADBusAppendArguments(m->marshaller, "a(yv)", -1);
     ADBusBeginArray(m->marshaller);
@@ -394,7 +406,7 @@ void ADBusBuildMessage_(struct ADBusMessage* m)
 
     // The header is 8 byte padded even if there is no argument data
     static uint8_t paddingData[8]; // since static, guarenteed to be 0s
-    size_t padding = ADBUS_ALIGN_VALUE_(size_t, headerSize, 8) - headerSize;
+    size_t padding = ALIGN_VALUE(headerSize, 8) - headerSize;
     if (padding != 0)
       ADBusAppendData(m->marshaller, paddingData, padding);
 
@@ -645,7 +657,7 @@ static void PrintStringField(
         const char* what)
 {
     if (field)
-        ks_printf(str, "\n\t%-15s \"%s\"", what, field);
+        ks_printf(str, "\n%-15s \"%s\"", what, field);
 }
 
 static void LogField(kstring_t* str, struct ADBusIterator* i, struct ADBusField* field);
@@ -726,46 +738,48 @@ static void LogField(kstring_t* str, struct ADBusIterator* i, struct ADBusField*
 char* ADBusNewMessageSummary(struct ADBusMessage* m, size_t* size)
 {
     kstring_t* str = ks_new();
-    size_t messageSize;
-    ADBusGetMarshalledData(m->marshaller, NULL, NULL, NULL, &messageSize);
-    messageSize -= m->argumentOffset;
+    size_t messageSize = 0;
+    int argnum = 0;
+    struct ADBusIterator* iter = m->headerIterator;
+    ADBusArgumentIterator(m, iter);
+
+    const char* sig;
+    ADBusGetIteratorData(iter, &sig, NULL, NULL, &messageSize);
 
     enum ADBusMessageType type = ADBusGetMessageType(m);
-    if (type == ADBusMethodCallMessage)
-      ks_printf(str, "Type method_call (1), ");
-    else if (type == ADBusMethodReturnMessage)
-      ks_printf(str, "Type method_return (2), ");
-    else if (type == ADBusErrorMessage)
-      ks_printf(str, "Type error (3), ");
-    else if (type == ADBusSignalMessage)
-      ks_printf(str, "Type signal (4), ");
-    else
-      ks_printf(str, "Type unknown (%d), ", (int) type);
+    if (type == ADBusMethodCallMessage) {
+        ks_printf(str, "Method call: ");
+    } else if (type == ADBusMethodReturnMessage) {
+        ks_printf(str, "Return: ");
+    } else if (type == ADBusErrorMessage) {
+        ks_printf(str, "Error: ");
+    } else if (type == ADBusSignalMessage) {
+        ks_printf(str, "Signal: ");
+    } else {
+        ks_printf(str, "Unknown (%d): ", (int) type);
+    }
 
     ks_printf(str, "Flags %d, Length %d, Serial %d",
             (int) ADBusGetFlags(m),
             (int) messageSize,
             (int) ADBusGetSerial(m));
+    PrintStringField(str, m->sender, "Sender");
+    PrintStringField(str, m->destination, "Destination");
     PrintStringField(str, m->path, "Path");
     PrintStringField(str, m->interface, "Interface");
     PrintStringField(str, m->member, "Member");
     PrintStringField(str, m->errorName, "Error name");
-    if (m->hasReplySerial)
-        ks_printf(str, "\n\t%-15s %d", "Reply serial", m->replySerial);
-    PrintStringField(str, m->destination, "Destination");
-    PrintStringField(str, m->sender, "Sender");
+    if (m->hasReplySerial) {
+        ks_printf(str, "\n%-15s %d", "Reply serial", m->replySerial);
+    }
 
-    int argnum = 0;
-    struct ADBusIterator* iter = m->headerIterator;
-    ADBusArgumentIterator(m, iter);
-
-    const char* sig = ADBusCurrentIteratorSignature(iter, NULL);
-    if (sig && *sig)
+    if (sig && *sig) {
         PrintStringField(str, sig, "Signature");
+    }
 
     struct ADBusField field;
     while (!ADBusIterate(iter, &field) && field.type != ADBusEndField) {
-        ks_printf(str, "\n\tArgument %2d     ", argnum++);
+        ks_printf(str, "\nArgument %2d     ", argnum++);
         LogField(str, iter, &field);
     }
 

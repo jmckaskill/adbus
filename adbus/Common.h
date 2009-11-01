@@ -25,6 +25,15 @@
 
 #pragma once
 
+/** \defgroup adbus adbus
+ *
+ * \brief Library brief
+ *
+ * Library description
+ *
+ */
+
+
 #define __STDC_LIMIT_MACROS
 #define __STDC_CONSTANT_MACROS
 
@@ -32,31 +41,39 @@
 #include <stdint.h>
 #include <setjmp.h>
 
-#ifdef ADBUS_BUILD_AS_DLL
-#   ifdef ADBUS_LIBRARY
-#       define ADBUS_API __declspec(dllexport)
-#   else
-#       define ADBUS_API __declspec(dllimport)
-#   endif
-#else
-#   define ADBUS_API extern
-#endif
-
-#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && \
-    defined(__ELF__)
-
-#   define ADBUSI_FUNC	__attribute__((visibility("hidden"))) extern
-#   define ADBUSI_DATA	ADBUSI_FUNC
-
-#else
-#   define ADBUSI_FUNC
-#   define ADBUSI_DATA	extern
-#endif
-
 
 #ifdef __cplusplus
-extern "C" {
+#   define ADBUS_EXTERN extern "C"
+#   define ADBUS_EXTERN_BLOCK_BEGIN extern "C" {
+#   define ADBUS_EXTERN_BLOCK_END }
+#else
+#   define ADBUS_EXTERN extern
+#   define ADBUS_EXTERN_BLOCK_BEGIN
+#   define ADBUS_EXTERN_BLOCK_END
 #endif
+
+
+#ifdef ADBUS_BUILD_AS_DLL
+#   ifdef ADBUS_LIBRARY
+#       define ADBUS_API ADBUS_EXTERN __declspec(dllexport)
+#   else
+#       define ADBUS_API ADBUS_EXTERN __declspec(dllimport)
+#   endif
+#else
+#   define ADBUS_API ADBUS_EXTERN
+#endif
+
+
+#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && defined(__ELF__)
+#   define ADBUSI_FUNC __attribute__((visibility("hidden"))) ADBUS_EXTERN
+#   define ADBUSI_DATA __attribute__((visibility("hidden"))) ADBUS_EXTERN
+#   define ADBUS_CALLBACK __attribute((visibility("hidden"))) ADBUS_EXTERN
+#else
+#   define ADBUSI_FUNC
+#   define ADBUSI_DATA ADBUS_EXTERN
+#   define ADBUS_CALLBACK ADBUS_EXTERN
+#endif
+
 
 /* Pulled from http://dbus.freedesktop.org/doc/dbus-specification.html
  * +-------------+------------------+--------------------------------------+-------------+-----------------------------------------------+
@@ -136,6 +153,8 @@ extern "C" {
  * +-------------+------------------+--------------------------------------+-------------+-----------------------------------------------+
  */
 
+/* ------------------------------------------------------------------------- */
+
 typedef unsigned int uint;
 
 /* ------------------------------------------------------------------------- */
@@ -213,12 +232,22 @@ enum ADBusFieldType
 
 enum ADBusParseError
 {
+    ADBusErrorJmp = -2,
     ADBusInternalError = -1,
     ADBusSuccess = 0,
     ADBusInvalidData,
     ADBusInvalidVersion,
     ADBusInvalidAlignment,
     ADBusInvalidArgument,
+};
+
+// ----------------------------------------------------------------------------
+
+enum ADBusMemberType
+{
+    ADBusMethodMember,
+    ADBusSignalMember,
+    ADBusPropertyMember,
 };
 
 // ----------------------------------------------------------------------------
@@ -262,15 +291,39 @@ enum ADBusServiceCode
 // ----------------------------------------------------------------------------
 
 // Forward declarations
+struct ADBusCallDetails;
 struct ADBusConnection;
-struct ADBusStreamBuffer;
+struct ADBusFactory;
 struct ADBusInterface;
-struct ADBusMember;
-struct ADBusObject;
-struct ADBusMessage;
-struct ADBusMarshaller;
 struct ADBusIterator;
+struct ADBusMarshaller;
+struct ADBusMatch;
+struct ADBusMember;
+struct ADBusMessage;
+struct ADBusObject;
+struct ADBusObjectPath;
+struct ADBusStreamBuffer;
 struct ADBusUser;
+
+ADBUS_EXTERN_BLOCK_BEGIN
+
+typedef void (*ADBusSendCallback)(
+        struct ADBusMessage*        message,
+        const struct ADBusUser*     user);
+
+typedef void (*ADBusConnectionCallback)(
+        const char*                 unique,
+        size_t                      uniqueSize,
+        const struct ADBusUser*     user);
+
+typedef void (*ADBusServiceCallback)(
+        const struct ADBusUser*     user,
+        enum ADBusServiceCode       success);
+
+typedef int (*ADBusMessageCallback)(
+        struct ADBusCallDetails*    details);
+
+ADBUS_EXTERN_BLOCK_END
 
 struct ADBusCallDetails
 {
@@ -280,20 +333,17 @@ struct ADBusCallDetails
     // Valid only if callback is originally in response to a method call
     struct ADBusMessage*    message;
     // Valid for method call callbacks
-    struct ADBusIterator*   arguments;
+    struct ADBusIterator*   args;
 
     // Response
-    // set this to any non-zero response from the iterator calls
-    // Then on returning ADBusParse will return this which should disconnect
-    // the connection
-    int                     parseError;
     // manualReply indicates to the callee whether there is a return message
     uint                    manualReply;
     // Messages to use for replying - may be NULL if the original caller
     // requested no reply
     // To send an error set the replyType to ADBusErrorMessageReply
     // and use ADBusSetupError
-    struct ADBusMessage*    returnMessage;
+    struct ADBusMessage*    retmessage;
+    struct ADBusMarshaller* retargs;
 
     // Properties
     // The iterator can be used to get the new property value and on a get
@@ -319,10 +369,5 @@ struct ADBusCallDetails
 };
 #define ADBusInitCallDetails(P) memset(P, 0, sizeof(struct ADBusCallDetails))
 
-typedef void (*ADBusMessageCallback)(struct ADBusCallDetails*);
 
-// ----------------------------------------------------------------------------
 
-#ifdef __cplusplus
-}
-#endif

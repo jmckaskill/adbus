@@ -83,6 +83,7 @@
     INLINE void kv_pop_##name(kv_##name##_t* v, size_t num)                 \
     {                                                                       \
         size_t old = v->size;                                               \
+        (void) old;                                                         \
         assert(num <= old);                                                 \
         v->size -= num;                                                     \
     }                                                                       \

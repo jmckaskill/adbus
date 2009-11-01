@@ -36,9 +36,9 @@ LADBUSI_FUNC int LADBusBindInterface(lua_State* L);
 LADBUSI_FUNC int LADBusUnbindInterface(lua_State* L);
 LADBUSI_FUNC int LADBusEmit(lua_State* L);
 
-LADBUSI_FUNC void LADBusMethodCallback(struct ADBusCallDetails* details);
-LADBUSI_FUNC void LADBusGetPropertyCallback(struct ADBusCallDetails* details);
-LADBUSI_FUNC void LADBusSetPropertyCallback( struct ADBusCallDetails* details);
+ADBUS_CALLBACK int LADBusMethodCallback(struct ADBusCallDetails* details);
+ADBUS_CALLBACK int LADBusGetPropertyCallback(struct ADBusCallDetails* details);
+ADBUS_CALLBACK int LADBusSetPropertyCallback( struct ADBusCallDetails* details);
 
 
 

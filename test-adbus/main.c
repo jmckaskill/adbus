@@ -28,7 +28,6 @@ int main()
 {
 #ifndef NDEBUG
     TestVector();
-    TestInterface();
     TestIterator();
 #endif
     return 0;

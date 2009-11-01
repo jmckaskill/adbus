@@ -24,7 +24,11 @@
  */
 
 #include "Interface.h"
+
+#include "CommonMessages.h"
+#include "Connection_p.h"
 #include "Interface_p.h"
+#include "Iterator.h"
 #include "Misc_p.h"
 #include "memory/kvector.h"
 
@@ -162,13 +166,14 @@ struct ADBusMember* ADBusGetInterfaceMember(
 // Member management
 // ----------------------------------------------------------------------------
 
-void ADBusAddArgument(struct ADBusMember* m,
+void ADBusAddArgument(
+        struct ADBusMember*         m,
         enum ADBusArgumentDirection direction,
-        const char* name, int nameSize,
-        const char* type, int typeSize)
+        const char*                 name,
+        int                         nameSize,
+        const char*                 type,
+        int                         typeSize)
 {
-    assert(type);
-
     if (name && nameSize < 0)
         nameSize = strlen(name);
 
@@ -187,12 +192,13 @@ void ADBusAddArgument(struct ADBusMember* m,
 
 // ----------------------------------------------------------------------------
 
-void ADBusAddAnnotation(struct ADBusMember* m,
-        const char* name, int nameSize,
-        const char* value, int valueSize)
+void ADBusAddAnnotation(
+        struct ADBusMember* m,
+        const char*         name,
+        int                 nameSize,
+        const char*         value,
+        int                 valueSize)
 {
-    assert(name && value);
-
     name = (nameSize >= 0)
          ? strndup_(name, nameSize)
          : strdup_(name);
@@ -201,9 +207,9 @@ void ADBusAddAnnotation(struct ADBusMember* m,
           ? strndup_(value, valueSize)
           : strdup_(value);
 
-    int ret;
-    khiter_t ki = kh_put(StringPair, m->annotations, name, &ret);
-    if (!ret) {
+    int added;
+    khiter_t ki = kh_put(StringPair, m->annotations, name, &added);
+    if (!added) {
         free((char*) kh_key(m->annotations, ki));
         free(kh_val(m->annotations, ki));
     }
@@ -238,33 +244,6 @@ void ADBusSetPropertyType(
 
 // ----------------------------------------------------------------------------
 
-const char* ADBusPropertyType(
-        struct ADBusMember*         m,
-        size_t*                     size)
-{
-    if (size)
-        *size = m->propertyType ? strlen(m->propertyType) : 0;
-    return m->propertyType;
-}
-
-// ----------------------------------------------------------------------------
-
-uint ADBusIsPropertyReadable(
-        struct ADBusMember*         m)
-{
-    return (m->getPropertyCallback) ? 1 : 0;
-}
-
-// ----------------------------------------------------------------------------
-
-uint ADBusIsPropertyWritable(
-        struct ADBusMember*         m)
-{
-    return (m->setPropertyCallback) ? 1 : 0;
-}
-
-// ----------------------------------------------------------------------------
-
 void ADBusSetPropertyGetCallback(
         struct ADBusMember*         m,
         ADBusMessageCallback        callback,
@@ -287,38 +266,381 @@ void ADBusSetPropertySetCallback(
     m->setPropertyData     = user;
 }
 
+
+
+
+
+
+
+// ----------------------------------------------------------------------------
+// Introspection callback (private)
 // ----------------------------------------------------------------------------
 
-void ADBusCallMethod(
-        struct ADBusMember*         m,
-        struct ADBusCallDetails*    details)
+static void IntrospectArguments(struct ADBusMember* m, kstring_t* out)
 {
-    details->user1 = m->methodData;
-    if (m->methodCallback)
-        m->methodCallback(details);
+    for (size_t i = 0; i < kv_size(m->inArguments); ++i)
+    {
+        struct Argument* a = &kv_a(m->inArguments, i);
+        ks_cat(out, "\t\t\t<arg type=\"");
+        ks_cat(out, a->type);
+        if (a->name)
+        {
+            ks_cat(out, "\" name=\"");
+            ks_cat(out, a->name);
+        }
+        ks_cat(out, "\" direction=\"in\"/>\n");
+    }
+
+    for (size_t j = 0; j < kv_size(m->outArguments); ++j)
+    {
+        struct Argument* a = &kv_a(m->outArguments, j);
+        ks_cat(out, "\t\t\t<arg type=\"");
+        ks_cat(out, a->type);
+        if (a->name)
+        {
+            ks_cat(out, "\" name=\"");
+            ks_cat(out, a->name);
+        }
+        ks_cat(out, "\" direction=\"out\"/>\n");
+    }
+
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusCallSetProperty(
-        struct ADBusMember*         m,
-        struct ADBusCallDetails*    details)
+static void IntrospectAnnotations(struct ADBusMember* m, kstring_t* out)
 {
-    details->user1 = m->setPropertyData;
-    if (m->setPropertyCallback)
-        m->setPropertyCallback(details);
+    for (khiter_t ai = kh_begin(m->annotations); ai != kh_end(m->annotations); ++ai) {
+        if (kh_exist(m->annotations, ai)) {
+            ks_cat(out, "\t\t\t<annotation name=\"");
+            ks_cat(out, kh_key(m->annotations, ai));
+            ks_cat(out, "\" value=\"");
+            ks_cat(out, kh_val(m->annotations, ai));
+            ks_cat(out, "\"/>\n");
+        }
+    }
+}
+// ----------------------------------------------------------------------------
+
+static void IntrospectMember(struct ADBusMember* m, kstring_t* out)
+{
+    switch (m->type)
+    {
+        case ADBusPropertyMember:
+            {
+                ks_cat(out, "\t\t<property name=\"");
+                ks_cat(out, m->name);
+                ks_cat(out, "\" type=\"");
+                ks_cat(out, m->propertyType);
+                ks_cat(out, "\" access=\"");
+                uint read  = (m->getPropertyCallback != NULL);
+                uint write = (m->setPropertyCallback != NULL);
+                if (read && write) {
+                    ks_cat(out, "readwrite");
+                } else if (read) {
+                    ks_cat(out, "read");
+                } else if (write) {
+                    ks_cat(out, "write");
+                } else {
+                    assert(0);
+                }
+
+                if (kh_size(m->annotations) == 0)
+                {
+                    ks_cat(out, "\"/>\n");
+                }
+                else
+                {
+                    ks_cat(out, "\">\n");
+                    IntrospectAnnotations(m, out);
+                    ks_cat(out, "\t\t</property>\n");
+                }
+            }
+            break;
+        case ADBusMethodMember:
+            {
+                ks_cat(out, "\t\t<method name=\"");
+                ks_cat(out, m->name);
+                ks_cat(out, "\">\n");
+
+                IntrospectAnnotations(m, out);
+                IntrospectArguments(m, out);
+
+                ks_cat(out, "\t\t</method>\n");
+            }
+            break;
+        case ADBusSignalMember:
+            {
+                ks_cat(out, "\t\t<signal name=\"");
+                ks_cat(out, m->name);
+                ks_cat(out, "\">\n");
+
+                IntrospectAnnotations(m, out);
+                IntrospectArguments(m, out);
+
+                ks_cat(out, "\t\t</signal>\n");
+            }
+            break;
+        default:
+            assert(0);
+            break;
+    }
 }
 
 // ----------------------------------------------------------------------------
 
-void ADBusCallGetProperty(
-        struct ADBusMember*         m,
-        struct ADBusCallDetails*    details)
+static void IntrospectInterfaces(struct ObjectPath* p, kstring_t* out)
 {
-    details->user1 = m->getPropertyData;
-    if (m->getPropertyCallback)
-        m->getPropertyCallback(details);
+    for (khiter_t bi = kh_begin(p->interfaces); bi != kh_end(p->interfaces); ++bi) {
+        if (kh_exist(p->interfaces, bi)) {
+            struct ADBusInterface* i = kh_val(p->interfaces, bi).interface;
+            ks_cat(out, "\t<interface name=\"");
+            ks_cat(out, i->name);
+            ks_cat(out, "\">\n");
+
+            for (khiter_t mi = kh_begin(i->members); mi != kh_end(i->members); ++mi) {
+                if (kh_exist(i->members, mi)) {
+                    IntrospectMember(kh_val(i->members, mi), out);
+                }
+            }
+
+            ks_cat(out, "\t</interface>\n");
+        }
+    }
 }
+
+// ----------------------------------------------------------------------------
+
+static void IntrospectNode(struct ObjectPath* p, kstring_t* out)
+{
+    ks_cat(out,
+           "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\"\n"
+           "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
+           "<node>\n");
+
+    IntrospectInterfaces(p, out);
+
+    size_t namelen = p->h.pathSize;
+    // Now add the child objects
+    for (size_t i = 0; i < kv_size(p->children); ++i) {
+        // Find the child tail ie ("bar" for "/foo/bar" or "foo" for "/foo")
+        const char* child = kv_a(p->children, i)->h.path;
+        child += namelen;
+        if (namelen > 1)
+            child += 1; // +1 for '/' when p is not the root node
+
+        ks_cat(out, "\t<node name=\"");
+        ks_cat(out, child);
+        ks_cat(out, "\"/>\n");
+    }
+
+    ks_cat(out, "</node>\n");
+}
+
+// ----------------------------------------------------------------------------
+
+int IntrospectCallback(struct ADBusCallDetails* d)
+{
+    ADBusCheckMessageEnd(d);
+
+    // If no reply is wanted, we're done
+    if (!d->retmessage) {
+        return 0;
+    }
+
+    struct ObjectPath* p = (struct ObjectPath*) GetUserPointer(d->user2);
+
+    kstring_t* out = ks_new();
+    IntrospectNode(p, out);
+
+    ADBusAppendArguments(d->retargs, "s", -1);
+    ADBusAppendString(d->retargs, ks_cstr(out), ks_size(out));
+
+    ks_free(out);
+
+    return 0;
+}
+
+
+
+
+
+
+// ----------------------------------------------------------------------------
+// Properties callbacks (private)
+// ----------------------------------------------------------------------------
+
+int GetPropertyCallback(struct ADBusCallDetails* d)
+{
+    struct ADBusObjectPath* path = (struct ADBusObjectPath*) GetUserPointer(d->user2);
+
+    // Unpack the message
+    const char* iname  = ADBusCheckString(d, NULL);
+    const char* mname  = ADBusCheckString(d, NULL);
+    ADBusCheckMessageEnd(d);
+
+    // Get the interface
+    struct ADBusInterface* interface = ADBusGetBoundInterface(
+            path,
+            iname,
+            -1,
+            &d->user2);
+
+    if (!interface) {
+        return InvalidInterfaceError(d);
+    }
+
+    // Get the property
+    struct ADBusMember* mbr = ADBusGetInterfaceMember(
+            interface,
+            ADBusPropertyMember,
+            mname,
+            -1);
+
+    if (!mbr) {
+        return InvalidPropertyError(d);
+    }
+
+    // Check that we can read the property
+    ADBusMessageCallback callback = mbr->getPropertyCallback;
+    if (!callback) {
+        return PropReadError(d);
+    }
+
+    // If no reply is wanted we are finished
+    if (!d->retmessage)
+        return 0;
+
+    // Get the property value
+
+    ADBusAppendArguments(d->retargs, "v", -1);
+    ADBusBeginVariant(d->retargs, mbr->propertyType, -1);
+
+    d->propertyMarshaller = d->retargs;
+    d->user1 = mbr->getPropertyData;
+    int err = callback(d);
+
+    ADBusEndVariant(d->retargs);
+
+    return err;
+}
+
+// ----------------------------------------------------------------------------
+
+int GetAllPropertiesCallback(struct ADBusCallDetails* d)
+{
+    struct ADBusObjectPath* path = (struct ADBusObjectPath*) GetUserPointer(d->user2);
+
+    // Unpack the message
+    const char* iname = ADBusCheckString(d, NULL);
+    ADBusCheckMessageEnd(d);
+
+    // Get the interface
+    struct ADBusInterface* interface = ADBusGetBoundInterface(
+            path,
+            iname,
+            -1,
+            &d->user2);
+
+    if (!interface) {
+        return InvalidInterfaceError(d);
+    }
+
+    // If no reply is wanted we are finished
+    if (!d->retmessage)
+        return 0;
+
+    // Iterate over the properties and marshall up the values
+    ADBusAppendArguments(d->retargs, "a{sv}", -1);
+    ADBusBeginArray(d->retargs);
+
+    khash_t(MemberPtr)* mbrs = interface->members;
+    for (khiter_t mi = kh_begin(mbrs); mi != kh_end(mbrs); ++mi) {
+        if (kh_exist(mbrs, mi)) {
+            struct ADBusMember* mbr = kh_val(mbrs, mi);
+            // Check that it is a property
+            if (mbr->type != ADBusPropertyMember) {
+                continue;
+            }
+
+            // Check that we can read the property
+            ADBusMessageCallback callback = mbr->getPropertyCallback;
+            if (!callback) {
+                continue;
+            }
+
+            // Set the property entry
+            ADBusBeginDictEntry(d->retargs);
+            ADBusAppendString(d->retargs, mbr->name, -1);
+            ADBusBeginVariant(d->retargs, mbr->propertyType, -1);
+
+            d->user1 = mbr->getPropertyData;
+            d->propertyMarshaller = d->retargs;
+            int err = callback(d);
+            if (err)
+                return err;
+
+            ADBusEndVariant(d->retargs);
+            ADBusEndDictEntry(d->retargs);
+        }
+    }
+
+    ADBusEndArray(d->retargs);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+int SetPropertyCallback(struct ADBusCallDetails* d)
+{
+    struct ADBusObjectPath* path = (struct ADBusObjectPath*) GetUserPointer(d->user2);
+
+    // Unpack the message
+    const char* iname = ADBusCheckString(d, NULL);
+    const char* mname = ADBusCheckString(d, NULL);
+
+    // Get the interface
+    struct ADBusInterface* interface = ADBusGetBoundInterface(
+            path,
+            iname,
+            -1,
+            &d->user2);
+
+    if (!interface) {
+        return InvalidInterfaceError(d);
+    }
+
+    // Get the property
+    struct ADBusMember* mbr = ADBusGetInterfaceMember(
+            interface,
+            ADBusPropertyMember,
+            mname,
+            -1);
+
+    if (!mbr) {
+        return InvalidPropertyError(d);
+    }
+
+    // Check that we can write the property
+    ADBusMessageCallback callback = mbr->setPropertyCallback;
+    if (!callback) {
+        return PropWriteError(d);
+    }
+
+    // Get the property type
+    const char* sig = ADBusCheckVariantBegin(d, NULL);
+
+    // Check the property type
+    if (strcmp(mbr->propertyType, sig) != 0) {
+        return PropTypeError(d);
+    }
+
+    // Set the property
+    d->user1 = mbr->setPropertyData;
+    d->propertyIterator = d->args;
+    return callback(d);
+}
+
 
 
 

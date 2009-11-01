@@ -30,8 +30,11 @@
 #include "LInterface.h"
 #include "LMessage.h"
 
+#include "adbus/Bus.h"
 #include "adbus/CommonMessages.h"
+#include "adbus/Connection.h"
 #include "adbus/Interface.h"
+#include "adbus/Parse.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -69,6 +72,43 @@ int LADBusFreeConnection(lua_State* L)
 
 // ----------------------------------------------------------------------------
 
+static const char SendHeader[]    =   "Sending ";
+static const char ReceiveHeader[] =   "Received";
+static const char BlankHeader[]   = "\n        ";
+
+static char* strchrnul_(char* str, int ch)
+{
+    while (*str != '\0' && *str != ch)
+        ++str;
+    return str;
+}
+
+static void PrintMessage(
+        lua_State*              L,
+        const char*             header,
+        struct ADBusMessage*    message)
+{
+    int args = 0;
+    char* msg = ADBusNewMessageSummary(message, NULL);
+
+    lua_getglobal(L, "print");
+    for (char* line = msg; *line != '\0';) {
+        char* lineend = strchrnul_(line, '\n');
+        *lineend = '\0';
+        lua_checkstack(L, 3);
+        lua_pushstring(L, header);
+        lua_pushstring(L, line);
+        line = lineend + 1;
+        header = BlankHeader;
+        args += 2;
+    }
+    free(msg);
+    lua_pushstring(L, "\n");
+    lua_call(L, args + 1, 0);
+}
+
+// ----------------------------------------------------------------------------
+
 int LADBusParse(lua_State* L)
 {
     struct LADBusConnection* c = LADBusCheckConnection(L, 1);
@@ -81,13 +121,7 @@ int LADBusParse(lua_State* L)
             return luaL_error(L, "Parse error %d", err);
 
         if (c->debug) {
-            lua_getglobal(L, "print");
-            size_t sz;
-            char* msg = ADBusNewMessageSummary(c->message, &sz);
-            lua_pushlstring(L, msg, sz);
-            lua_pushstring(L, "\n");
-            free(msg);
-            lua_call(L, 2, 0);
+            PrintMessage(L, ReceiveHeader, c->message);
         }
 
         ADBusDispatch(c->connection, c->message);
@@ -104,13 +138,7 @@ static void SendCallback(
     const struct LADBusData* d = (const struct LADBusData*) user;
 
     if (d->debug) {
-        lua_getglobal(d->L, "print");
-        size_t sz;
-        char* msg = ADBusNewMessageSummary(message, &sz);
-        lua_pushlstring(d->L, msg, sz);
-        lua_pushstring(d->L, "\n");
-        free(msg);
-        lua_call(d->L, 2, 0);
+        PrintMessage(d->L, SendHeader, message);
     }
 
     const uint8_t* data;
@@ -140,12 +168,13 @@ int LADBusSetConnectionSendCallback(lua_State* L)
 // ----------------------------------------------------------------------------
 
 static void ConnectToBusCallback(
-        struct ADBusConnection* connection,
+        const char*             unique,
+        size_t                  uniqueSize,
         const struct ADBusUser* user)
 {
     const struct LADBusData* d = (const struct LADBusData*) user;
     LADBusPushRef(d->L, d->callback);
-    lua_pushstring(d->L, ADBusGetUniqueServiceName(connection, NULL));
+    lua_pushlstring(d->L, unique, uniqueSize);
     lua_call(d->L, 1, 0);
 }
 
