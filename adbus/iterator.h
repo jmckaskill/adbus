@@ -32,15 +32,22 @@ enum StackEntryType
 {
   INVALID_STACK,
   VARIANT_STACK,
-  DICT_ENTRY_STACK,
   ARRAY_STACK,
   STRUCT_STACK,
+  MAP_STACK,
 };
 
 struct ArrayStackData
 {
   const char* typeBegin;
   const uint8_t* dataEnd;
+};
+
+struct MapStackData
+{
+  const char* typeBegin;
+  const uint8_t* dataEnd;
+  adbus_Bool haveKey;
 };
 
 struct VariantStackData
@@ -54,9 +61,9 @@ struct StackEntry
   enum StackEntryType type;
   union
   {
+    struct MapStackData     map;
     struct ArrayStackData   array;
     struct VariantStackData variant;
-    size_t                  dictEntryFields;
   } data;
 };
 

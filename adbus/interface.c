@@ -591,7 +591,7 @@ int adbusI_getAllProperties(adbus_CbData* d)
 
     // Iterate over the properties and marshall up the values
     adbus_buf_append(d->retargs, "a{sv}", -1);
-    adbus_buf_beginarray(d->retargs);
+    adbus_buf_beginmap(d->retargs);
 
     khash_t(MemberPtr)* mbrs = interface->members;
     for (khiter_t mi = kh_begin(mbrs); mi != kh_end(mbrs); ++mi) {
@@ -609,7 +609,6 @@ int adbusI_getAllProperties(adbus_CbData* d)
             }
 
             // Set the property entry
-            adbus_buf_begindictentry(d->retargs);
             adbus_buf_string(d->retargs, mbr->name, -1);
             adbus_buf_beginvariant(d->retargs, mbr->propertyType, -1);
 
@@ -620,11 +619,10 @@ int adbusI_getAllProperties(adbus_CbData* d)
                 return err;
 
             adbus_buf_endvariant(d->retargs);
-            adbus_buf_enddictentry(d->retargs);
         }
     }
 
-    adbus_buf_endarray(d->retargs);
+    adbus_buf_endmap(d->retargs);
     return 0;
 }
 

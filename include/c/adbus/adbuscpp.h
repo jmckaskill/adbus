@@ -90,20 +90,16 @@ namespace adbus
     template<class K, class V>
     inline int operator>>(const std::map<K,V>& map, Buffer& b)
     {
-        if (adbus_buf_beginarray(b))
+        if (adbus_buf_beginmap(b))
             return -1;
         typename std::map<K,V>::const_iterator ii;
         for (ii = map.begin(); ii != map.end(); ++ii) {
-            if (adbus_buf_begindictentry(b))
-                return -1;
             if (ii->first >> b)
                 return -1;
             if (ii->second >> b)
                 return -1;
-            if (adbus_buf_enddictentry(b))
-                return -1;
         }
-        return adbus_buf_endarray(b);
+        return adbus_buf_endmap(b);
     }
 
 
@@ -176,21 +172,16 @@ namespace adbus
     inline int operator<<(std::map<K,V>& map, Iterator& i)
     {
         int scope;
-        if (Iterate(i, ADBUS_ARRAY_BEGIN, scope, i.f.scope))
+        if (Iterate(i, ADBUS_MAP_BEGIN, scope, i.f.scope))
             return -1;
         while (!adbus_iter_isfinished(i, scope)) {
-            if (Iterate(i, ADBUS_DICT_ENTRY_BEGIN))
-                return -1;
             K key;
             V val;
             if (key << i || val << i)
                 return -1;
             map[key] = val;
-
-            if (Iterate(i, ADBUS_DICT_ENTRY_END))
-                return -1;
         }
-        return Iterate(i, ADBUS_ARRAY_END);
+        return Iterate(i, ADBUS_MAP_END);
     }
 
     template<class T>

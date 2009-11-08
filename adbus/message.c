@@ -46,6 +46,7 @@ enum
     HEADER_SIGNATURE    = 8,
 };
 
+
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
@@ -139,23 +140,19 @@ int adbus_parse(adbus_Message* m, const uint8_t* data, size_t size)
 
     // We need to copy into the marshaller so that we can hold onto the data
     // For parsing we will use that copy as it will force 8 byte alignment
-    ASSERT_RETURN_ERR(adbus_parse_size(data, size) == size);
+    CHECK(adbus_parse_size(data, size) == size);
     adbus_buf_set(m->marshaller, NULL, 0, data, size);
     adbus_buf_get(m->marshaller, NULL, NULL, &data, &size);
 
     // Check that we have enough correct data to decode the header
-    if (size < sizeof(struct adbusI_ExtendedHeader))
-        return -1;
+    CHECK(size >= sizeof(struct adbusI_ExtendedHeader));
 
     struct adbusI_ExtendedHeader* header = (struct adbusI_ExtendedHeader*) data;
 
     // Check the single byte header fields
-    if (header->version != adbusI_majorProtocolVersion)
-        return -1;
-    if (header->type == ADBUS_MSG_INVALID)
-        return -1;
-    if (header->endianness != 'B' && header->endianness != 'l')
-        return -1;
+    CHECK(header->version == adbusI_majorProtocolVersion);
+    CHECK(header->type != ADBUS_MSG_INVALID);
+    CHECK(header->endianness == 'B' || header->endianness == 'l');
 
     char localEndianness = adbusI_littleEndian() ? 'l' : 'B';
     m->messageType = (adbus_MessageType) header->type;
@@ -174,18 +171,15 @@ int adbus_parse(adbus_Message* m, const uint8_t* data, size_t size)
         ? header->serial
         : ADBUSI_FLIP32(header->serial);
 
-    if (length > ADBUSI_MAXIMUM_MESSAGE_LENGTH)
-        return -1;
-    if (headerFieldLength > ADBUSI_MAXIMUM_ARRAY_LENGTH)
-        return -1;
+    CHECK(length <= ADBUSI_MAXIMUM_MESSAGE_LENGTH);
+    CHECK(headerFieldLength <= ADBUSI_MAXIMUM_ARRAY_LENGTH);
 
     // Figure out the message size and see if we have the right amount
     size_t headerSize = sizeof(struct adbusI_ExtendedHeader) + headerFieldLength;
     headerSize = ADBUSI_ALIGN(headerSize, 8);
     size_t messageSize = headerSize + length;
 
-    if (size != messageSize)
-        return -1;
+    CHECK(size == messageSize);
 
     m->argumentOffset = messageSize - length;
 
@@ -205,12 +199,8 @@ int adbus_parse(adbus_Message* m, const uint8_t* data, size_t size)
         adbus_iter_setnonnative(iterator);
     adbus_Field field;
 
-#define ITERATE(M, TYPE, PFIELD)                        \
-    {                                                   \
-        int err = adbus_iter_next(iterator, PFIELD);    \
-        if (err || (PFIELD)->type != TYPE)                \
-            return -1;                    \
-    }
+#define ITERATE(M, TYPE, PFIELD) \
+        CHECK(!adbus_iter_next(iterator, PFIELD) && (PFIELD)->type == TYPE);
     
     ITERATE(m, ADBUS_ARRAY_BEGIN, &field);
     adbus_Bool arrayScope = field.scope;
@@ -221,51 +211,41 @@ int adbus_parse(adbus_Message* m, const uint8_t* data, size_t size)
         uint8_t code = field.u8;
         ITERATE(m, ADBUS_VARIANT_BEGIN, &field);
 
-        int err = adbus_iter_next(iterator, &field);
-        if (err)
-            return -1;
+        CHECK(!adbus_iter_next(iterator, &field));
 
         switch(code)
         {
             case HEADER_REPLY_SERIAL:
-                if (field.type != ADBUS_UINT32)
-                    return -1;
+                CHECK(field.type == ADBUS_UINT32);
                 m->replySerial = field.u32;
                 m->hasReplySerial = 1;
                 break;
             case HEADER_SIGNATURE:
-                if (field.type != ADBUS_SIGNATURE)
-                    return -1;
+                CHECK(field.type == ADBUS_SIGNATURE);
                 m->signature = adbusI_strndup(field.string, field.size);
                 break;
             case HEADER_OBJECT_PATH:
-                if (field.type != ADBUS_OBJECT_PATH)
-                    return -1;
+                CHECK(field.type == ADBUS_OBJECT_PATH);
                 m->path = adbusI_strndup(field.string, field.size);
                 break;
             case HEADER_INTERFACE:
-                if (field.type != ADBUS_STRING)
-                    return -1;
+                CHECK(field.type == ADBUS_STRING);
                 m->interface = adbusI_strndup(field.string, field.size);
                 break;
             case HEADER_MEMBER:
-                if (field.type != ADBUS_STRING)
-                    return -1;
+                CHECK(field.type == ADBUS_STRING);
                 m->member = adbusI_strndup(field.string, field.size);
                 break;
             case HEADER_ERROR_NAME:
-                if (field.type != ADBUS_STRING)
-                    return -1;
+                CHECK(field.type == ADBUS_STRING);
                 m->errorName = adbusI_strndup(field.string, field.size);
                 break;
             case HEADER_DESTINATION:
-                if (field.type != ADBUS_STRING)
-                    return -1;
+                CHECK(field.type == ADBUS_STRING);
                 m->destination = adbusI_strndup(field.string, field.size);
                 break;
             case HEADER_SENDER:
-                if (field.type != ADBUS_STRING)
-                    return -1;
+                CHECK(field.type == ADBUS_STRING);
                 m->sender = adbusI_strndup(field.string, field.size);
                 break;
             default:
@@ -279,23 +259,19 @@ int adbus_parse(adbus_Message* m, const uint8_t* data, size_t size)
 
     // Check that we have required fields
     if (m->messageType == ADBUS_MSG_METHOD) {
-        if (!m->path || !m->member)
-            return -1;
+        CHECK(m->path && m->member);
 
     } else if (m->messageType == ADBUS_MSG_RETURN) {
-        if (!m->replySerial)
-            return -1;
+        CHECK(m->hasReplySerial);
 
     } else if (m->messageType == ADBUS_MSG_ERROR) {
-        if (!m->errorName)
-            return -1;
+        CHECK(m->errorName);
 
     } else if (m->messageType == ADBUS_MSG_SIGNAL) {
-        if (!m->interface || !m->member)
-            return -1;
+        CHECK(m->interface && m->member);
 
     } else {
-        assert(0);
+        CHECK(0);
     }
 
     // We need to convert the arguments to native endianness so that they
@@ -312,9 +288,7 @@ int adbus_parse(adbus_Message* m, const uint8_t* data, size_t size)
         adbus_msg_iterator(m, iterator);
         adbus_iter_setnonnative(iterator);
 
-        int err = adbus_buf_copy(mar, iterator, 0);
-        if (err)
-            return err;
+        CHECK(!adbus_buf_copy(mar, iterator, 0));
     }
 
     return 0;
@@ -692,6 +666,22 @@ static void LogScope(kstring_t* str, adbus_Iterator* i, adbus_FieldType end)
     }
 }
 
+static void LogMap(kstring_t* str, adbus_Iterator* i, adbus_FieldType end)
+{
+    adbus_Bool first = 1;
+    adbus_Bool key = 0;
+    adbus_Field field;
+    while (!adbus_iter_next(i, &field) && field.type != end && field.type != ADBUS_END_FIELD) {
+        if (key)
+            ks_printf(str, " = ");
+        else if (!first)
+            ks_printf(str, ", ");
+        first = 0;
+        key = !key;
+        LogField(str, i, &field);
+    }
+}
+
 static void LogField(kstring_t* str, adbus_Iterator* i, adbus_Field* field)
 {
     adbus_FieldType type = field->type;
@@ -739,9 +729,9 @@ static void LogField(kstring_t* str, adbus_Iterator* i, adbus_Field* field)
         LogScope(str, i, ADBUS_STRUCT_END);
         ks_printf(str, " )");
         break;
-    case ADBUS_DICT_ENTRY_BEGIN:
+    case ADBUS_MAP_BEGIN:
         ks_printf(str, "{ ");
-        LogScope(str, i, ADBUS_DICT_ENTRY_END);
+        LogMap(str, i, ADBUS_MAP_END);
         ks_printf(str, " }");
         break;
     case ADBUS_VARIANT_BEGIN:

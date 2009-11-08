@@ -112,8 +112,9 @@ enum
 #   define min(x,y) (((x) < (y)) ? (x) : (y))
 #endif
 
+#define CHECK(x) if (!(x)) {assert(0); return -1;}
+
 #define ASSERT_RETURN(x) assert(x); if (!(x)) return;
-#define ASSERT_RETURN_ERR(x) assert(x); if (!(x)) return -1;
 
 static inline char* adbusI_strndup(const char* string, size_t n)
 {

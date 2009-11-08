@@ -30,9 +30,9 @@ c_project 'adbuslua_core'
     uuid 'EE40C960-59A7-C849-92F2-14024DC8181A'
     files 'adbuslua/*'
     defines 'ADBUSLUA_LIBRARY'
-    links {'adbus', 'lua5.1'}
+    links 'adbus'
     configuration {'windows'}
-        links {'ws2_32', 'advapi32', 'user32'}
+        links {'lua5.1', 'ws2_32', 'advapi32', 'user32'}
 
 
 

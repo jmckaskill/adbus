@@ -42,7 +42,6 @@ ansi_project 'lua5.1'
     uuid '84C1D0B6-011F-B046-A5AA-EE30E0B8D214'
     files {'lua/src/**.c', 'lua/src/**.h'}
     excludes {'lua/src/lua.c', 'lua/src/luac.c'}
-    defines 'LUA_LIBRARY'
     configuration 'linux'
         links {'dl', 'm', 'readline'}
 
@@ -56,4 +55,5 @@ c99_project 'LuaXML_lib'
     uuid '9B52ED3C-AA46-5843-81F3-4FFA3C6EADED'
     files 'LuaXML/*.c'
     includedirs 'lua/src'
-    links 'lua5.1'
+    configuration 'windows'
+        links 'lua5.1'

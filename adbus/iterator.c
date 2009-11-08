@@ -135,8 +135,7 @@ static int Process8Bit(adbus_Iterator *i, adbus_Field* f, uint8_t* fieldData)
 {
     assert(IsAligned(i));
 
-    if (DataRemaining(i) < 1)
-        return -1;
+    CHECK(DataRemaining(i) >= 1);
 
     f->type = (adbus_FieldType)(*i->signature);
     *fieldData = Get8BitData(i);
@@ -152,8 +151,7 @@ static int Process16Bit(adbus_Iterator *i, adbus_Field* f, uint16_t* fieldData)
 {
     assert(IsAligned(i));
 
-    if (DataRemaining(i) < 2)
-        return -1;
+    CHECK(DataRemaining(i) >= 2);
 
     f->type = (adbus_FieldType)(*i->signature);
     *fieldData = Get16BitData(i);
@@ -169,8 +167,7 @@ static int Process32Bit(adbus_Iterator *i, adbus_Field* f, uint32_t* fieldData)
 {
     assert(IsAligned(i));
 
-    if (DataRemaining(i) < 4)
-        return -1;
+    CHECK(DataRemaining(i) >= 4);
 
     f->type = (adbus_FieldType)(*i->signature);
     *fieldData = Get32BitData(i);
@@ -186,8 +183,7 @@ static int Process64Bit(adbus_Iterator *i, adbus_Field* f, uint64_t* fieldData)
 {
     assert(IsAligned(i));
 
-    if (DataRemaining(i) < 8)
-        return -1;
+    CHECK(DataRemaining(i) >= 8);
 
     f->type = (adbus_FieldType)(*i->signature);
     *fieldData = Get64BitData(i);
@@ -201,11 +197,9 @@ static int Process64Bit(adbus_Iterator *i, adbus_Field* f, uint64_t* fieldData)
 
 static int ProcessBoolean(adbus_Iterator *i, adbus_Field* f)
 {
-    if (Process32Bit(i, f, &f->b))
-        return -1;
+    CHECK(!Process32Bit(i, f, &f->b));
 
-    if (f->b > 1)
-        return -1;
+    CHECK(f->b == 0 || f->b == 1);
 
     f->type = ADBUS_BOOLEAN;
     f->b = f->b ? 1 : 0;
@@ -220,18 +214,14 @@ static int ProcessBoolean(adbus_Iterator *i, adbus_Field* f)
 static int ProcessStringData(adbus_Iterator *i, adbus_Field* f)
 {
     size_t size = f->size;
-    if (DataRemaining(i) < size + 1)
-        return -1;
+    CHECK(DataRemaining(i) >= size + 1);
 
     const uint8_t* str = GetData(i, size + 1);
-    if (adbusI_hasNullByte(str, size))
-        return -1;
+    CHECK(!adbusI_hasNullByte(str, size));
 
-    if (*(str + size) != '\0')
-        return -1;
+    CHECK(*(str + size) == '\0');
 
-    if (!adbusI_isValidUtf8(str, size))
-        return -1;
+    CHECK(adbusI_isValidUtf8(str, size));
 
     f->string = (const char*) str;
 
@@ -245,17 +235,14 @@ static int ProcessStringData(adbus_Iterator *i, adbus_Field* f)
 static int ProcessObjectPath(adbus_Iterator *i, adbus_Field* f)
 {
     assert(IsAligned(i));
-    if (DataRemaining(i) < 4)
-        return -1;
+    CHECK(DataRemaining(i) >= 4);
 
     f->type = ADBUS_OBJECT_PATH;
     f->size = Get32BitData(i);
 
-    if (ProcessStringData(i,f))
-        return -1;
+    CHECK(!ProcessStringData(i,f));
 
-    if (!adbusI_isValidObjectPath(f->string, f->size))
-        return -1;
+    CHECK(adbusI_isValidObjectPath(f->string, f->size));
 
     return 0;
 }
@@ -265,8 +252,7 @@ static int ProcessObjectPath(adbus_Iterator *i, adbus_Field* f)
 static int ProcessString(adbus_Iterator *i, adbus_Field* f)
 {
     assert(IsAligned(i));
-    if (DataRemaining(i) < 4)
-        return -1;
+    CHECK(DataRemaining(i) >= 4);
 
     f->type = ADBUS_STRING;
     f->size = Get32BitData(i);
@@ -279,8 +265,7 @@ static int ProcessString(adbus_Iterator *i, adbus_Field* f)
 static int ProcessSignature(adbus_Iterator *i, adbus_Field* f)
 {
     assert(IsAligned(i));
-    if (DataRemaining(i) < 1)
-        return -1;
+    CHECK(DataRemaining(i) >= 1);
 
     f->type = ADBUS_SIGNATURE;
     f->size = Get8BitData(i);
@@ -298,7 +283,7 @@ static int NextRootField(adbus_Iterator *i, adbus_Field* f)
     if (i->signature == NULL || *i->signature == ADBUS_END_FIELD)
     {
         f->type = ADBUS_END_FIELD;
-        return (i->dataEnd != i->data) ? -1 : 0;
+        return 0;
     }
 
     ProcessAlignment(i);
@@ -319,9 +304,6 @@ static adbus_Bool IsRootAtEnd(adbus_Iterator *i)
 static int ProcessStruct(adbus_Iterator *i, adbus_Field* f)
 {
     assert(IsAligned(i));
-
-    if (DataRemaining(i) == 0)
-        return -1;
 
     struct StackEntry* e = PushStackEntry(i);
     e->type = STRUCT_STACK;
@@ -361,53 +343,71 @@ static adbus_Bool IsStructAtEnd(adbus_Iterator *i)
 }
 
 // ----------------------------------------------------------------------------
-// Dict entry functions
+// Map functions
 // ----------------------------------------------------------------------------
 
-static int ProcessDictEntry(adbus_Iterator *i, adbus_Field* f)
+static int ProcessMap(adbus_Iterator* i, adbus_Field* f)
 {
     assert(IsAligned(i));
+    CHECK(DataRemaining(i) >= 4);
+    size_t size = Get32BitData(i);
+
+    CHECK(size <= ADBUSI_MAXIMUM_ARRAY_LENGTH);
+    CHECK(size <= DataRemaining(i));
+
+    i->signature += 2; // skip over 'a{'
+
+    i->data = (const uint8_t*) ADBUSI_ALIGN(i->data, 8);
 
     struct StackEntry* e = PushStackEntry(i);
-    e->type = DICT_ENTRY_STACK;
-    e->data.dictEntryFields = 0;
+    e->type = MAP_STACK;
+    e->data.map.dataEnd = i->data + size;
+    e->data.map.typeBegin = i->signature;
+    e->data.map.haveKey = 0;
 
-    i->signature += 1; // skip over '{'
-
-    f->type = ADBUS_DICT_ENTRY_BEGIN;
-    f->scope = kv_size(i->stack);
+    f->type   = ADBUS_MAP_BEGIN;
+    f->data   = i->data;
+    f->size   = size;
+    f->scope  = kv_size(i->stack);
 
     return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-static int NextDictEntryField(adbus_Iterator *i, adbus_Field* f)
+static int NextMapField(adbus_Iterator* i, adbus_Field* f)
 {
     struct StackEntry* e = StackTop(i);
-    if (*i->signature != '}')
+    CHECK(i->data <= e->data.map.dataEnd);
+
+    if (i->data < e->data.map.dataEnd)
     {
-        ProcessAlignment(i);
-        if (++(e->data.dictEntryFields) > 2)
-            return -1;
-        else
+        if (e->data.map.haveKey) {
+            e->data.map.haveKey = 0;
+            i->signature = e->data.map.typeBegin;
+            ProcessAlignment(i);
             return ProcessField(i,f);
+        } else {
+            e->data.map.haveKey = 1;
+            ProcessAlignment(i);
+            return ProcessField(i,f);
+        }
     }
 
+    i->signature = adbusI_findArrayEnd(e->data.map.typeBegin - 1);
+    CHECK(i->signature != NULL);
+
+    f->type = ADBUS_MAP_END;
     PopStackEntry(i);
-
-    i->signature += 1; // skip over '}'
-
-    f->type = ADBUS_DICT_ENTRY_END;
-
     return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-static adbus_Bool IsDictEntryAtEnd(adbus_Iterator *i)
+static adbus_Bool IsMapAtEnd(adbus_Iterator* i)
 {
-    return *i->signature == '}';
+    struct StackEntry* e = StackTop(i);
+    return i->data >= e->data.map.dataEnd;
 }
 
 // ----------------------------------------------------------------------------
@@ -417,12 +417,11 @@ static adbus_Bool IsDictEntryAtEnd(adbus_Iterator *i)
 static int ProcessArray(adbus_Iterator *i, adbus_Field* f)
 {
     assert(IsAligned(i));
-    if (DataRemaining(i) < 4)
-        return -1;
+    CHECK(DataRemaining(i) >= 4);
     size_t size = Get32BitData(i);
 
-    if (size > ADBUSI_MAXIMUM_ARRAY_LENGTH || size > DataRemaining(i))
-        return -1;
+    CHECK(size <= ADBUSI_MAXIMUM_ARRAY_LENGTH);
+    CHECK(size <= DataRemaining(i));
 
     i->signature += 1; // skip over 'a'
 
@@ -446,11 +445,9 @@ static int ProcessArray(adbus_Iterator *i, adbus_Field* f)
 static int NextArrayField(adbus_Iterator *i, adbus_Field* f)
 {
     struct StackEntry* e = StackTop(i);
-    if (i->data > e->data.array.dataEnd)
-    {
-        return -1;
-    }
-    else if (i->data < e->data.array.dataEnd)
+    CHECK(i->data <= e->data.array.dataEnd);
+
+    if (i->data < e->data.array.dataEnd)
     {
         i->signature = e->data.array.typeBegin;
         ProcessAlignment(i);
@@ -458,8 +455,7 @@ static int NextArrayField(adbus_Iterator *i, adbus_Field* f)
     }
 
     i->signature = adbusI_findArrayEnd(e->data.array.typeBegin);
-    if (i->signature == NULL)
-        return -1;
+    CHECK(i->signature != NULL);
 
     f->type = ADBUS_ARRAY_END;
     PopStackEntry(i);
@@ -481,9 +477,7 @@ static adbus_Bool IsArrayAtEnd(adbus_Iterator *i)
 static int ProcessVariant(adbus_Iterator *i, adbus_Field* f)
 {
     assert(IsAligned(i));
-    int err = ProcessSignature(i,f);
-    if (err)
-        return err;
+    CHECK(!ProcessSignature(i,f));
 
     // ProcessSignature has alread filled out f->variantType and
     // has consumed the field in i->signature
@@ -512,10 +506,9 @@ static int NextVariantField(adbus_Iterator *i, adbus_Field* f)
         ProcessAlignment(i);
         return ProcessField(i,f);
     }
-    else if (*i->signature != '\0')
-    {
-        return -1; // there's more than one root type in the variant type
-    }
+
+    // there's more than one root type in the variant type
+    CHECK(*i->signature == '\0');
 
     i->signature = e->data.variant.oldSignature;
 
@@ -566,14 +559,16 @@ static int ProcessField(adbus_Iterator *i, adbus_Field* f)
         case ADBUS_SIGNATURE:
             return ProcessSignature(i,f);
         case ADBUS_ARRAY_BEGIN:
-            return ProcessArray(i,f);
+            if (*(i->signature + 1) == '{')
+                return ProcessMap(i, f);
+            else
+                return ProcessArray(i,f);
         case ADBUS_STRUCT_BEGIN:
             return ProcessStruct(i,f);
         case ADBUS_VARIANT_BEGIN:
             return ProcessVariant(i,f);
-        case ADBUS_DICT_ENTRY_BEGIN:
-            return ProcessDictEntry(i,f);
         default:
+            assert(0);
             return -1;
     }
 }
@@ -648,11 +643,7 @@ void ADBusGetIteratorData(
 
 int adbus_iter_isfinished(adbus_Iterator *i, int scope)
 {
-    if ((int) kv_size(i->stack) < scope)
-    {
-        assert(0);
-        return 1;
-    }
+    CHECK(kv_size(i->stack) >= scope);
 
     if ((int) kv_size(i->stack) > scope)
         return 0;
@@ -664,12 +655,12 @@ int adbus_iter_isfinished(adbus_Iterator *i, int scope)
     {
         case VARIANT_STACK:
             return IsVariantAtEnd(i);
-        case DICT_ENTRY_STACK:
-            return IsDictEntryAtEnd(i);
         case ARRAY_STACK:
             return IsArrayAtEnd(i);
         case STRUCT_STACK:
             return IsStructAtEnd(i);
+        case MAP_STACK:
+            return IsMapAtEnd(i);
         default:
             assert(0);
             return 1;
@@ -693,12 +684,12 @@ int adbus_iter_next(adbus_Iterator *i, adbus_Field* f)
         {
             case VARIANT_STACK:
                 return NextVariantField(i,f);
-            case DICT_ENTRY_STACK:
-                return NextDictEntryField(i,f);
             case ARRAY_STACK:
                 return NextArrayField(i,f);
             case STRUCT_STACK:
                 return NextStructField(i,f);
+            case MAP_STACK:
+                return NextMapField(i,f);
             default:
                 assert(0);
                 return -1;
@@ -710,20 +701,12 @@ int adbus_iter_next(adbus_Iterator *i, adbus_Field* f)
 
 int adbus_iter_arrayjump(adbus_Iterator* i, int scope)
 {
-    if (kv_size(i->stack) < scope)
-    {
-        assert(0);
-        return -1;
-    }
+    CHECK(kv_size(i->stack) >= scope);
 
     kv_pop(Stack, i->stack, kv_size(i->stack) - scope);
 
     struct StackEntry* e = StackTop(i);
-    if (e->type != ARRAY_STACK)
-    {
-        assert(0);
-        return -1;
-    }
+    CHECK(e->type == ARRAY_STACK);
 
     i->data = e->data.array.dataEnd;
     return 0;
@@ -876,17 +859,17 @@ void adbus_check_structend(adbus_CbData* d)
     CheckField(d, &f, ADBUS_STRUCT_END);
 }
 
-int adbus_check_dictentrybegin(adbus_CbData* d)
+int adbus_check_mapbegin(adbus_CbData* d)
 {
     adbus_Field f;
-    CheckField(d, &f, ADBUS_DICT_ENTRY_BEGIN);
+    CheckField(d, &f, ADBUS_MAP_BEGIN);
     return f.scope;
 }
 
-void adbus_check_dictentryend(adbus_CbData* d)
+void adbus_check_mapend(adbus_CbData* d)
 {
     adbus_Field f;
-    CheckField(d, &f, ADBUS_DICT_ENTRY_END);
+    CheckField(d, &f, ADBUS_MAP_END);
 }
 
 const char* adbus_check_variantbegin(adbus_CbData* d, size_t* size)

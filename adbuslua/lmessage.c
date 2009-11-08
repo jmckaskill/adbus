@@ -166,33 +166,42 @@ static int AppendArray(
 {
     adbus_buf_beginarray(b);
 
-    if (adbus_buf_expected(b) == ADBUS_DICT_ENTRY_BEGIN) {
-        lua_pushnil(L);
-        while (lua_next(L, index) != 0) {
-            int key = lua_gettop(L) - 1;
-            int val = lua_gettop(L);
-            adbus_buf_begindictentry(b);
+    int n = lua_objlen(L, index);
+    for (int i = 1; i <= n; ++i) {
+        lua_rawgeti(L, index, i);
+        int val = lua_gettop(L);
 
-            AppendNextField(L, key, b);
-            AppendNextField(L, val, b);
-
-            adbus_buf_enddictentry(b);
-            lua_pop(L, 1); // pop the value, leaving the key
-            assert(lua_gettop(L) == key);
-        }
-    } else {
-        int n = lua_objlen(L, index);
-        for (int i = 1; i <= n; ++i) {
-            lua_rawgeti(L, index, i);
-            int val = lua_gettop(L);
-
-            AppendNextField(L, val, b);
-            assert(lua_gettop(L) == val);
-            lua_pop(L, 1);
-        }
+        AppendNextField(L, val, b);
+        assert(lua_gettop(L) == val);
+        lua_pop(L, 1);
     }
 
     adbus_buf_endarray(b);
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+static int AppendMap(
+        lua_State*          L,
+        int                 index,
+        adbus_Buffer*       b)
+{
+    adbus_buf_beginmap(b);
+
+    lua_pushnil(L);
+    while (lua_next(L, index) != 0) {
+        int key = lua_gettop(L) - 1;
+        int val = lua_gettop(L);
+
+        AppendNextField(L, key, b);
+        AppendNextField(L, val, b);
+
+        lua_pop(L, 1); // pop the value, leaving the key
+        assert(lua_gettop(L) == key);
+    }
+
+    adbus_buf_endmap(b);
     return 0;
 }
 
@@ -260,8 +269,10 @@ static int AppendNextField(
             err = adbus_buf_signature(buffer, str, (int) size);
             break;
         case ADBUS_ARRAY_BEGIN:
-            // This covers both arrays and maps
             err = AppendArray(L, index, buffer);
+            break;
+        case ADBUS_MAP_BEGIN:
+            err = AppendMap(L, index, buffer);
             break;
         case ADBUS_STRUCT_BEGIN:
             err = AppendStruct(L, index, buffer);
@@ -475,35 +486,6 @@ static int PushStruct(
 
 /* ------------------------------------------------------------------------- */
 
-static int PushDictEntry(
-    lua_State*          L,
-    adbus_Iterator*     iter,
-    adbus_Field*        field)
-{
-    (void) field;
-    // DBus maps are arrays of dict entries which map directly to a table in
-    // lua, so we should be able to get the surrounding array since its on top
-    // of the lua stack
-
-    int table = lua_gettop(L);
-    assert(lua_istable(L, table));
-
-    if (PushNextField(L, iter))
-        return -1;
-
-    if (PushNextField(L, iter))
-        return -1;
-
-
-    // Pops the two last items on the stack - the key and value
-    lua_settable(L, table);
-    assert(lua_gettop(L) == table);
-
-    return 0;
-}
-
-/* ------------------------------------------------------------------------- */
-
 // Since lua is dynamically typed it does need to know that a particular
 // argument was originally a variant
 static int PushVariant(
@@ -522,8 +504,6 @@ static int PushVariant(
 /* ------------------------------------------------------------------------- */
 
 // Arrays are pushed as standard lua arrays using 1 based indexes.
-// Note since maps come up from dbus as a{xx} ie an array of dict entries we
-// should only set the index if the inner type was not a dict entry
 static int PushArray(
     lua_State*          L,
     adbus_Iterator*     iter,
@@ -536,14 +516,38 @@ static int PushArray(
         if (PushNextField(L, iter))
             return -1;
 
-        // No value is left on the stack if the inner type was a dict entry
-        if (lua_gettop(L) == table)
-            continue;
-
         lua_rawseti(L, table, arg++);
         assert(lua_gettop(L) == table);
     }
     if (adbus_iter_next(iter, field) || field->type != ADBUS_ARRAY_END)
+        return -1;
+
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+static int PushMap(
+    lua_State*          L,
+    adbus_Iterator*     iter,
+    adbus_Field*        field)
+{
+    lua_newtable(L);
+    int table = lua_gettop(L);
+    int arg = 1;
+    while (!adbus_iter_isfinished(iter, field->scope)) {
+        // key
+        if (PushNextField(L, iter))
+            return -1;
+
+        // value
+        if (PushNextField(L, iter))
+            return -1;
+
+        lua_settable(L, table);
+        assert(lua_gettop(L) == table);
+    }
+    if (adbus_iter_next(iter, field) || field->type != ADBUS_MAP_END)
         return -1;
 
     return 0;
@@ -606,8 +610,8 @@ static int PushNextField(
             return PushArray(L, iter, &f);
         case ADBUS_STRUCT_BEGIN:
             return PushStruct(L, iter, &f);
-        case ADBUS_DICT_ENTRY_BEGIN:
-            return PushDictEntry(L, iter, &f);
+        case ADBUS_MAP_BEGIN:
+            return PushMap(L, iter, &f);
         case ADBUS_VARIANT_BEGIN:
             return PushVariant(L, iter, &f);
         default:

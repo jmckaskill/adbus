@@ -41,7 +41,7 @@ enum StackEntryType
     ARRAY_STACK,
     STRUCT_STACK,
     VARIANT_STACK,
-    DICT_ENTRY_STACK,
+    MAP_STACK,
 };
 
 struct ArrayStackData
@@ -49,6 +49,14 @@ struct ArrayStackData
     size_t      sizeIndex;
     size_t      dataBegin;
     const char* sigBegin;
+};
+
+struct MapStackData
+{
+    size_t      sizeIndex;
+    size_t      dataBegin;
+    const char* sigBegin;
+    adbus_Bool  haveKey;
 };
 
 struct VariantStackData
@@ -63,7 +71,8 @@ struct StackEntry
 
     union
     {
-        struct ArrayStackData array;
+        struct MapStackData     map;
+        struct ArrayStackData   array;
         struct VariantStackData variant;
     }d;
 };

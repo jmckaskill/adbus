@@ -408,10 +408,10 @@ const char* adbusI_findArrayEnd(const char* arrayBegin)
         case ADBUS_STRUCT_END:
             structs--;
             break;
-        case ADBUS_DICT_ENTRY_BEGIN:
+        case '{':
             dictEntries++;
             break;
-        case ADBUS_DICT_ENTRY_END:
+        case '}':
             dictEntries--;
             break;
         default:

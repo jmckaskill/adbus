@@ -151,11 +151,9 @@ void adbus_buf_get(const adbus_Buffer* m,
 
 int adbus_buf_appenddata(adbus_Buffer* m, const uint8_t* data, size_t size)
 {
-    if (StackSize(m) != 0)
-    {
+    if (StackSize(m) != 0) {
         struct StackEntry* s = StackTop(m);
-        ASSERT_RETURN_ERR(s->type == ARRAY_STACK
-                          || s->type == VARIANT_STACK);
+        CHECK(s->type == ARRAY_STACK || s->type == VARIANT_STACK);
     }
 
     uint8_t* dest = kv_push(u8, m->data, size);
@@ -224,11 +222,11 @@ int adbus_buf_copy(adbus_Buffer* m, adbus_Iterator* i, int scope)
         case ADBUS_STRUCT_END:
             adbus_buf_endstruct(m);
             break;
-        case ADBUS_DICT_ENTRY_BEGIN:
-            adbus_buf_begindictentry(m);
+        case ADBUS_MAP_BEGIN:
+            adbus_buf_beginmap(m);
             break;
-        case ADBUS_DICT_ENTRY_END:
-            adbus_buf_enddictentry(m);
+        case ADBUS_MAP_END:
+            adbus_buf_endmap(m);
             break;
         case ADBUS_VARIANT_BEGIN:
             adbus_buf_beginvariant(m, field.string, field.size);
@@ -247,10 +245,12 @@ int adbus_buf_copy(adbus_Buffer* m, adbus_Iterator* i, int scope)
 
 adbus_FieldType adbus_buf_expected(adbus_Buffer* m)
 {
-    if (m->sigp)
-        return (adbus_FieldType) *m->sigp;
-    else
+    if (m->sigp == NULL)
         return ADBUS_END_FIELD;
+    else if (*m->sigp == 'a' && *(m->sigp+1) == '{')
+        return ADBUS_MAP_BEGIN;
+    else
+        return (adbus_FieldType) *m->sigp;
 }
 
 // ----------------------------------------------------------------------------
@@ -368,7 +368,7 @@ static int AppendShortString(adbus_Buffer* m, const char* str, int size)
     if (size < 0)
         size = (int)strlen(str);
 
-    ASSERT_RETURN_ERR(size < 256);
+    CHECK(size < 256);
 
     uint8_t* psize  = kv_push(u8, m->data, 1 + size + 1);
     char* pstr      = (char*) psize + 1;
@@ -410,7 +410,7 @@ static int AppendLongString(adbus_Buffer* m, const char* str, int size)
 
 int adbus_buf_string(adbus_Buffer* m, const char* str, int size)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_STRING);
+    CHECK(*m->sigp == ADBUS_STRING);
     return AppendLongString(m, str, size);
 }
 
@@ -418,7 +418,7 @@ int adbus_buf_string(adbus_Buffer* m, const char* str, int size)
 
 int adbus_buf_objectpath(adbus_Buffer* m, const char* str, int size)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_OBJECT_PATH);
+    CHECK(*m->sigp == ADBUS_OBJECT_PATH);
     return AppendLongString(m, str, size);
 }
 
@@ -426,7 +426,7 @@ int adbus_buf_objectpath(adbus_Buffer* m, const char* str, int size)
 
 int adbus_buf_signature(adbus_Buffer* m, const char* str, int size)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_SIGNATURE);
+    CHECK(*m->sigp == ADBUS_SIGNATURE);
     return AppendShortString(m, str, size);
 }
 
@@ -439,9 +439,9 @@ int adbus_buf_append(adbus_Buffer* m, const char* sig, int size)
     if (size < 0)
         size = strlen(sig);
 
-    ASSERT_RETURN_ERR(strlen(m->signature) + size < 256);
-    ASSERT_RETURN_ERR(StackSize(m) == 0);
-    ASSERT_RETURN_ERR(m->sigp == NULL || *m->sigp == '\0');
+    CHECK(strlen(m->signature) + size < 256);
+    CHECK(StackSize(m) == 0);
+    CHECK(m->sigp == NULL || *m->sigp == '\0');
 
     strncat(m->signature, sig, size);
 
@@ -454,7 +454,7 @@ int adbus_buf_append(adbus_Buffer* m, const char* sig, int size)
 
 int adbus_buf_beginarray(adbus_Buffer* m)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_ARRAY_BEGIN);
+    CHECK(*m->sigp == ADBUS_ARRAY_BEGIN);
 
     m->sigp++;
 
@@ -489,7 +489,7 @@ int adbus_buf_endarray(adbus_Buffer* m)
     uint32_t* psize = (uint32_t*) &kv_a(m->data, s->d.array.sizeIndex);
     *psize = (uint32_t)(kv_size(m->data) - s->d.array.dataBegin);
 
-    ASSERT_RETURN_ERR(*psize < ADBUSI_MAXIMUM_ARRAY_LENGTH);
+    CHECK(*psize < ADBUSI_MAXIMUM_ARRAY_LENGTH);
 
     m->sigp = adbusI_findArrayEnd(s->d.array.sigBegin);
     assert(m->sigp);
@@ -504,9 +504,67 @@ int adbus_buf_endarray(adbus_Buffer* m)
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
+int adbus_buf_beginmap(adbus_Buffer* m)
+{
+    CHECK(*m->sigp == 'a' && *(m->sigp + 1) == '{');
+
+    m->sigp += 2;
+
+    AlignData(m, 4);
+    size_t isize = kv_size(m->data);
+    kv_push(u8, m->data, 4);
+    AlignData(m, 8);
+    size_t idata = kv_size(m->data);
+
+    struct StackEntry* s = StackPush(m);
+    s->type = MAP_STACK;
+    s->d.map.sizeIndex  = isize;
+    s->d.map.dataBegin  = idata;
+    s->d.map.sigBegin   = m->sigp;
+    s->d.map.haveKey    = 0;
+
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+
+static void AppendMapChild(adbus_Buffer* m)
+{
+    struct StackEntry* s = StackTop(m);
+    if (s->d.map.haveKey) {
+        m->sigp = s->d.map.sigBegin;
+        s->d.map.haveKey = 0;
+    } else {
+        s->d.map.haveKey = 1;
+    }
+}
+
+// ----------------------------------------------------------------------------
+
+int adbus_buf_endmap(adbus_Buffer* m)
+{
+    struct StackEntry* s = StackTop(m);
+    uint32_t* psize = (uint32_t*) &kv_a(m->data, s->d.map.sizeIndex);
+    *psize = (uint32_t)(kv_size(m->data) - s->d.map.dataBegin);
+
+    CHECK(*psize < ADBUSI_MAXIMUM_ARRAY_LENGTH);
+
+    m->sigp = adbusI_findArrayEnd(s->d.map.sigBegin - 1);
+    assert(m->sigp);
+
+    StackPop(m);
+
+    AppendField(m);
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
 int adbus_buf_beginstruct(adbus_Buffer* m)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_STRUCT_BEGIN);
+    CHECK(*m->sigp == ADBUS_STRUCT_BEGIN);
 
     m->sigp++;
 
@@ -529,45 +587,7 @@ static void AppendStructChild(adbus_Buffer* m)
 
 int adbus_buf_endstruct(adbus_Buffer* m)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_STRUCT_END);
-
-    m->sigp++;
-
-    StackPop(m);
-
-    AppendField(m);
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-int adbus_buf_begindictentry(adbus_Buffer* m)
-{
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_DICT_ENTRY_BEGIN);
-
-    m->sigp++;
-    AlignData(m, 8);
-
-    struct StackEntry* s = StackPush(m);
-    s->type = DICT_ENTRY_STACK;
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-static void AppendDictEntryChild(adbus_Buffer* m)
-{
-    // Nothing to do
-    (void) m;
-}
-
-// ----------------------------------------------------------------------------
-
-int adbus_buf_enddictentry(adbus_Buffer* m)
-{
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_DICT_ENTRY_END);
+    CHECK(*m->sigp == ADBUS_STRUCT_END);
 
     m->sigp++;
 
@@ -583,12 +603,12 @@ int adbus_buf_enddictentry(adbus_Buffer* m)
 
 int adbus_buf_beginvariant(adbus_Buffer* m, const char* type, int typeSize)
 {
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_VARIANT_BEGIN);
+    CHECK(*m->sigp == ADBUS_VARIANT_BEGIN);
 
     if (typeSize < 0)
         typeSize = strlen(type);
 
-    ASSERT_RETURN_ERR(typeSize < 256);
+    CHECK(typeSize < 256);
 
     // Set the variant type in the output buffer
     AppendShortString(m, type, typeSize);
@@ -614,7 +634,7 @@ static void AppendVariantChild(adbus_Buffer* m)
 
 int adbus_buf_endvariant(adbus_Buffer* m)
 {
-    ASSERT_RETURN_ERR(*m->sigp == '\0');
+    CHECK(*m->sigp == '\0');
     struct StackEntry* s = StackTop(m);
     m->sigp = s->d.variant.oldSigp;
 
@@ -635,8 +655,8 @@ int ADBusAppendVariant(adbus_Buffer* m,
     if (sigsize < 0)
         sigsize = strlen(sig);
 
-    ASSERT_RETURN_ERR(*m->sigp == ADBUS_VARIANT_BEGIN);
-    ASSERT_RETURN_ERR(sigsize < 256);
+    CHECK(*m->sigp == ADBUS_VARIANT_BEGIN);
+    CHECK(sigsize < 256);
 
     m->sigp++;
 
@@ -669,11 +689,11 @@ static void AppendField(adbus_Buffer* m)
     case VARIANT_STACK:
         AppendVariantChild(m);
         break;
-    case DICT_ENTRY_STACK:
-        AppendDictEntryChild(m);
-        break;
     case STRUCT_STACK:
         AppendStructChild(m);
+        break;
+    case MAP_STACK:
+        AppendMapChild(m);
         break;
     }
 }

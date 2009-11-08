@@ -94,10 +94,10 @@ enum adbus_FieldType
     ADBUS_ARRAY_END         = 1,
     ADBUS_STRUCT_BEGIN      = '(',
     ADBUS_STRUCT_END        = ')',
-    ADBUS_DICT_ENTRY_BEGIN         = '{',
-    ADBUS_DICT_ENTRY_END           = '}',
     ADBUS_VARIANT_BEGIN     = 'v',
     ADBUS_VARIANT_END       = 2,
+    ADBUS_MAP_BEGIN         = 3,
+    ADBUS_MAP_END           = 4,
 };
 
 enum
@@ -624,7 +624,7 @@ struct adbus_Field
      * - variant
      * - struct
      * - array
-     * - dict entry
+     * - map
      *
      */
     int scope;
@@ -733,8 +733,8 @@ ADBUS_API int adbus_buf_endarray(adbus_Buffer* b);
 ADBUS_API int adbus_buf_beginstruct(adbus_Buffer* b);
 ADBUS_API int adbus_buf_endstruct(adbus_Buffer* b);
 
-ADBUS_API int adbus_buf_begindictentry(adbus_Buffer* b);
-ADBUS_API int adbus_buf_enddictentry(adbus_Buffer* b);
+ADBUS_API int adbus_buf_beginmap(adbus_Buffer* b);
+ADBUS_API int adbus_buf_endmap(adbus_Buffer* b);
 
 ADBUS_API int adbus_buf_beginvariant(adbus_Buffer* b, const char* sig, int size);
 ADBUS_API int adbus_buf_endvariant(adbus_Buffer* b);
