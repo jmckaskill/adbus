@@ -25,99 +25,237 @@
 
 #pragma once
 
-#include <adbus/adbus.h>
-#include "memory/khash.h"
-#include "memory/kvector.h"
-#include "memory/kstring.h"
+#include <adbus.h>
+#include "dmem/hash.h"
+#include "dmem/vector.h"
+#include "dmem/string.h"
+#include "dmem/list.h"
 #include <setjmp.h>
 #include <stdint.h>
-
+#include "misc.h"
 
 // ----------------------------------------------------------------------------
 
-struct Bind
+DILIST_INIT(Bind, adbus_ConnBind);
+
+struct adbus_ConnBind
 {
-    adbus_Interface*  interface;
-    adbus_User*       user2;
+    d_IList(Bind)           fl;
+    struct ObjectPath*      path;
+    adbus_Interface*        interface;
+    void*                   cuser2;
+    adbus_ProxyMsgCallback  proxy;
+    void*                   puser;
+    adbus_Callback          release[2];
+    void*                   ruser[2];
+    adbus_ProxyCallback     relproxy;
+    void*                   relpuser;
 };
 
-// ----------------------------------------------------------------------------
 
-struct ObjectPath;
-
-KVECTOR_INIT(ObjectPtr, struct ObjectPath*)
-KHASH_MAP_INIT_STR(ObjectPtr, struct ObjectPath*)
-KHASH_MAP_INIT_STR(Bind, struct Bind)
+DVECTOR_INIT(ObjectPath, struct ObjectPath*);
+DHASH_MAP_INIT_STRSZ(ObjectPath, struct ObjectPath*);
+DHASH_MAP_INIT_STRSZ(Bind, adbus_ConnBind*);
 
 struct ObjectPath
 {
-    adbus_Path      h;
-    khash_t(Bind)*              interfaces;
-    kvector_t(ObjectPtr)*       children;
-    struct ObjectPath*          parent;
+    adbus_Connection*       connection;
+    dh_strsz_t              path;
+    d_Hash(Bind)            interfaces;
+    d_Vector(ObjectPath)    children;
+    struct ObjectPath*      parent;
 };
+
+ADBUSI_FUNC void adbusI_freeBind(adbus_ConnBind* bind);
+// This does not free the binds themselves, but rather resets the path pointer
+// of all the binds
+ADBUSI_FUNC void adbusI_freeObjectPath(struct ObjectPath* p);
 
 // ----------------------------------------------------------------------------
 
-struct Service
+/* DBus services are a bit weird. When you send a message to a named service,
+ * the destination field uses the sender, but the reply coming back will use
+ * the unique name. Thus if we want to be able to send messages to a named
+ * service and get the reply back correctly or hook up to a signal from a named
+ * service, we need to hook up to the NameOwnerChanged singal from the bus.
+ * The signature of this is sss (service, old owner's unique name, new owner's
+ * unique name). In order to make this as seamless as possible we track the
+ * NameOwnerChanged down in the bowels of match dispatch. Thus the user can
+ * add a match from a named service as the sender and expect it to work correctly.
+ *
+ * There is a few caveats of this approach:
+ *
+ * 1. We only want to hook up to the NameOwnerChanged signal for the service names
+ *    we are interested in. Otherwise every time a NameOwnerChanged signal comes
+ *    out of the bus, all parties on the bus would have to wake up.
+ *
+ * 2. There is no real advantage to ref counting the service names to track and
+ *    then disconnecting when we no longer need to track a service name. This is
+ *    because:
+ *
+ *    a) Generic code acting on the entire set of remotes should use the unique
+ *       name and thus the service name should be only used when its hard coded.
+ *    b) Its too easy to hit the worst case by sending a message to a service
+ *       (add a match), wait for the reply (remove the match) and repeat.
+ *
+ *    Thus after getting a match with a named service in the sender, we track
+ *    that service name from then on (until the connection is closed).
+ *
+ * 3. Any return matches should not be tracked across a NameOwnerChanged. This
+ *    means anything that supplies a reply serial to match against. This is
+ *    because the serials are unique to the particular remote.
+ *
+ * 4. In reality if you want fully reliable method calls, you need to:
+ *    a) Use only unique names.
+ *    b) Hook up to the NameOwnerChanged signal and send the message to the new
+ *       remote on change.
+ *    c) Handle replies coming from one or more remotes in the presence of name
+ *       changes.
+ *    d) Handle your own timeout.
+ *
+ *    This is because on receipt of a NameOwnerChanged message, we have no way
+ *    of knowing whether the name change occurred before or after the method
+ *    call hit the bus. Also the previous owner may get the message before or
+ *    after it releases the name and it may or may not reply (some remotes may
+ *    release the name, but still process method calls to that service name).
+ *
+ * We handle the reply matches for service names by:
+ * 1. Registering the remote for the service name
+ *    a) If the service lookup has already succeeded we skip 2 and 3 and
+ *       register it for the unique name.
+ * 2. Create a service lookup request
+ * 3. Moving all matches for the service name when the service lookup succeeds
+ *
+ * If after that point the service name changes we don't bother changing the
+ * registration. We just leave them sitting still registered to the old unique
+ * name. That way a) we can remove them later from an adbus_conn_removematch
+ * and b) if a reply does come in later we can still hook it up.
+ */
+
+struct ServiceLookup
 {
-    uint32_t                signalMatch;
-    uint32_t                methodMatch;
-    char*                   serviceName;
-    char*                   uniqueName;
-    int                     refCount;
+    adbus_Connection*       connection;
+    dh_strsz_t              service;
+    dh_strsz_t              unique;
 };
 
-struct Match
+ADBUSI_FUNC void adbusI_freeServiceLookup(struct ServiceLookup* service);
+
+/* The match lookup is simply a linked list of matches which we run through
+ * checking the message against each match. Every message runs through this
+ * list.
+ */
+
+DILIST_INIT(Match, adbus_ConnMatch);
+
+struct adbus_ConnMatch
 {
-    adbus_Match       m;
-    struct Service*         service;
+    d_IList(Match)          hl;
+    adbus_Match             m;
+    adbus_State*            state;
+    adbus_Proxy*            proxy;
+    struct ServiceLookup*   service;
 };
+
+ADBUSI_FUNC void adbusI_freeMatch(adbus_ConnMatch* m);
+
+/* For replies we have an optimised match lookup. The connection holds a hash
+ * table of sender -> Remote. The Remote then holds a hash table of reply
+ * serial -> adbus_ConnReply. For service names we pre-resolve the service
+ * name and register for the unique name (see ServiceLookup).
+ */
+
+DILIST_INIT(Reply, adbus_ConnReply);
+
+struct adbus_ConnReply
+{
+    d_IList(Reply)              fl;
+
+    struct Remote*              remote;
+    uint32_t                    serial;
+
+    adbus_MsgCallback           callback;
+    void*                       cuser;
+
+    adbus_MsgCallback           error;
+    void*                       euser;
+
+    adbus_ProxyMsgCallback      proxy;
+    void*                       puser;
+
+    adbus_Callback              release[2];
+    void*                       ruser[2];
+
+    adbus_ProxyCallback         relproxy;
+    void*                       relpuser;
+};
+
+ADBUSI_FUNC void adbusI_freeReply(adbus_ConnReply* reply);
+
+DHASH_MAP_INIT_UINT32(Reply, adbus_ConnReply*);
+
+struct Remote
+{
+    adbus_Connection*           connection;
+    dh_strsz_t                  name;
+    d_Hash(Reply)               replies;
+};
+
+ADBUSI_FUNC struct Remote* adbusI_getRemote(adbus_Connection* c, const char* name);
+// This does not free the replies themselves but rather resets the remote pointer
+ADBUSI_FUNC void adbusI_freeRemote(struct Remote* remote);
 
 // ----------------------------------------------------------------------------
 
-KVECTOR_INIT(Match, struct Match)
-KHASH_MAP_INIT_STR(Service, struct Service*)
+DHASH_MAP_INIT_STRSZ(Remote, struct Remote*);
+DHASH_MAP_INIT_STRSZ(ServiceLookup, struct ServiceLookup*);
+DVECTOR_INIT(char, char);
 
 struct adbus_Connection
 {
-    kvector_t(Match)*           registrations;
-    khash_t(ObjectPtr)*         objects;
+    /** \privatesection */
+    volatile long               ref;
+
+    d_Hash(ObjectPath)          paths;
+    d_Hash(Remote)              remotes;
+
+    // We keep free lists for all registrable services so that they can be
+    // released in adbus_conn_free.
+
+    d_IList(Match)              matches;
+    d_IList(Reply)              replies;
+    d_IList(Bind)               binds;
+
+    d_Hash(ServiceLookup)       services;
+
     uint32_t                    nextSerial;
-    uint32_t                    nextMatchId;
     adbus_Bool                  connected;
     char*                       uniqueService;
 
-    adbus_ConnectCallback     connectCallback;
-    adbus_User*           connectCallbackData;
+    adbus_Callback              connectCallback;
+    void*                       connectData;
 
-    adbus_SendCallback           sendCallback;
-    adbus_User*           sendCallbackData;
+    adbus_ConnectionCallbacks   callbacks;
+    void*                       user;
 
-    adbus_Callback        receiveMessageCallback;
-    adbus_User*           receiveMessageData;
+    adbus_State*                state;
+    adbus_Proxy*                bus;
 
-    adbus_Callback        sendMessageCallback;
-    adbus_User*           sendMessageData;
+    adbus_Interface*            introspectable;
+    adbus_Interface*            properties;
 
-    adbus_Message*        returnMessage;
-
-    adbus_Proxy*          bus;
-
-    adbus_Iterator*       dispatchIterator;
-
-    adbus_Interface*      introspectable;
-    adbus_Interface*      properties;
-
-    khash_t(Service)*           services;
-
-    adbus_Stream*           parseStream;
-    adbus_Message*          parseMessage;
+    d_Vector(char)              parseBuffer;
+    adbus_MsgFactory*           returnMessage;
 };
 
 
-void adbusI_freeMatchData(struct Match* m);
-void adbusI_freeObjectPath(struct ObjectPath* o);
-void adbusI_freeService(struct Service* s);
+ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_dispatchReply(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_dispatchMatch(adbus_CbData* d);
+
+ADBUSI_FUNC struct ServiceLookup* adbusI_lookupService(
+        adbus_Connection*   c,
+        const char*         service,
+        int                 size);
 
 

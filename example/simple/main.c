@@ -23,78 +23,69 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbus.h>
-#include <sys/socket.h>
+#include <adbus.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#   include <windows.h>
+#else
+#   include <sys/socket.h>
+#endif
+
+#undef interface
 
 static int quit = 0;
 
 static int Quit(adbus_CbData* data)
 {
+    adbus_check_end(data);
     quit = 1;
     return 0;
 }
 
-struct Socket
+static adbus_ssize_t Send(void* d, adbus_Message* m)
+{ return send(*(adbus_Socket*) d, m->data, m->size, 0); }
+
+#define RECV_SIZE 64 * 1024
+
+int main(void)
 {
-    adbus_User h;
-    adbus_Socket s;
-};
+    adbus_Buffer* buf = adbus_buf_new();
+    adbus_Socket s = adbus_sock_connect(ADBUS_SESSION_BUS);
+    if (s == ADBUS_SOCK_INVALID || adbus_sock_cauth(s, buf))
+        abort();
 
-static void Send(adbus_Message* m, const adbus_User* u)
-{
-    const char* msg = adbus_msg_summary(m, NULL);
-    fprintf(stderr, "Sending\n%s\n\n", msg);
+    adbus_ConnectionCallbacks cbs = {};
+    cbs.send_message = &Send;
 
-    struct Socket* s = (struct Socket*) u;
-    size_t size;
-    const uint8_t* data = adbus_msg_data(m, &size);
-    send(s->s, data, size, 0);
-}
+    adbus_Connection* c = adbus_conn_new(&cbs, &s);
 
-int main()
-{
-    struct Socket sdata;
-    memset(&sdata, 0, sizeof(struct Socket));
-
-    sdata.s = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (sdata.s == ADBUS_SOCK_INVALID)
-        return 1;
-
-    adbus_Message* m = adbus_msg_new();
-    adbus_Stream* s = adbus_stream_new();;
-    adbus_Connection* c = adbus_conn_new();
-    adbus_conn_setsender(c, &Send, &sdata.h);
-
-    adbus_Interface* i = adbus_iface_new("nz.co.foobar.Test.Quit", -1);
+    adbus_Interface* i = adbus_iface_new("nz.co.foobar.adbus.SimpleTest", -1);
     adbus_Member* mbr = adbus_iface_addmethod(i, "Quit", -1);
     adbus_mbr_setmethod(mbr, &Quit, NULL);
 
-    adbus_Path* root = adbus_conn_path(c, "/", -1);
-    adbus_path_bind(root, i, NULL);
+    adbus_Bind b;
+    adbus_bind_init(&b);
+    b.interface = i;
+    b.path      = "/";
+    adbus_conn_bind(c, &b);
 
     adbus_conn_connect(c, NULL, NULL);
 
-    char buf[64 * 1024];
     while(!quit) {
-        int recvd = recv(sdata.s, buf, sizeof(buf), 0);
+        char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
+        adbus_ssize_t recvd = recv(s, dest, RECV_SIZE, 0);
+        adbus_buf_recvd(buf, RECV_SIZE, recvd);
         if (recvd < 0)
-            return 2;
+            abort();
 
-        const uint8_t* data = (const uint8_t*) buf;
-        size_t size = recvd;
-        while (size > 0) {
-            if (adbus_stream_parse(s, m, &data, &size))
-                return 3;
-
-            const char* summary = adbus_msg_summary(m, NULL);
-            fprintf(stderr, "Received\n%s\n\n", summary);
-
-            if (adbus_conn_dispatch(c, m))
-                return 4;
-        }
+        if (adbus_conn_parse(c, buf))
+            abort();
     }
+
+    adbus_buf_free(buf);
+    adbus_iface_free(i);
+    adbus_conn_free(c);
 
     return 0;
 }

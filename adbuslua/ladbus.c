@@ -23,76 +23,16 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbuslua.h>
+#include <adbuslua.h>
 #include "internal.h"
+
+#ifdef _WIN32
+#   include <Winsock2.h>
+#   include <WS2tcpip.h>
+#endif
 
 #include <assert.h>
 #include <string.h>
-
-/* ------------------------------------------------------------------------- */
-
-int adbusluaI_getoption(
-        lua_State*      L,
-        int             index,
-        const char**    types,
-        const char*     error)
-{
-    if (lua_isstring(L, index)) {
-        const char* string = lua_tostring(L, index);
-        int i = 0;
-        while (types[i] != NULL && strcmp(string, types[i]) != 0) {
-            ++i;
-        }
-
-        if (types[i] == NULL || *types[i] == '\0') {
-            return luaL_error(L, "%s", error);
-        }
-
-        return i;
-
-    } else {
-        return luaL_error(L, "%s", error);
-    }
-    return -1;
-}
-
-adbus_Bool adbusluaI_getboolean(
-        lua_State*      L,
-        int             index,
-        const char*     error)
-{
-    if (lua_type(L, index) != LUA_TBOOLEAN) {
-        luaL_error(L, "%s", error);
-        return 0;
-    }
-    return (adbus_Bool) lua_toboolean(L, index);
-}
-
-lua_Number adbusluaI_getnumber(
-        lua_State*      L,
-        int             index,
-        const char*     error)
-{
-    if (lua_type(L, index) != LUA_TNUMBER) {
-        luaL_error(L, "%s", error);
-        return 0;
-    }
-    return lua_tonumber(L, index);
-}
-
-const char* adbusluaI_getstring(
-        lua_State*      L,
-        int             index,
-        size_t*         size,
-        const char*     error)
-{
-    if (lua_type(L, index) != LUA_TSTRING) {
-        luaL_error(L, "%s", error);
-        return NULL;
-    }
-    return lua_tolstring(L, index, size);
-}
-
 
 /* ------------------------------------------------------------------------- */
 
@@ -141,6 +81,99 @@ int adbusluaI_check_fields_numbers(lua_State* L, int table, const char* valid[])
 
 /* ------------------------------------------------------------------------- */
 
+int adbusluaI_boolField(lua_State* L, int table, const char* field, adbus_Bool* val)
+{
+    lua_getfield(L, table, field);
+    if (lua_isboolean(L, -1)) {
+        *val = lua_toboolean(L, -1);
+        lua_pop(L, 1);
+        return 0;
+    } else if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return 0;
+    } else {
+        lua_pop(L, 1);
+        lua_pushfstring(L, "Error in '%s' field - expected a boolean", field);
+        return -1;
+    }
+}
+
+int adbusluaI_intField(lua_State* L, int table, const char* field, int64_t* val)
+{
+    lua_getfield(L, table, field);
+    if (lua_isnumber(L, -1)) {
+        *val = lua_tonumber(L, -1);
+        lua_pop(L, 1);
+        return 0;
+    } else if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return 0;
+    } else {
+        lua_pop(L, 1);
+        lua_pushfstring(L, "Error in '%s' field - expected a number", field);
+        return -1;
+    }
+}
+
+int adbusluaI_stringField(lua_State* L, int table, const char* field, const char** str, int* sz)
+{
+    lua_getfield(L, table, field);
+    if (lua_isstring(L, -1)) {
+        size_t size;
+        *str = lua_tolstring(L, -1, &size);
+        *sz = size;
+        lua_pop(L, 1);
+        return 0;
+    } else if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return 0;
+    } else {
+        lua_pop(L, 1);
+        lua_pushfstring(L, "Error in '%s' field - expected a string", field);
+        return -1;
+    }
+}
+
+int adbusluaI_functionField(lua_State* L, int table, const char* field, int* function)
+{
+    lua_getfield(L, table, field);
+    if (lua_isfunction(L, -1)) {
+        *function = luaL_ref(L, LUA_REGISTRYINDEX);
+        return 0;
+    } else if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return 0;
+    } else {
+        lua_pop(L, 1);
+        lua_pushfstring(L, "Error in '%s' field - expected a function", field);
+        return -1;
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+
+static int ConnectAddress(lua_State* L)
+{
+    char buf[255];
+    if (adbus_connect_address(ADBUS_DEFAULT_BUS, buf, sizeof(buf)))
+        return luaL_error(L, "Failed to get dbus address");
+
+    lua_pushstring(L, buf);
+    return 1;
+}
+
+static int BindAddress(lua_State* L)
+{
+    char buf[255];
+    if (adbus_bind_address(ADBUS_DEFAULT_BUS, buf, sizeof(buf)))
+        return luaL_error(L, "Failed to get dbus address");
+
+    lua_pushstring(L, buf);
+    return 1;
+}
+
+/* ------------------------------------------------------------------------- */
+
 static void Setup(lua_State* L, int module, const char* name)
 {
     lua_pushvalue(L, -1);
@@ -149,6 +182,8 @@ static void Setup(lua_State* L, int module, const char* name)
 }
 
 static const luaL_Reg reg[] = {
+    {"connect_address", &ConnectAddress},
+    {"bind_address", &BindAddress},
     {NULL, NULL}
 };
 
@@ -160,13 +195,14 @@ int luaopen_adbuslua_core(lua_State* L)
     if (err)
         return luaL_error(L, "WSAStartup error %d", err);
 #endif
-    luaL_register(L, "adbuslua_core", reg);
+    lua_newtable(L);
+    luaL_register(L, NULL, reg);
     int module = lua_gettop(L);
 
     adbusluaI_reg_connection(L);    Setup(L, module, "connection");
-    adbusluaI_reg_object(L);        Setup(L, module, "object");
     adbusluaI_reg_interface(L);     Setup(L, module, "interface");
     adbusluaI_reg_socket(L);        Setup(L, module, "socket");
+    adbusluaI_reg_object(L);        Setup(L, module, "object");
 
     assert(lua_gettop(L) == module);
     return 1;

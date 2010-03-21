@@ -1,3 +1,10 @@
-/build
-/luac.out
-/luaembed/luaembed.auto.h
+.tup
+/.*.swp
+/.gitignore
+/LuaXML_lib.so
+/adbus.so
+/adbuslua_core.so
+/ex_bus_qt
+/ex_client_qt
+/ex_simple
+/ex_simplecpp

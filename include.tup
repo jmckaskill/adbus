@@ -1,0 +1,28 @@
+# vim: set et sts=4 ts=4 sw=4 tw=78:
+
+CC = gcc
+CPP = g++
+LD = ld
+
+ROOT = `pwd`/$(TUP_CWD)
+
+CFLAGS += -D__STDC_CONSTANT_MACROS
+CFLAGS += -D__STDC_LIMIT_MACROS
+CFLAGS += -I$(ROOT)/include/c
+CFLAGS += -I$(ROOT)
+CFLAGS += -DLUA_USE_LINUX
+CFLAGS += -DADBUS_SHARED_LIBRARY
+CFLAGS += -DADBUSLUA_SHARED_LIBRARY
+CFLAGS += -fPIC
+
+C99FLAGS += -std=gnu99
+
+CFLAGS_LUA = -I/usr/include/lua5.1/
+
+!c99 = |> ^ CC %f^ $(CC) -c `pwd`/%f -o %o $(CFLAGS) $(C99FLAGS) $(C99FLAGS_%f)|>
+!cpp = |> ^ CPP %f^ $(CPP) -c `pwd`/%f -o %o $(CFLAGS) $(CPPFLAGS) $(CPPFLAGS_%f)|>
+!ld  = |> ^ LINK %o^ $(CC) %f -o %o $(LDFLAGS) $(LDFLAGS_%o) 2>&1 |>
+!ldpp  = |> ^ LINK %o^ $(CPP) %f -o %o $(LDFLAGS) $(LDFLAGS_%o) 2>&1 |>
+!ar  = |> ^ AR %o^ ar crs %o %f |>
+
+

@@ -22,26 +22,22 @@
 -- DEALINGS IN THE SOFTWARE.
 -------------------------------------------------------------------------------
 
-
-local core          = require("adbuslua_core")
-local string        = require("string")
-local table         = require("table")
-local os            = require("os")
-local print         = _G.print
-local unpack        = _G.unpack
-local setmetatable  = _G.setmetatable
-local assert        = _G.assert
-local error         = _G.error
-
+smodule 'adbus'
+require 'adbuslua_core'
+require 'string'
+require 'table'
+require 'os'
+require 'package'
 
 -------------------------------------------------------------------------------
 -- Connection API
 -------------------------------------------------------------------------------
 
-module("adbus")
+local mt = {}
+mt.__index = mt
 
-connection = {}
-connection.__index = connection
+_M.connect_address = adbuslua_core.connect_address
+_M.bind_address = adbuslua_core.bind_address
 
 --- Creates a connection
 -- \param bus       The bus to connect to.
@@ -56,80 +52,54 @@ connection.__index = connection
 --   respectively
 -- - A string giving the bus address in dbus form eg.
 --   'tcp:host=localhost,port=12345'
--- - A table of the paramaters of the bus address split up with table.type
---   being the the socket type.  eg {type = 'tcp', host = 'localhost', port =
---   12345 } 
 
-function connect(bus, debug)
-    local socket
-    if not bus or bus == 'session' then
-        socket = core.socket.new(os.getenv('DBUS_SESSION_BUS_ADDRESS'))
-    elseif bus == 'system' then
-        socket = core.socket.new(os.getenv('DBUS_SYSTEM_BUS_ADDRESS'), true)
-    elseif type(bus) == 'string' then
-        socket = core.socket.new(bus)
-    else
-        local addr = bus.type .. ":"
-        for k,v in pairs(bus) do
-            if k ~= "type" and k ~= "system" then
-                addr = addr .. k .. '=' .. v .. ','
-            end
-        end
-        socket = core.socket.new(addr, options.system)
-    end
 
-    local self = {}
-    setmetatable(self, connection)
+function _M.connect(bus)
+    local self = setmetatable({}, mt)
 
-    self._connection = core.connection.new(debug)
-    self._socket     = socket;
+    self._connection = adbuslua_core.connection.new()
+    self._socket     = adbuslua_core.socket.new(bus or 'session')
 
     self._connection:set_sender(function(data)
         self._socket:send(data)
     end)
 
-    self._connection:connect_to_bus()
+    local connected
+    self._connection:connect_to_bus(function(name)
+        if callback then callback(name) end
+        connected = true
+    end)
+
+    while not connected do
+        self:process()
+    end
 
     return self
 end
 
+function mt:close()
+    self._connection:close()
+    self._socket:close()
+end
+
 --- Returns whether we successfully connected to the bus.
-function connection:is_connected_to_bus()
+function mt:is_connected_to_bus()
     return self._connection:is_connected_to_bus()
 end
 
 --- Returns our unique name if we are connected to the bus or nil.
-function connection:unique_service_name()
-    return self._connection:unique_service_name()
+function mt:unique_name()
+    return self._connection:unique_name()
 end
 
 --- Returns a new serial for use with messages.
-function connection:serial()
+function mt:serial()
     return self._connection:serial()
 end
 
---- Runs the main process loop.
--- This will block and process indefinitely.
-function connection:process_messages()
-    self._yield = false
-    self._yield_match = nil
-    while not self._yield do
-        local data = self._socket:receive()
-        self._connection:parse(data)
-    end
-end
-
---- Runs the main process loop until we get a match.
---
--- \param match     The match id to process until. This is the value returned
---                  by add_match
-function connection:process_until_match(match)
-    self._yield = false
-    self._yield_match = match
-    while not self._yield do
-        local data = self._socket:receive()
-        self._connection:parse(data)
-    end
+function mt:process()
+    local data = self._socket:receive()
+    self._connection:parse(data)
 end
 
 --- Adds a match rule to the connection
@@ -140,7 +110,7 @@ end
 --
 -- Arguments:
 -- \param m.callback            Callback for when the match is hit
--- \param[opt] m.type           Type of message. Valid values are:
+-- \param[opt] m.type           type of message. Valid values are:
 --                               - 'method_call'
 --                               - 'method_return'
 --                               - 'error'
@@ -151,7 +121,7 @@ end
 -- \param[opt] m.reply_serial   Number
 -- \param[opt] m.path           String
 -- \param[opt] m.member         String
--- \param[opt] m.error_name     String
+-- \param[opt] m.error          String
 -- \param[opt] m.remove_on_first_match      Boolean
 -- \param[opt] m.add_match_to_bus_daemon    Boolean
 -- \param[opt] m.object         Anything
@@ -193,7 +163,7 @@ end
 --
 -- callback(object, arg0, arg1, ...) or callback(arg0, arg1, ...)
 --
--- Unpacked error message take a special form. In this case the callback is
+-- unpacked error message take a special form. In this case the callback is
 -- callback is called with the object (optional), a nil, the message error
 -- name, and then the message description (if provided). eg:
 --
@@ -223,58 +193,40 @@ end
 -- \sa  connection:remove_match
 --      connection:send_messsage
 --
-function connection:add_match(m)
-    local id = self._connection:match_id()
-    local func = m.callback
-    m.id = id
-
-    if m.unpack_message or m.unpack_message == nil then
-        if m.object == nil then
-            m.callback = function(message)
-                if message.type == "error" then
-                    func(nil, message.error_name, unpack(message))
-                else
-                    func(unpack(message))
-                end
-                self:_check_yield(id)
-            end
-        else
-            m.callback = function(object, message)
-                if message.type == "error" then
-                    func(object, nil, message.error_name, unpack(message))
-                else
-                    func(object, unpack(message))
-                end
-                self:_check_yield(id)
-            end
-        end
-    else
-        m.callback = function(object, message)
-            func(object, message)
-            self:_check_yield(id)
-        end
-
-    end
-
-    -- Get rid of unpack_message as the underlying c library doesn't want to
-    -- know about it
-    m.unpack_message = nil
-
-    self._connection:add_match(m)
-    return id
+function mt:add_match(m)
+    return self._connection:add_match(m)
 end
 
-function connection:_check_yield(id)
-    if id == self._yield_match then
-        self._yield = true
-    end
+function mt:add_reply(r)
+    return self._connection:add_reply(r)
 end
 
---- Removes a match rule
---
--- \param match_id  The match id returned from a call to add_match. 
-function connection:remove_match(match_id)
-    self._connection:remove_match(match_id)
+local bind = {}
+
+function bind:emit(signal, ...)
+    local sig = self._interface._signal_signature[member]
+    if not sig then
+        error("Invalid signal name")
+    end
+
+    local msg = {
+        path        = self._path,
+        interface   = self._interface.name,
+        signature   = sig,
+        member      = signal,
+        ...
+    }
+
+    self._connection:send(msg)
+end
+
+function mt:add_bind(path, interface)
+    local b         = setmetatable({}, bind)
+    b._bind         = self._connection:add_bind(path, interface._interface)
+    b._interface    = interface
+    b._path         = path
+    b._connection   = self
+    return b
 end
 
 --- Create a new proxy object
@@ -298,7 +250,7 @@ end
 --
 -- For example:
 -- \code
--- p = connection:proxy{
+-- p = mt:proxy{
 --      service = 'org.freedesktop.DBus',
 --      path    = '/org/freedesktop/DBus',
 -- }
@@ -316,8 +268,12 @@ end
 --
 -- \sa proxy
 --
-function connection:proxy(t)
-    return proxy._new(self, t)
+function mt:proxy(service, path, interface)
+    if path == nil then
+        return service_proxy._new(self, service)
+    else
+        return proxy._new(self, service, path, interface)
+    end
 end
 
 --- Sends a new message
@@ -383,7 +339,7 @@ end
 -- \param[opt] m.interface      Interface field
 -- \param[opt] m.path           Path field
 -- \param[opt] m.member         Member field
--- \param[opt] m.error_name     Error name field
+-- \param[opt] m.error          error name field
 -- \param[opt] m.destination    Destination field
 -- \param[opt] m.sender         Sender field
 -- \param[opt] m.signature      Signature of the message. See above.
@@ -401,9 +357,75 @@ end
 -- \sa  connection.add_match 
 --      http://dbus.freedesktop.org/doc/dbus-specification.html
 --
-function connection:send(m)
+function mt:send(m)
     self._connection:send(m)
 end
 
+-- Method callers
+
+function mt:async_call(msg)
+    local serial = self:serial()
+
+    local reply
+    if msg.callback then
+        reply = self:add_reply{
+            serial          = serial,
+            remote          = msg.destination,
+            unpack_message  = msg.unpack_message,
+            callback        = msg.callback,
+            object          = msg.object,
+        }
+    end
+
+    msg.type = "method_call"
+    msg.serial = serial
+    msg.unpack_message = nil
+    msg.callback = nil
+    msg.object = nil
+
+    self:send(msg)
+
+    return reply
+end
+
+local function method_callback(self, message)
+    self._method_return_message = message
+    self._yield = true
+end
+
+function mt:call(msg)
+    local unpack_message = msg.unpack_message 
+
+    if msg.reply == nil or msg.reply then
+        msg.callback = method_callback
+        msg.object = self
+        msg.unpack_message = false
+    end
+    msg.reply = nil
+
+    local reply = self:async_call(msg)
+
+    if reply then
+        self._yield = nil
+        while not self._yield do
+            self:process()
+        end
+
+        reply:close()
+
+        local ret = self._method_return_message
+        self._method_return_message = nil
+
+        if unpack_message == nil or not unpack_message then
+            if ret.type == "error" then
+                return nil, ret.error, ret[1]
+            else
+                return unpack(ret)
+            end
+        else
+            return ret
+        end
+    end
+end
 
 

@@ -23,13 +23,110 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbus.h>
+#include <adbus.h>
 
 #include "connection.h"
 #include "interface.h"
 #include "misc.h"
 
-#include "memory/kstring.h"
+#include "dmem/string.h"
+
+/** \struct adbus_CbData
+ *  \brief Data structure used for message callbacks.
+ *
+ *  For non-proxied callbacks this structure is setup within the connection
+ *  parse functions. 
+ *
+ *  For proxied callbacks, the proxier has to copy a number of these fields
+ *  see adbus_ConnectionCallbacks::get_proxy for more details.
+ *
+ *  The various adbus_check functions are very handy in C callbacks. Any
+ *  errors (including incorrect argument types) encountered whilst iterating
+ *  over the arguments causes the check function to longjmp out.
+ *
+ *  \note The adbus_check functions should not be used in combination with
+ *  manual iteration.
+ *
+ *  For example:
+ *  \code
+ *  int Callback(adbus_CbData* d)
+ *  {
+ *      double d = adbus_check_double(d);
+ *      adbus_check_beginstruct(d);
+ *      double v1 = adbus_check_double(d);
+ *      double v2 = adbus_check_double(d);
+ *      double v3 = adbus_check_double(d);
+ *      adbus_check_endstruct(d);
+ *      adbus_check_end(d);
+ *
+ *      return 0;
+ *  }
+ *  \endcode
+ *
+ */
+
+/** \var adbus_CbData::connection
+ *  \brief Connection the message was received on.
+ */
+
+/** \var adbus_CbData::msg
+ *  The received message.
+ */
+
+/** \var adbus_CbData::ret
+ *  A message factory used for setting up returned messages.
+ *
+ *  By default this will be used to return a message immediately after the
+ *  callback completes unless noreturn is set to non-zero.
+ *
+ *  \warning This is only set for method and property callbacks.
+ */
+
+/** \var adbus_CbData::noreturn
+ *  Flag to indicate that no return message should be sent.
+ */
+
+/** \var adbus_CbData::setprop
+ *  Iterator setup to iterate over the property value to set to.
+ */
+
+/** \var adbus_CbData::getprop
+ *  Buffer to store the current property value.
+ */
+
+/** \var adbus_CbData::user1
+ *  First user data variable.
+ *
+ *  For match and reply callbacks this is the user data supplied in the
+ *  registration.
+ *  For method and property callbacks this is the user data supplied in the
+ *  interface.
+ */
+
+/** \var adbus_CbData::user2
+ *  Second user data variable.
+ *
+ *  This is only set for method and property callbacks where it is set to the
+ *  user data supplied in the bind.
+ */
+
+// ----------------------------------------------------------------------------
+
+/** Dispatch a message callback
+ *  \relates adbus_CbData
+ */
+int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d)
+{
+    int ret = setjmp(d->jmpbuf);
+    if (ret == ADBUSI_ERROR) {
+        return 0;
+    } else if (ret) {
+        return ret;
+    }
+
+    adbus_iter_args(&d->checkiter, d->msg);
+    return callback(d);
+}
 
 // ----------------------------------------------------------------------------
 
@@ -37,21 +134,27 @@
 #pragma warning(disable:4702) /* unreachable code due to longjmp */
 #endif
 
-int adbus_error_longjmp(
+/** Setup an error reply and longjmp out of the callback
+ *  \relates adbus_CbData
+ *
+ *  \warning Since this uses longjmp, it should be used with caution.
+ */
+int adbus_errorf_jmp(
         adbus_CbData*    d,
         const char*                 errorName,
         const char*                 errorMsgFormat,
         ...)
 {
-    kstring_t* msg = ks_new();
+    d_String msg;
+    ZERO(&msg);
     va_list ap;
     va_start(ap, errorMsgFormat);
-    ks_vprintf(msg, errorMsgFormat, ap);
+    ds_cat_vf(&msg, errorMsgFormat, ap);
     va_end(ap);
 
-    adbus_setup_error(d, errorName, -1, ks_cstr(msg), ks_size(msg));
+    adbus_error(d, errorName, -1, ds_cstr(&msg), ds_size(&msg));
 
-    ks_free(msg);
+    ds_free(&msg);
 
     longjmp(d->jmpbuf, ADBUSI_ERROR);
     return 0;
@@ -59,77 +162,101 @@ int adbus_error_longjmp(
 
 // ----------------------------------------------------------------------------
 
-int adbus_error(
+/** Setup an error reply
+ *  \relates adbus_CbData
+ *
+ *  The error message is formatted with a printf style format string in \a
+ *  errorMsgFormat and the variable arguments.
+ *
+ *  \return 0 always - designed to be returned directly from a message
+ *  callback.
+ *
+ *  For example:
+ *  \code
+ *  int Callback(adbus_CbData* d)
+ *  {
+ *      ...
+ *      if (have_error) {
+ *          return adbus_errorf(
+ *              d, 
+ *              "com.example.ExampleError", 
+ *              "Something happened with %s", "foo");
+ *      }
+ *  }
+ *  \endcode
+ */
+int adbus_errorf(
         adbus_CbData*    d,
         const char*                 errorName,
         const char*                 errorMsgFormat,
         ...)
 {
-    kstring_t* msg = ks_new();
+    d_String msg;
+    ZERO(&msg);
     va_list ap;
     va_start(ap, errorMsgFormat);
-    ks_vprintf(msg, errorMsgFormat, ap);
+    ds_cat_vf(&msg, errorMsgFormat, ap);
     va_end(ap);
 
-    adbus_setup_error(d, errorName, -1, ks_cstr(msg), ks_size(msg));
+    adbus_error(d, errorName, -1, ds_cstr(&msg), ds_size(&msg));
 
-    ks_free(msg);
+    ds_free(&msg);
 
     return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-void adbus_setup_error(
+/** Setup an error reply
+ *  \relates adbus_CbData
+ *
+ *  \return 0 always - designed to be returned directly from a message
+ *  callback
+ *
+ */
+int adbus_error(
         adbus_CbData*    d,
-        const char*                 errorName,
-        int                         errorNameSize,
-        const char*                 errorMessage,
-        int                         errorMessageSize)
+        const char*      errorName,
+        int              errorNameSize,
+        const char*      errorMessage,
+        int              errorMessageSize)
 {
-    if (!d->retmessage)
-        return;
+    if (errorNameSize < 0)
+        errorNameSize = strlen(errorName);
 
-    d->manualReply = 0;
+    if (errorMessage && errorMessageSize < 0)
+        errorMessageSize = strlen(errorMessage);
 
-    size_t destsize;
-    const char* dest = adbus_msg_sender(d->message, &destsize);
-    int serial = adbus_msg_serial(d->message);
+    if (errorMessage)
+        adbusI_log("error '%*s' '%*s'", errorNameSize, errorName, errorMessageSize, errorMessage);
+    else
+        adbusI_log("error '%*s'", errorNameSize, errorName);
 
-    adbus_Message* m = d->retmessage;
+    if (!d->ret)
+        return 0;
+
+    assert(errorName);
+
+    adbus_MsgFactory* m = d->ret;
     adbus_msg_reset(m);
     adbus_msg_settype(m, ADBUS_MSG_ERROR);
     adbus_msg_setflags(m, ADBUS_MSG_NO_REPLY);
     adbus_msg_setserial(m, adbus_conn_serial(d->connection));
 
-    adbus_msg_setreply(m, serial);
+    adbus_msg_setreply(m, d->msg->serial);
     adbus_msg_seterror(m, errorName, errorNameSize);
 
-    if (dest) {
-        adbus_msg_setdestination(m, dest, destsize);
+    if (d->msg->destination) {
+        adbus_msg_setdestination(m, d->msg->destination, d->msg->destinationSize);
     }
 
     if (errorMessage) {
-        adbus_msg_append(m, "s", -1);
+        adbus_msg_setsig(m, "s", 1);
         adbus_msg_string(m, errorMessage, errorMessageSize);
+        adbus_msg_end(m);
     }
-}
 
-// ----------------------------------------------------------------------------
-
-void adbus_setup_signal(
-        adbus_Message*        message,
-        adbus_Path*     path,
-        adbus_Member*         signal)
-{
-    adbus_msg_reset(message);
-    adbus_msg_settype(message, ADBUS_MSG_SIGNAL);
-    adbus_msg_setflags(message, ADBUS_MSG_NO_REPLY);
-    adbus_msg_setserial(message, adbus_conn_serial(path->connection));
-
-    adbus_msg_setpath(message, path->string, path->size);
-    adbus_msg_setinterface(message, signal->interface->name, -1);
-    adbus_msg_setmember(message, signal->name, -1);
+    return 0;
 }
 
 

@@ -23,32 +23,74 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbus.h>
+#include <adbus.h>
 #include "misc.h"
 
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdio.h>
+#include <malloc.h>
+
+
+
+
+
+static adbus_LogCallback sLog;
+void adbus_set_logger(adbus_LogCallback cb)
+{ sLog = cb; }
+
+int adbusI_log_enabled()
+{ return sLog != 0; }
+
+void adbusI_klog(d_String* log)
+{ 
+    if (sLog)
+        sLog(ds_cstr(log), ds_size(log)); 
+}
+
+void adbusI_dolog(const char* format, ...)
+{
+    if (!sLog)
+        return;
+
+    d_String log;
+    ZERO(&log);
+
+    va_list ap;
+    va_start(ap, format);
+    ds_cat_vf(&log, format, ap);
+    va_end(ap);
+
+    adbusI_klog(&log);
+
+    ds_free(&log);
+}
 
 #ifdef _WIN32
-#   include <windows.h>
-#   include <crtdbg.h>
-#   undef interface
-#else
-#   include <sys/time.h>
+#   define alloca _alloca
 #endif
 
-// ----------------------------------------------------------------------------
-
-adbus_Bool adbusI_requiresServiceLookup(const char* name, int size)
+void adbusI_addheader(d_String* str, const char* format, ...)
 {
-    if (size < 0)
-        size = strlen(name);
+    size_t begin = ds_size(str);
+    va_list ap;
+    va_start(ap, format);
+    ds_insert_vf(str, 0, format, ap);
+    va_end(ap);
 
-    return size > 0
-        && *name != ':'
-        && (strncmp(name, "org.freedesktop.DBus", size) != 0);
+    size_t hsize = ds_size(str) - begin;
+    char* spaces = (char*) alloca(hsize);
+    memset(spaces, ' ', hsize);
+
+    size_t i = 0;
+    while (i < ds_size(str) - 1) { // we don't care about the last char being a '\n'
+        if (ds_a(str, i) == '\n') {
+            ds_insert_n(str, i + 1, spaces, hsize);
+        }
+        ++i;
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -92,10 +134,11 @@ int adbusI_alignment(char ch)
 
 // ----------------------------------------------------------------------------
 
-adbus_Bool adbusI_littleEndian(void)
+char adbusI_nativeEndianness(void)
 {
     int i = 1;
-    return (*(char*)&i) == 1;
+    int little = (*(char*)&i) == 1;
+    return little ? 'l' : 'B';
 }
 
 // ----------------------------------------------------------------------------
@@ -275,19 +318,20 @@ adbus_Bool adbusI_isValidMemberName(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-adbus_Bool adbusI_hasNullByte(const uint8_t* str, size_t len)
+adbus_Bool adbusI_hasNullByte(const char* str, size_t len)
 {
     return memchr(str, '\0', len) != NULL;
 }
 
 // ----------------------------------------------------------------------------
 
-adbus_Bool adbusI_isValidUtf8(const uint8_t* str, size_t len)
+#if 0
+adbus_Bool adbusI_isValidUtf8(const char* str, size_t len)
 {
     if (!str)
         return 1;
-    const uint8_t* s = str;
-    const uint8_t* end = str + len;
+    const char* s = str;
+    const char* end = str + len;
     while (s < end)
     {
         if (s[0] < 0x80)
@@ -373,19 +417,16 @@ adbus_Bool adbusI_isValidUtf8(const uint8_t* str, size_t len)
 
     return s == end ? 1 : 0;
 }
+#endif
 
 // ----------------------------------------------------------------------------
 
-const char* adbusI_findArrayEnd(const char* arrayBegin)
+const char* adbus_nextarg(const char* sig)
 {
-    int dictEntries = 0;
-    int structs = 0;
-    while (arrayBegin && *arrayBegin)
+    switch(*sig)
     {
-        switch(*arrayBegin)
-        {
-        case ADBUS_UINT8:
         case ADBUS_BOOLEAN:
+        case ADBUS_UINT8:
         case ADBUS_INT16:
         case ADBUS_UINT16:
         case ADBUS_INT32:
@@ -397,68 +438,52 @@ const char* adbusI_findArrayEnd(const char* arrayBegin)
         case ADBUS_OBJECT_PATH:
         case ADBUS_SIGNATURE:
         case ADBUS_VARIANT_BEGIN:
-            break;
+            return sig+1;
+
         case ADBUS_ARRAY_BEGIN:
-            arrayBegin++;
-            arrayBegin = adbusI_findArrayEnd(arrayBegin);
-            break;
+            return adbus_nextarg(sig + 1);
+
         case ADBUS_STRUCT_BEGIN:
-            structs++;
-            break;
-        case ADBUS_STRUCT_END:
-            structs--;
-            break;
-        case '{':
-            dictEntries++;
-            break;
-        case '}':
-            dictEntries--;
-            break;
+            {
+                sig++;
+                while (sig && *sig != ADBUS_STRUCT_END) {
+                    sig = adbus_nextarg(sig);
+                }
+
+                if (!sig || *sig != ADBUS_STRUCT_END)
+                    return NULL;
+
+                return sig + 1;
+            }
+
+        case ADBUS_DICTENTRY_BEGIN:
+            {
+                const char* val = adbus_nextarg(sig + 1);
+                if (!val)
+                    return NULL;
+
+                const char* end = adbus_nextarg(val);
+                if (!end || *end != ADBUS_DICTENTRY_END)
+                    return NULL;
+
+                return end + 1;
+            }
+
         default:
-            assert(0);
-            break;
-        }
-        arrayBegin++;
+            return NULL;
     }
-    return (structs == 0 && dictEntries == 0) ? arrayBegin : NULL;
-}
-
-// ----------------------------------------------------------------------------
-
-struct UserPointer
-{
-    adbus_User header;
-    void* pointer;
-};
-
-static void FreeUserPointer(adbus_User* data)
-{
-    free(data);
-}
-
-adbus_User* adbusI_puser_new(void* p)
-{
-    struct UserPointer* u = NEW(struct UserPointer);
-    u->header.free = &FreeUserPointer;
-    u->pointer = p;
-    return &u->header;
-}
-
-void* adbusI_puser_get(const adbus_User* data)
-{
-    return ((struct UserPointer*) data)->pointer;
 }
 
 // ----------------------------------------------------------------------------
 
 void adbusI_relativePath(
-        kstring_t*  out,
+        d_String*  out,
         const char* path1,
         int         size1,
         const char* path2,
         int         size2)
 {
-    ks_clear(out);
+    ds_clear(out);
     if (size1 < 0)
         size1 = strlen(path1);
     if (size2 < 0)
@@ -466,209 +491,223 @@ void adbusI_relativePath(
 
     // Make sure it starts with a /
     if (size1 > 0 && path1[0] != '/')
-        ks_cat(out, "/");
+        ds_cat(out, "/");
     if (size1 > 0)
-        ks_cat_n(out, path1, size1);
+        ds_cat_n(out, path1, size1);
 
     // Make sure it has a / seperator
     if (size2 > 0 && path2[0] != '/')
-        ks_cat(out, "/");
+        ds_cat(out, "/");
     if (size2 > 0)
-        ks_cat_n(out, path2, size2);
+        ds_cat_n(out, path2, size2);
 
     // Remove repeating slashes
-    for (size_t i = 1; i < ks_size(out); ++i) {
-        if (ks_a(out, i) == '/' && ks_a(out, i-1) == '/') {
-            ks_remove(out, i, 1);
+    for (size_t i = 1; i < ds_size(out); ++i) {
+        if (ds_a(out, i) == '/' && ds_a(out, i-1) == '/') {
+            ds_remove(out, i, 1);
         }
     }
 
     // Remove trailing /
-    if (ks_size(out) > 1 && ks_a(out, ks_size(out) - 1) == '/')
-        ks_remove_end(out, 1);
+    if (ds_size(out) > 1 && ds_a(out, ds_size(out) - 1) == '/')
+        ds_remove_end(out, 1);
 }
 
 // ----------------------------------------------------------------------------
 
 void adbusI_parentPath(
-        char*   path,
-        size_t  size,
-        size_t* parentSize)
+        dh_strsz_t  path,
+        dh_strsz_t* parent)
 {
     // Path should have already been sanitised so double /'s should not happen
 #ifndef NDEBUG
-    kstring_t* sanitised = ks_new();
-    adbusI_relativePath(sanitised, path, size, NULL, 0);
-    assert(path[size] == '\0');
-    assert(ks_cmp(sanitised, path) == 0);
-    ks_free(sanitised);
+    d_String sanitised;
+    ZERO(&sanitised);
+    adbusI_relativePath(&sanitised, path.str, path.sz, NULL, 0);
+    assert(ds_cmp_n(&sanitised, path.str, path.sz) == 0);
+    ds_free(&sanitised);
 #endif
 
-    --size;
+    int size = path.sz - 1;
 
-    while (size > 1 && path[size] != '/') {
+    // Search back until we find the first '/' that is not the last character
+    while (size > 0 && path.str[size - 1] != '/') {
         --size;
     }
 
-    path[size] = '\0';
-
-    if (parentSize)
-        *parentSize = size;
+    if (size <= 0) {
+        // Parent of "/"
+        parent->str = NULL;
+    } else if (size == 1) {
+        // Parent of "/Foo" - "/"
+        parent->str = path.str;
+        parent->sz  = size;
+    } else {
+        // Parent of "/Foo/Bar" - "/Foo" (size is currently at "/Foo/")
+        parent->str = path.str;
+        parent->sz  = size - 1;
+    }
 }
 
 // ----------------------------------------------------------------------------
 
-static void Append(kstring_t* s, const char* key, const char* value, int vsize)
+static void Append(d_String* s, const char* format, int vsize, const char* value)
 {
     if (value) {
-        ks_cat(s, key);
-        ks_cat(s, "='");
-        if (vsize >= 0)
-            ks_cat_n(s, value, vsize);
-        else
-            ks_cat(s, value);
-        ks_cat(s, "',");
+        if (vsize < 0)
+            vsize = strlen(value);
+        ds_cat_f(s, format, vsize, value);
     }
 }
 
-kstring_t* adbusI_matchString(const adbus_Match* m)
+static const char* TypeString(adbus_MessageType type)
 {
-    kstring_t* mstr = ks_new();
-    if (m->type == ADBUS_MSG_METHOD) {
-        ks_cat(mstr, "type='method_call',");
-    } else if (m->type == ADBUS_MSG_RETURN) {
-        ks_cat(mstr, "type='method_return',");
-    } else if (m->type == ADBUS_MSG_ERROR) {
-        ks_cat(mstr, "type='error',");
-    } else if (m->type == ADBUS_MSG_SIGNAL) {
-        ks_cat(mstr, "type='signal',");
+    if (type == ADBUS_MSG_METHOD) {
+        return "method_call";
+    } else if (type == ADBUS_MSG_RETURN) {
+        return "method_return";
+    } else if (type == ADBUS_MSG_ERROR) {
+        return "error";
+    } else if (type == ADBUS_MSG_SIGNAL) {
+        return "signal";
+    } else {
+        return "unknown";
     }
+}
 
-    // We only want to add the sender field if we are not going to have to do
-    // a lookup conversion
-    if (m->sender
-     && !adbusI_requiresServiceLookup(m->sender, m->senderSize))
-    {
-        Append(mstr, "sender", m->sender, m->senderSize);
-    }
-    Append(mstr, "interface", m->interface, m->interfaceSize);
-    Append(mstr, "member", m->member, m->memberSize);
-    Append(mstr, "path", m->path, m->pathSize);
-    Append(mstr, "destination", m->destination, m->destinationSize);
+void adbusI_matchString(d_String* s, const adbus_Match* m)
+{
+    ds_cat(s, "");
+
+    if (m->type)
+        ds_cat_f(s, "type='%s',", TypeString(m->type));
+
+    Append(s, "sender='%*s',", m->senderSize, m->sender);
+    Append(s, "interface='%*s',", m->interfaceSize, m->interface);
+    Append(s, "member='%*s',", m->memberSize, m->member);
+    Append(s, "path='%*s',", m->pathSize, m->path);
+    Append(s, "destination='%*s',", m->destinationSize, m->destination);
 
     for (size_t i = 0; i < m->argumentsSize; ++i) {
-        adbus_MatchArgument* arg = &m->arguments[i];
-        ks_printf(mstr, "arg%d='", arg->number);
-        if (arg->valueSize < 0) {
-            ks_cat(mstr, arg->value);
-        } else {
-            ks_cat_n(mstr, arg->value, arg->valueSize);
+        adbus_Argument* arg = &m->arguments[i];
+        if (arg->value) {
+            if (arg->size >= 0) {
+                ds_cat_f(s, "arg%d='%*s',", i, arg->size, arg->value);
+            } else {
+                ds_cat_f(s, "arg%d='%s',", i, arg->value);
+            }
         }
-        ks_cat(mstr, "',");
     }
 
     // Remove the trailing ','
-    if (ks_size(mstr) > 0)
-        ks_remove_end(mstr, 1);
-
-    return mstr;
+    if (ds_size(s) > 0)
+        ds_remove_end(s, 1);
 }
 
 // ----------------------------------------------------------------------------
 
-int adbusI_argumentError(adbus_CbData* d)
+int adbus_error_argument(adbus_CbData* d)
 {
-    return adbus_error(
-            d,
-            "nz.co.foobar.ADBus.Error.InvalidArgument",
-            "Invalid argument to the method '%s.%s' on %s",
-            adbus_msg_interface(d->message, NULL),
-            adbus_msg_member(d->message, NULL),
-            adbus_msg_path(d->message, NULL));
+    if (d->msg->interface) {
+        return adbus_errorf(
+                d,
+                "nz.co.foobar.adbus.InvalidArgument",
+                "Invalid argument to the method '%s.%s' on %s",
+                d->msg->interface,
+                d->msg->member,
+                d->msg->path);
+    } else {
+        return adbus_errorf(
+                d,
+                "nz.co.foobar.adbus.InvalidArgument",
+                "Invalid argument to the method '%s' on %s",
+                d->msg->member,
+                d->msg->path);
+    }
 }
 
 int adbusI_pathError(adbus_CbData* d)
 {
-    return adbus_error(
+    return adbus_errorf(
             d,
-            "nz.co.foobar.ADBus.Error.InvalidPath",
+            "nz.co.foobar.adbus.InvalidPath",
             "The path '%s' does not exist.",
-            adbus_msg_path(d->message, NULL));
+            d->msg->path);
 }
 
 int adbusI_interfaceError(adbus_CbData* d)
 {
-    return adbus_error(
+    return adbus_errorf(
             d,
-            "nz.co.foobar.ADBus.Error.InvalidInterface",
+            "nz.co.foobar.adbus.InvalidInterface",
             "The path '%s' does not export the interface '%s'.",
-            adbus_msg_path(d->message, NULL),
-            adbus_msg_interface(d->message, NULL),
-            adbus_msg_member(d->message, NULL));
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
 }
 
 int adbusI_methodError(adbus_CbData* d)
 {
-    if (adbus_msg_interface(d->message, NULL)) {
-        return adbus_error(
+    if (d->msg->interface) {
+        return adbus_errorf(
                 d,
-                "nz.co.foobar.ADBus.Error.InvalidMethod",
+                "nz.co.foobar.adbus.InvalidMethod",
                 "The path '%s' does not export the method '%s.%s'.",
-                adbus_msg_path(d->message, NULL),
-                adbus_msg_interface(d->message, NULL),
-                adbus_msg_member(d->message, NULL));
+                d->msg->path,
+                d->msg->interface,
+                d->msg->member);
     } else {
-        return adbus_error(
+        return adbus_errorf(
                 d,
-                "nz.co.foobar.ADBus.Error.InvalidMethod",
+                "nz.co.foobar.adbus.InvalidMethod",
                 "The path '%s' does not export the method '%s'.",
-                adbus_msg_path(d->message, NULL),
-                adbus_msg_member(d->message, NULL));
+                d->msg->path,
+                d->msg->member);
     }
 }
 
 int adbusI_propertyError(adbus_CbData* d)
 {
-    return adbus_error(
+    return adbus_errorf(
             d,
-            "nz.co.foobar.ADBus.Error.InvalidProperty",
+            "nz.co.foobar.adbus.InvalidProperty",
             "The path '%s' does not export the property '%s.%s'.",
-            adbus_msg_path(d->message, NULL),
-            adbus_msg_interface(d->message, NULL),
-            adbus_msg_member(d->message, NULL));
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
 }
 
-int PropWriteError(adbus_CbData* d)
+int adbusI_propWriteError(adbus_CbData* d)
 {
-    return adbus_error(
+    return adbus_errorf(
             d,
-            "nz.co.foobar.ADBus.Error.ReadOnlyProperty",
+            "nz.co.foobar.adbus.ReadOnlyProperty",
             "The property '%s.%s' on '%s' is read only.",
-            adbus_msg_interface(d->message, NULL),
-            adbus_msg_member(d->message, NULL),
-            adbus_msg_path(d->message, NULL));
+            d->msg->interface,
+            d->msg->member,
+            d->msg->path);
 }
 
-int PropReadError(adbus_CbData* d)
+int adbusI_propReadError(adbus_CbData* d)
 {
-    return adbus_error(
+    return adbus_errorf(
             d,
-            "nz.co.foobar.ADBus.Error.WriteOnlyProperty",
+            "nz.co.foobar.adbus.WriteOnlyProperty",
             "The property '%s.%s' on '%s' is write only.",
-            adbus_msg_interface(d->message, NULL),
-            adbus_msg_member(d->message, NULL),
-            adbus_msg_path(d->message, NULL));
+            d->msg->interface,
+            d->msg->member,
+            d->msg->path);
 }
 
-int PropTypeError(adbus_CbData* d)
+int adbusI_propTypeError(adbus_CbData* d)
 { 
-    return adbus_error(
+    return adbus_errorf(
             d,
-            "nz.co.foobar.ADBus.Error.InvalidPropertyType",
+            "nz.co.foobar.adbus.InvalidPropertyType",
             "Incorrect property type for '%s.%s' on %s.",
-            adbus_msg_interface(d->message, NULL),
-            adbus_msg_member(d->message, NULL),
-            adbus_msg_path(d->message, NULL));
+            d->msg->interface,
+            d->msg->member,
+            d->msg->path);
 }
 
 

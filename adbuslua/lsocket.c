@@ -23,10 +23,10 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbuslua.h>
+#include <adbuslua.h>
 #include "internal.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 #   include <Winsock2.h>
 #   include <WS2tcpip.h>
 #else
@@ -37,6 +37,7 @@
 #endif
 
 #include <string.h>
+#include <stdio.h>
 
 #define HANDLE "adbus_Socket"
 
@@ -44,26 +45,40 @@
 
 static int NewSocket(lua_State* L)
 {
-    size_t addrlen;
-    const char* addr = luaL_checklstring(L, 1, &addrlen);
-
     adbus_Socket* s = (adbus_Socket*) lua_newuserdata(L, sizeof(adbus_Socket));
     luaL_getmetatable(L, HANDLE);
     lua_setmetatable(L, -2);
     *s = ADBUS_SOCK_INVALID;
 
-    if (strcmp(addr, "session") == 0) {
-        *s = adbus_sock_connect(ADBUS_SESSION_BUS);
-    } else if (strcmp(addr, "system") == 0) {
-        *s = adbus_sock_connect(ADBUS_SYSTEM_BUS);
+    if (lua_isnil(L, 1)) {
+        *s = adbus_sock_connect(ADBUS_DEFAULT_BUS);
     } else {
-        *s = adbus_sock_envconnect(addr, (int) addrlen);
+        size_t addrlen;
+        const char* addr = luaL_checklstring(L, 1, &addrlen);
+
+        if (strcmp(addr, "session") == 0) {
+            *s = adbus_sock_connect(ADBUS_SESSION_BUS);
+        } else if (strcmp(addr, "system") == 0) {
+            *s = adbus_sock_connect(ADBUS_SYSTEM_BUS);
+        } else {
+            *s = adbus_sock_connect_s(addr, (int) addrlen);
+        }
     }
 
     if (*s == ADBUS_SOCK_INVALID)
         return luaL_error(L, "Failure to connect");
 
-    return 1;
+
+    adbus_Buffer* buf = adbus_buf_new();
+    if (adbus_sock_cauth(*s, buf)) {
+        adbus_buf_free(buf);
+        return luaL_error(L, "Failure to auth");
+    }
+
+    lua_pushlstring(L, adbus_buf_data(buf), adbus_buf_size(buf));
+    adbus_buf_free(buf);
+
+    return 2;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -82,13 +97,16 @@ static int Close(lua_State* L)
 
 static int Send(lua_State* L)
 {
-    size_t size;
-
     adbus_Socket* s = (adbus_Socket*) luaL_checkudata(L, 1, HANDLE);
-    const char* data = luaL_checklstring(L, 2, &size);
+    if (*s == ADBUS_SOCK_INVALID)
+        return luaL_error(L, "Socket is closed");
 
-    if (*s != ADBUS_SOCK_INVALID) {
-        send(*s, data, size, 0);
+    size_t size;
+    const char* data = luaL_checklstring(L, 2, &size);
+    adbus_ssize_t sent = send(*s, data, size, 0);
+    if (sent != (adbus_ssize_t) size) {
+        Close(L);
+        return luaL_error(L, "Send error");
     }
 
     return 0;
@@ -99,17 +117,17 @@ static int Send(lua_State* L)
 static int Recv(lua_State* L)
 {
     adbus_Socket* s = (adbus_Socket*) luaL_checkudata(L, 1, HANDLE);
+    if (*s == ADBUS_SOCK_INVALID)
+        return luaL_error(L, "Socket is closed");
 
-    if (*s != ADBUS_SOCK_INVALID) {
-        char buf[64 * 1024];
-        int recvd = recv(*s, buf, sizeof(buf), 0);
-        if (recvd < 0)
-            return luaL_error(L, "Receive error");
-        lua_pushlstring(L, buf, recvd);
-        return 1;
+    char buf[64 * 1024];
+    int recvd = recv(*s, buf, sizeof(buf), 0);
+    if (recvd < 0) {
+        Close(L);
+        return luaL_error(L, "Receive error");
     }
-
-    return 0;
+    lua_pushlstring(L, buf, recvd);
+    return 1;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -117,6 +135,7 @@ static int Recv(lua_State* L)
 static const luaL_Reg reg[] = {
     { "new", &NewSocket },
     { "__gc", &Close },
+    { "close", &Close },
     { "send", &Send },
     { "receive", &Recv },
     { NULL, NULL }

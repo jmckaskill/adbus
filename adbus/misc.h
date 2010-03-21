@@ -25,9 +25,11 @@
 
 #pragma once
 
-#include <adbus/adbus.h>
+#include <adbus.h>
 
-#include "memory/kstring.h"
+#include "dmem/hash.h"
+#include "dmem/string.h"
+
 #include <string.h>
 
 #if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && defined(__ELF__)
@@ -38,11 +40,49 @@
 #   define ADBUSI_DATA extern
 #endif
 
+#ifdef NDEBUG
+#   define ADBUS_TRACE 0
+#else
+#   define ADBUS_TRACE 1
+#endif
+
+#ifndef ADBUS_TRACE_AUTH
+#   define ADBUS_TRACE_AUTH     ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_BIND
+#   define ADBUS_TRACE_BIND     ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_BUS
+#   define ADBUS_TRACE_BUS      ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_MATCH
+#   define ADBUS_TRACE_MATCH    ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_MEMORY
+#   define ADBUS_TRACE_MEMORY   ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_METHOD
+#   define ADBUS_TRACE_METHOD   ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_MSG
+#   define ADBUS_TRACE_MSG      ADBUS_TRACE
+#endif
+
+#ifndef ADBUS_TRACE_REPLY
+#   define ADBUS_TRACE_REPLY    ADBUS_TRACE
+#endif
+
 // ----------------------------------------------------------------------------
 
 #ifdef _WIN32
-// Stupid visual studio complains about interactions between setjmp and c++ 
-// exceptions even with exceptions turned off - all because we have to 
+// Stupid visual studio complains about interactions between setjmp and c++
+// exceptions even with exceptions turned off - all because we have to
 // compile as c++ because it doesn't support c99
 #   pragma warning(disable: 4611)
 #   pragma warning(disable: 4267) // conversion from size_t to int
@@ -50,18 +90,105 @@
 
 // ----------------------------------------------------------------------------
 
-ADBUSI_DATA const uint8_t adbusI_majorProtocolVersion;
-
-ADBUSI_FUNC adbus_Bool adbusI_littleEndian(void);
-ADBUSI_FUNC int adbusI_alignment(char type);
-
-ADBUSI_FUNC adbus_Bool adbusI_requiresServiceLookup(const char* name, int size);
+#define NEW_ARRAY(TYPE, NUM) ((TYPE*) calloc(NUM, sizeof(TYPE)))
+#define NEW(TYPE) ((TYPE*) calloc(1, sizeof(TYPE)))
+#define ZERO(p) memset(p, 0, sizeof(*p))
+#define UNUSED(x) ((void) (x))
 
 // ----------------------------------------------------------------------------
 
+#ifdef __GNUC__
+  ADBUS_INLINE long adbus_InterlockedIncrement(long volatile* addend)
+  { return __sync_add_and_fetch(addend, 1); }
+
+  ADBUS_INLINE long adbus_InterlockedDecrement(long volatile* addend)
+  { return __sync_add_and_fetch(addend, -1); }
+
+#elif defined _MSC_VER && _MSC_VER < 1300 && defined _M_IX86
+#error Apparently MSVC++ 6.0 generates rubbish when optimizations are on
+
+#elif defined _MSC_VER && defined _WIN32 && !defined _WIN32_WCE
+
+extern "C" {
+    long __cdecl _InterlockedIncrement(volatile long *);
+    long __cdecl _InterlockedDecrement(volatile long *);
+}
+#  pragma intrinsic (_InterlockedIncrement)
+#  pragma intrinsic (_InterlockedDecrement)
+
+ADBUS_INLINE long adbus_InterlockedIncrement(long volatile* addend)
+{ return _InterlockedIncrement(addend); }
+
+ADBUS_INLINE long adbus_InterlockedDecrement(long volatile* addend)
+{ return _InterlockedDecrement(addend); }
+
+#elif defined _MSC_VER && defined _WIN32 && defined _WIN32_WCE
+
+#if _WIN32_WCE < 0x600 && defined(_X86_)
+// For X86 Windows CE build we need to include winbase.h to be able
+// to catch the inline functions which overwrite the regular 
+// definitions inside of coredll.dll. Though one could use the 
+// original version of Increment/Decrement, the others are not
+// exported at all.
+#include <winbase.h>
+#else
+
+#if _WIN32_WCE >= 0x600
+#define VOLATILE volatile
+#  if defined(_X86_)
+#    define InterlockedIncrement _InterlockedIncrement
+#    define InterlockedDecrement _InterlockedDecrement
+#  endif
+#else
+#define VOLATILE
+#endif
+
+extern "C" {
+    long __cdecl InterlockedIncrement(long VOLATILE* addend);
+    long __cdecl InterlockedDecrement(long VOLATILE * addend);
+}
+
+#if _WIN32_WCE >= 0x600 && defined(_X86_)
+#  pragma intrinsic (_InterlockedIncrement)
+#  pragma intrinsic (_InterlockedDecrement)
+#endif
+
+ADBUS_INLINE long adbus_InterlockedIncrement(long volatile* addend)
+{ return _InterlockedIncrement(addend); }
+
+ADBUS_INLINE long adbus_InterlockedDecrement(long volatile* addend)
+{ return _InterlockedDecrement(addend); }
+
+#endif
+
+#endif
+
+// ----------------------------------------------------------------------------
+
+ADBUSI_FUNC void adbusI_addheader(d_String* str, const char* format, ...);
+ADBUSI_FUNC void adbusI_dolog(const char* format, ...);
+ADBUSI_FUNC void adbusI_klog(d_String* str);
+ADBUSI_FUNC int  adbusI_log_enabled(void);
+
+#if ADBUS_TRACE
+#   define adbusI_log adbusI_dolog
+#else
+#   define adbusI_log if (1){} else adbusI_dolog
+#endif
+
+// ----------------------------------------------------------------------------
+
+ADBUSI_DATA const uint8_t adbusI_majorProtocolVersion;
+
+ADBUSI_FUNC char adbusI_nativeEndianness(void);
+ADBUSI_FUNC int  adbusI_alignment(char type);
+
+// ----------------------------------------------------------------------------
+
+
 #pragma pack(push)
 #pragma pack(1)
-struct adbusI_Header
+typedef struct adbusI_Header
 {
   // 8 byte begin padding
   uint8_t   endianness;
@@ -70,9 +197,9 @@ struct adbusI_Header
   uint8_t   version;
   uint32_t  length;
   uint32_t  serial;
-};
+} adbusI_Header;
 
-struct adbusI_ExtendedHeader
+typedef struct adbusI_ExtendedHeader
 {
   // 8 byte begin padding
   uint8_t   endianness;
@@ -89,7 +216,7 @@ struct adbusI_ExtendedHeader
 
   // uint8_t headerData[headerFieldLength];
   // uint8_t headerEndPadding -- pads to 8 byte
-};
+} adbusI_ExtendedHeader;
 #pragma pack(pop)
 
 // ----------------------------------------------------------------------------
@@ -106,45 +233,47 @@ enum
     ADBUSI_ERROR        = -1,
 };
 
+enum
+{
+    HEADER_INVALID      = 0,
+    HEADER_OBJECT_PATH  = 1,
+    HEADER_INTERFACE    = 2,
+    HEADER_MEMBER       = 3,
+    HEADER_ERROR_NAME   = 4,
+    HEADER_REPLY_SERIAL = 5,
+    HEADER_DESTINATION  = 6,
+    HEADER_SENDER       = 7,
+    HEADER_SIGNATURE    = 8,
+};
+
 // ----------------------------------------------------------------------------
 
 #ifndef min
-#   define min(x,y) (((x) < (y)) ? (x) : (y))
+#   define min(x,y) (((y) < (x)) ? (y) : (x))
 #endif
 
 #define CHECK(x) if (!(x)) {assert(0); return -1;}
 
 #define ASSERT_RETURN(x) assert(x); if (!(x)) return;
 
-static inline char* adbusI_strndup(const char* string, size_t n)
-{
-    char* s = (char*) malloc(n + 1);
-    memcpy(s, string, n);
-    s[n] = '\0';
-    return s;
-}
-static inline char* adbusI_strdup(const char* string)
-{
-    return adbusI_strndup(string, strlen(string));
-}
+#ifdef _GNU_SOURCE
+#   define adbusI_strndup strndup
+#   define adbusI_strdup  strdup
+#else
+    static inline char* adbusI_strndup(const char* string, size_t n)
+    {
+        char* s = (char*) malloc(n + 1);
+        memcpy(s, string, n);
+        s[n] = '\0';
+        return s;
+    }
+    static inline char* adbusI_strdup(const char* string)
+    { return adbusI_strndup(string, strlen(string)); }
+#endif
 
 // ----------------------------------------------------------------------------
 
-/* This alignment thing is from ORBit2 */
-/* Align a value upward to a boundary, expressed as a number of bytes.
- * E.g. align to an 8-byte boundary with argument of 8.
- */
-
-/*
- *   (this + boundary - 1)
- *          &
- *    ~(boundary - 1)
- */
-
-#define ADBUSI_ALIGN(PTR, BOUNDARY) \
-  ((((uintptr_t) (PTR)) + (((uintptr_t) (BOUNDARY)) - 1)) & (~(((uintptr_t)(BOUNDARY))-1)))
-
-// ----------------------------------------------------------------------------
+#define ADBUSI_ALIGN(p,b) ADBUS_ALIGN(p,b)
 
 // where b0 is the lowest byte
 #define ADBUSI_MAKE16(b1,b0) \
@@ -170,29 +299,31 @@ ADBUSI_FUNC adbus_Bool adbusI_isValidObjectPath(const char* str, size_t len);
 ADBUSI_FUNC adbus_Bool adbusI_isValidInterfaceName(const char* str, size_t len);
 ADBUSI_FUNC adbus_Bool adbusI_isValidBusName(const char* str, size_t len);
 ADBUSI_FUNC adbus_Bool adbusI_isValidMemberName(const char* str, size_t len);
-ADBUSI_FUNC adbus_Bool adbusI_hasNullByte(const uint8_t* str, size_t len);
-ADBUSI_FUNC adbus_Bool adbusI_isValidUtf8(const uint8_t* str, size_t len);
-ADBUSI_FUNC const char* adbusI_findArrayEnd(const char* arrayBegin);
+ADBUSI_FUNC adbus_Bool adbusI_hasNullByte(const char* str, size_t len);
+ADBUSI_FUNC adbus_Bool adbusI_isValidUtf8(const char* str, size_t len);
 
 // ----------------------------------------------------------------------------
 
-ADBUSI_FUNC int adbusI_argumentError(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_dispatch(adbus_MsgCallback cb, adbus_CbData* details);
+
 ADBUSI_FUNC int adbusI_pathError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_interfaceError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_methodError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_propertyError(adbus_CbData* d);
-ADBUSI_FUNC int PropWriteError(adbus_CbData* d);
-ADBUSI_FUNC int PropReadError(adbus_CbData* d);
-ADBUSI_FUNC int PropTypeError(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_propWriteError(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_propReadError(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_propTypeError(adbus_CbData* d);
 
 // ----------------------------------------------------------------------------
 
 
-ADBUSI_FUNC adbus_User* adbusI_puser_new(void* p);
-ADBUSI_FUNC void* adbusI_puser_get(const adbus_User* data);
+ADBUSI_FUNC void adbusI_relativePath(d_String* out, const char* path1, int size1, const char* path2, int size2);
+ADBUSI_FUNC void adbusI_parentPath(dh_strsz_t path, dh_strsz_t* parent);
 
-ADBUSI_FUNC void adbusI_relativePath(kstring_t* out, const char* path1, int size1, const char* path2, int size2);
-ADBUSI_FUNC void adbusI_parentPath(char* path, size_t size, size_t* parentSize);
+ADBUSI_FUNC void adbusI_matchString(d_String* out, const adbus_Match* match);
 
-ADBUSI_FUNC kstring_t* adbusI_matchString(const adbus_Match* match);
+ADBUSI_FUNC void adbusI_logmsg(const char* header, const adbus_Message* msg);
+ADBUSI_FUNC void adbusI_logbind(const char* header, const adbus_Bind* bind);
+ADBUSI_FUNC void adbusI_logmatch(const char* header, const adbus_Match* match);
+ADBUSI_FUNC void adbusI_logreply(const char* header, const adbus_Reply* reply);
 

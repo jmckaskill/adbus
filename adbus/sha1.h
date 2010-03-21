@@ -10,7 +10,7 @@ accompanying LICENSE file.
 
 #ifndef SHA1_HEADER
 
-#include <adbus/adbus.h>
+#include <adbus.h>
 #include "misc.h"
 
 #include <stdint.h>

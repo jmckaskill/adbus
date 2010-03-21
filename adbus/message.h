@@ -25,36 +25,31 @@
 
 #pragma once
 
-#include <adbus/adbus.h>
+#include <adbus.h>
 #include "misc.h"
 
-struct adbus_Message
+struct adbus_MsgFactory
 {
-  adbus_Buffer*   marshaller;
-  adbus_Buffer*   argumentMarshaller;
-  adbus_Iterator*     headerIterator;
+    /** \privatesection */
+    adbus_Buffer*         buf;
+    adbus_Buffer*         argbuf;
 
-  // Base header
-  adbus_Bool                  nativeEndian;
-  adbus_MessageType     messageType;
-  uint8_t               flags;
-  uint32_t              serial;
-  size_t                argumentOffset;
+    // Base header
+    adbus_MessageType     messageType;
+    uint8_t               flags;
+    int64_t               serial;
+    size_t                argumentOffset;
 
-  // adbusI_Header fields
-  uint32_t    replySerial;
-  adbus_Bool        hasReplySerial;
+    // Variable header fields
+    uint32_t              replySerial;
+    adbus_Bool            hasReplySerial;
 
-  char* path;
-  char* interface;
-  char* member;
-  char* errorName;
-  char* destination;
-  char* sender;
-  char* signature;
-  
-  kstring_t* summary;
+    d_String              path;
+    d_String              interface;
+    d_String              member;
+    d_String              error;
+    d_String              destination;
+    d_String              sender;
 };
 
 
-ADBUSI_FUNC void adbusI_msg_build(adbus_Message* m);

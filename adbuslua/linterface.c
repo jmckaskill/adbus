@@ -23,180 +23,115 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbuslua.h>
+#include <adbuslua.h>
 #include "internal.h"
 
-#include "memory/kstring.h"
+#include "dmem/string.h"
 
 #include <assert.h>
 #include <string.h>
 
-#define HANDLE "adbus_Interface*"
 
 
 /* ------------------------------------------------------------------------- */
 
-// For the callbacks, we get the function to call from the member data and the
-// first argument from the bind data if its valid
-
-static int MethodCallback(adbus_CbData* d)
+static adbus_Bool CheckOptionalTable(lua_State* L, int table, const char* field)
 {
-    adbuslua_Data* mdata = (adbuslua_Data*) d->user1;
-    adbuslua_Data* bdata = (adbuslua_Data*) d->user2;
-
-    assert(mdata
-        && bdata
-        && mdata->L == bdata->L
-        && mdata->callback);
-
-    lua_State* L = mdata->L;
-    int top = lua_gettop(L);
-
-    adbusluaI_push(L, mdata->callback);
-    assert(lua_isfunction(L, -1));
-    if (bdata->argument)
-        adbusluaI_push(L, bdata->argument);
-
-
-    if (adbuslua_push_message(L, d->message, d->args)) {
-        lua_settop(L, top);
-        return -1;
+    lua_getfield(L, table, field);
+    if (lua_isnil(L, -1)) {
+        lua_pop(L, 1);
+        return 0;
+    } else if (!lua_istable(L, -1)) {
+        return luaL_error(L, "'%s' field should be a table.", field);
     }
 
-    // Now we need to set a few fields in the message for use with replies
-    int message = lua_gettop(L);
-    adbusluaI_push(L, bdata->connection);
-    lua_setfield(L, message, "_connection");
-
-    // function itself is not included in arg count
-    lua_call(L, lua_gettop(L) - top - 1, 1);
-
-    // If the function returns a message, we pack it off and send it back
-    // via the call details mechanism
-    if (lua_istable(L, -1) && d->retmessage) {
-        adbuslua_check_message(L, -1, d->retmessage);
-        d->manualReply = 0;
-    } else {
-        d->manualReply = 1;
-    }
-    lua_pop(L, 1);
-
-    return 0;
+    return 1;
 }
 
 /* ------------------------------------------------------------------------- */
 
-static int GetPropertyCallback(adbus_CbData* d)
-{
-    adbuslua_Data* mdata = (adbuslua_Data*) d->user1;
-    adbuslua_Data* bdata = (adbuslua_Data*) d->user2;
-
-    assert(mdata
-        && bdata
-        && mdata->L == bdata->L
-        && mdata->callback);
-
-    lua_State* L = mdata->L;
-
-    adbusluaI_push(L, mdata->callback);
-    assert(lua_isfunction(L, -1));
-    if (bdata->argument) {
-        adbusluaI_push(L, bdata->argument);
-        lua_call(L, 1, 1);
-    } else {
-        lua_call(L, 0, 1);
-    }
-
-    adbuslua_check_argument(L, -1, mdata->signature, -1, d->propertyMarshaller);
-
-    lua_pop(L, 1); // pop the value
-    return 0;
-}
-
-/* ------------------------------------------------------------------------- */
-
-static int SetPropertyCallback(adbus_CbData* d)
-{
-    adbuslua_Data* mdata = (adbuslua_Data*) d->user1;
-    adbuslua_Data* bdata = (adbuslua_Data*) d->user2;
-
-    assert(mdata
-        && bdata
-        && mdata->L == bdata->L
-        && mdata->callback);
-
-    lua_State* L = mdata->L;
-    int top = lua_gettop(L);
-
-    adbusluaI_push(L, mdata->callback);
-    assert(lua_isfunction(L, -1));
-    if (bdata->argument) {
-        adbusluaI_push(L, bdata->argument);
-        lua_call(L, 1, 1);
-    } else {
-        lua_call(L, 0, 1);
-    }
-
-    if (adbuslua_push_argument(L, d->propertyIterator)) {
-        lua_settop(L, top);
-        return -1;
-    }
-
-    return 0;
-}
-
-
-/* ------------------------------------------------------------------------- */
-
-static kstring_t* UnpackArguments(
+typedef void (*add_func_t)(adbus_Member*, const char*, int);
+static int DoUnpackArguments(
         lua_State*          L,
         adbus_Member*       mbr,
         int                 table,
-        adbus_Bool          method)
+        add_func_t          sigfunc,
+        add_func_t          namefunc,
+        d_String*           types)
 {
-    kstring_t* sig = NULL;
-    if (method)
-        sig = ks_new();
-
-    lua_getfield(L, table, "arguments");
-    if (lua_isnil(L, -1)) {
-        return sig;
-    } else if (!lua_istable(L, -1)) {
-        luaL_error(L, "'arguments' field should be a table.");
-        return sig;
-    }
-
-    int length = lua_objlen(L, -1);
+    int length = (int) lua_objlen(L, table);
     for (int i = 1; i <= length; ++i) {
 
-        lua_rawgeti(L, -1, i);
+        lua_rawgeti(L, table, i);
         int arg = lua_gettop(L);
-        lua_getfield(L, arg, "name");
-        lua_getfield(L, arg, "direction");
-        lua_getfield(L, arg, "type");
+        const char* name = NULL;
+        const char* type = NULL;
 
-        if (!lua_isstring(L, -1)) {
-            luaL_error(L, "'type' argument field shoulde be a string");
-            return sig;
-        }
+        // Arguments can be any of:
+        // {"name", "type"}
+        // {"type"}
+        // "type"
 
-        const char* name = lua_tostring(L, -3);
-        const char* type = lua_tostring(L, -2);
-        const char* dir  = lua_tostring(L, -1);
-
-        if (method && strcmp(dir, "out") == 0) {
-            adbus_mbr_addreturn(mbr, name, -1, type, -1);
-            ks_cat(sig, type);
+        if (lua_istable(L, arg) && lua_objlen(L, arg) == 2) {
+            lua_rawgeti(L, arg, 1);
+            lua_rawgeti(L, arg, 2);
+            if (!lua_isstring(L, -2) || !lua_isstring(L, -1))
+                return luaL_error(L, "Invalid argument field");
+            name = lua_tostring(L, -2);
+            type = lua_tostring(L, -1);
+        } else if (lua_istable(L, arg) && lua_objlen(L, arg) == 1) {
+            lua_rawgeti(L, arg, 1);
+            if (!lua_isstring(L, -1))
+                return luaL_error(L, "Invalid argument field");
+            type = lua_tostring(L, -1);
+        } else if (lua_isstring(L, arg)) {
+            type = lua_tostring(L, -1);
         } else {
-            adbus_mbr_addargument(mbr, name, -1, type, -1);
+            return luaL_error(L, "Invalid argument field");
         }
 
-        // 3 fields + the argument table
-        lua_pop(L, 4);
-        assert(lua_gettop(L) == arg - 1);
-    }
+        if (!type)
+            return luaL_error(L, "Invalid argument field");
 
-    return sig;
+        sigfunc(mbr, type, -1);
+        if (name)
+            namefunc(mbr, name, -1);
+        if (types)
+            ds_cat(types, type);
+
+        lua_settop(L, arg - 1);
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+static int UnpackArguments(
+        lua_State*          L,
+        adbus_Member*       mbr,
+        int                 table,
+        d_String*          sig)
+{
+    if (CheckOptionalTable(L, table, "arguments")) {
+        DoUnpackArguments(L, mbr, -1, &adbus_mbr_argsig, &adbus_mbr_argname, sig);
+        lua_pop(L, 1);
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+static int UnpackReturns(
+        lua_State*          L,
+        adbus_Member*       mbr,
+        int                 table,
+        d_String*          sig)
+{
+    if (CheckOptionalTable(L, table, "returns")) {
+        DoUnpackArguments(L, mbr, -1, &adbus_mbr_retsig, &adbus_mbr_retname, sig);
+        lua_pop(L, 1);
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -206,33 +141,46 @@ static int UnpackAnnotations(
         adbus_Member*       mbr,
         int                 table)
 {
-    lua_getfield(L, table, "annotations");
-    if (lua_isnil(L, -1))
-        return 0;
-    else if (!lua_istable(L, -1))
-        return luaL_error(L, "'annotations' field should be a table.");
+    if (CheckOptionalTable(L, table, "annotations")) {
+        lua_pushnil(L);
+        while (lua_next(L, -2) != 0) {
 
-    lua_pushnil(L);
-    while (lua_next(L, -2) != 0) {
+            if (!lua_isstring(L, -2) || !lua_isstring(L, -1))
+                return luaL_error(L, "Invalid annotation");
 
-        if (!lua_isstring(L, -2) || !lua_isstring(L, -1))
-            return luaL_error(L, "The annotations table has an invalid entry");
+            const char* name  = lua_tostring(L, -2);
+            const char* value = lua_tostring(L, -1);
 
-        const char* name  = lua_tostring(L, -2);
-        const char* value = lua_tostring(L, -1);
+            adbus_mbr_annotate(mbr, name, -1, value, -1);
 
-        adbus_mbr_addannotation(mbr, name, -1, value, -1);
-
-        lua_pop(L, 1); // pop the value - leaving the key
+            lua_pop(L, 1); // pop the value - leaving the key
+        }
+        lua_pop(L, 1);
     }
-    return 1;
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+static void ReleaseMember(void* d)
+{
+    struct Member* m = (struct Member*) d;
+    lua_State* L = m->L;
+    if (m->method)
+        luaL_unref(L, LUA_REGISTRYINDEX, m->method);
+    if (m->getter)
+        luaL_unref(L, LUA_REGISTRYINDEX, m->getter);
+    if (m->setter)
+        luaL_unref(L, LUA_REGISTRYINDEX, m->setter);
+    if (m->argsig)
+        luaL_unref(L, LUA_REGISTRYINDEX, m->argsig);
+    if (m->retsig)
+        luaL_unref(L, LUA_REGISTRYINDEX, m->retsig);
 }
 
 /* ------------------------------------------------------------------------- */
 
 static const char* kSignalValid[] = {
-    "type",
-    "name",
     "arguments",
     "annotations",
     NULL,
@@ -244,14 +192,15 @@ static int UnpackSignal(
         int                 table,
         const char*         name)
 {
-    if (adbusluaI_check_fields(L, table, kSignalValid))
+    if (adbusluaI_check_fields_numbers(L, table, kSignalValid)) {
         return luaL_error(L,
                 "Invalid field in signal. Supported fields for signals are "
-                "'type', 'name', 'arguments', and 'annotations'.");
+                "'arguments', and 'annotations'.");
+    }
 
     adbus_Member* mbr = adbus_iface_addsignal(interface, name, -1);
 
-    UnpackArguments(L, mbr, table, 0);
+    UnpackArguments(L, mbr, table, NULL);
     UnpackAnnotations(L, mbr, table);
 
     return 0;
@@ -260,10 +209,10 @@ static int UnpackSignal(
 /* ------------------------------------------------------------------------- */
 
 static const char* kMethodValid[] = {
-    "type",
-    "name",
     "arguments",
+    "returns",
     "annotations",
+    "unpack_message",
     "callback",
     NULL,
 };
@@ -274,29 +223,52 @@ static int UnpackMethod(
         int                 table,
         const char*         name)
 {
-    if (adbusluaI_check_fields(L, table, kMethodValid))
+    if (adbusluaI_check_fields_numbers(L, table, kMethodValid)) {
         return luaL_error(L,
                 "Invalid field in method. Supported fields for methods are "
-                "'type', 'name', 'arguments', 'annotations', and 'callback'.");
+                "'arguments', 'returns', 'annotations', 'unpack_message', and "
+                "'callback'.");
+    }
 
     adbus_Member* mbr = adbus_iface_addmethod(interface, name, -1);
 
+    struct Member* mdata = NEW(struct Member);
+    mdata->L = L;
 
-    kstring_t* sig = UnpackArguments(L, mbr, table, 1);
+    d_String args; ZERO(&args);
+    d_String rets; ZERO(&rets);
+
+    UnpackReturns(L, mbr, table, &rets);
+    if (ds_size(&rets) > 0) {
+        lua_pushlstring(L, ds_cstr(&rets), ds_size(&rets));
+        mdata->retsig = luaL_ref(L, LUA_REGISTRYINDEX);
+    }
+
+    UnpackArguments(L, mbr, table, &args);
+    if (ds_size(&args) > 0) {
+        lua_pushlstring(L, ds_cstr(&args), ds_size(&args));
+        mdata->argsig = luaL_ref(L, LUA_REGISTRYINDEX);
+    }
+
+    ds_free(&args);
+    ds_free(&rets);
+
     UnpackAnnotations(L, mbr, table);
 
-    lua_getfield(L, table, "callback");
-    if (!lua_isfunction(L, -1))
-        return luaL_error(L, "Required 'callback' field should be a function.");
+    // default is to unpack
+    mdata->unpack = 1;
+    if (adbusluaI_boolField(L, table, "unpack_message", &mdata->unpack))
+        return lua_error(L);
 
-    adbuslua_Data* d = adbusluaI_newdata(L);
-    d->callback = adbusluaI_ref(L, -1);
-    d->signature = ks_release(sig);
-    adbus_mbr_setmethod(mbr, &MethodCallback, &d->h);
+    if (adbusluaI_functionField(L, table, "callback", &mdata->method))
+        return lua_error(L);
 
-    lua_pop(L, 1);
+    if (!mdata->method)
+        return luaL_error(L, "Missing 'callback' field - expected a function");
 
-    ks_free(sig);
+    adbus_mbr_setmethod(mbr, &adbusluaI_method, mdata);
+    adbus_mbr_addrelease(mbr, &ReleaseMember, mdata);
+
     return 0;
 }
 
@@ -304,24 +276,11 @@ static int UnpackMethod(
 
 static const char* kPropValid[] = {
     "type",
-    "name",
-    "property_type",
     "annotations",
-    "get_callback",
-    "set_callback",
+    "getter",
+    "setter",
     NULL,
 };
-
-static char* propdup(lua_State* L, int table)
-{
-    lua_getfield(L, table, "property_type");
-    size_t sz;
-    const char* prop = lua_tolstring(L, -1, &sz);
-    char* ret = (char*) malloc(sz + 1);
-    memcpy(ret, prop, sz + 1);
-    lua_pop(L, 1);
-    return ret;
-}
 
 static int UnpackProperty(
         lua_State*          L,
@@ -329,54 +288,41 @@ static int UnpackProperty(
         int                 table,
         const char*         name)
 {
-    if (adbusluaI_check_fields(L, table, kPropValid))
+    if (adbusluaI_check_fields_numbers(L, table, kPropValid))
         return luaL_error(L,
                 "Invalid field for property. Supported fields for properties "
-                "are 'type', 'name', 'property_type', 'annotations', "
-                "'get_callback', and 'set_callback'.");
+                "are 'property_type', 'annotations', 'get_callback', and "
+                "'set_callback'.");
 
+    struct Member* mdata = NEW(struct Member);
+    mdata->L = L;
 
-    lua_getfield(L, table, "property_type");
-    if (!lua_isstring(L, -1))
-        return luaL_error(L, "Required 'property_type' field should be a string.");
-    adbus_Member* mbr = adbus_iface_addproperty(interface, name, -1, lua_tostring(L, -1), -1);
-    lua_pop(L, 1);
+    const char* type = NULL;
+    int tsz;
+    if (adbusluaI_stringField(L, table, "type", &type, &tsz))
+        return lua_error(L);
+    if (!type)
+        return luaL_error(L, "Missing 'type' field - expected a string");
 
+    adbus_Member* mbr = adbus_iface_addproperty(interface, name, -1, type, tsz);
 
     UnpackAnnotations(L, mbr, table);
 
+    if (adbusluaI_functionField(L, table, "getter", &mdata->getter))
+        return lua_error(L);
+    if (adbusluaI_functionField(L, table, "setter", &mdata->setter))
+        return lua_error(L);
 
-    lua_getfield(L, table, "get_callback");
-    if (lua_isfunction(L, -1)) {
-        adbuslua_Data* d = adbusluaI_newdata(L);
-        d->callback = adbusluaI_ref(L, -1);
-        d->signature = propdup(L, table);
+    if (!mdata->getter && !mdata->setter)
+        return luaL_error(L, "At least one of the 'getter' or 'setter' fields must be set");
 
-        adbus_mbr_setgetter(mbr, &GetPropertyCallback, &d->h);
+    if (mdata->getter)
+        adbus_mbr_setgetter(mbr, &adbusluaI_getproperty, mdata);
+    if (mdata->setter)
+        adbus_mbr_setsetter(mbr, &adbusluaI_setproperty, mdata);
 
-    } else if (!lua_isnil(L, -1)) {
-        return luaL_error(L, "'get_callback' field should be a function");
-    }
+    adbus_mbr_addrelease(mbr, &ReleaseMember, mdata);
 
-
-    lua_getfield(L, table, "set_callback");
-    if (lua_isfunction(L, -1)) {
-        adbuslua_Data* d = adbusluaI_newdata(L);
-        d->callback = adbusluaI_ref(L, -1);
-        d->signature = propdup(L, table);
-
-        adbus_mbr_setsetter(mbr, &SetPropertyCallback, &d->h);
-
-    } else if (!lua_isnil(L, -1)) {
-        return luaL_error(L, "'set_callback' field should be a function");
-    }
-
-    if (lua_isnil(L, -2) && lua_isnil(L, -1)) {
-        return luaL_error(L, 
-                "One or both of the 'get_callback' and 'set_callback' fields "
-                "must be filled out for member");
-    }
-    lua_pop(L, 2);
     return 0;
 }
 
@@ -384,40 +330,39 @@ static int UnpackProperty(
 
 static int UnpackInterfaceTable(
         lua_State*              L,
-        adbus_Interface*        interface,
+        struct Interface*       interface,
         int                     index)
 {
     // The interface table consists of a list of member definitions
-    int length = lua_objlen(L, index);
+    int length = (int) lua_objlen(L, index);
     for (int i = 1; i <= length; i++)
     {
         lua_rawgeti(L, index, i);
 
         int table = lua_gettop(L);
 
-        lua_getfield(L, table, "name");
-        lua_getfield(L, table, "type");
+        lua_rawgeti(L, table, 1);
+        lua_rawgeti(L, table, 2);
 
-        if (!lua_isstring(L, -2))
-            return luaL_error(L, "Required 'name' field should be a string.");
-        if (!lua_isstring(L, -1))
-            return luaL_error(L, "Required 'type' field should be a string.");
+        if (!lua_isstring(L, -1) || !lua_isstring(L, -2))
+            return luaL_error(L, "Error in first (type) or second field (name) - expected a string");
 
-        const char* name = lua_tostring(L, -2);
-        const char* type = lua_tostring(L, -1);
+        const char* type = lua_tostring(L, -2);
+        const char* name = lua_tostring(L, -1);
 
         if (strcmp(type, "method") == 0) {
-            UnpackMethod(L, interface, table, name);
+            UnpackMethod(L, interface->interface, table, name);
+
         } else if (strcmp(type, "signal") == 0) {
-            UnpackSignal(L, interface, table, name);
+            UnpackSignal(L, interface->interface, table, name);
+
         } else if (strcmp(type, "property") == 0) {
-            UnpackProperty(L, interface, table, name);
+            UnpackProperty(L, interface->interface, table, name);
+
         } else {
             return luaL_error(L,
-                    "Member table %d has an invalid type %s (allowed values are "
-                    "'method', 'signal', and 'property')",
-                    i,
-                    type);
+                    "Error in first field (type) - expected 'signal', "
+                    "'method', or 'property'");
         }
 
         lua_pop(L, 3); // table, type, and name
@@ -430,17 +375,27 @@ static int UnpackInterfaceTable(
 
 /* ------------------------------------------------------------------------- */
 
+#define INTERFACE "adbuslua Interface"
+
 static int NewInterface(lua_State* L)
 {
-    size_t size;
-    const char* name = luaL_checklstring(L, 1, &size);
-
-    adbus_Interface** piface = (adbus_Interface**) lua_newuserdata(L, sizeof(adbus_Interface*));
-    luaL_getmetatable(L, HANDLE);
+    struct Interface* i = (struct Interface*) lua_newuserdata(L, sizeof(struct Interface));
+    memset(i, 0, sizeof(struct Interface));
+    luaL_getmetatable(L, INTERFACE);
     lua_setmetatable(L, -2);
 
-    *piface = adbus_iface_new(name, size);
-    UnpackInterfaceTable(L, *piface, 2);
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    int nsz;
+    const char* name = NULL;
+    if (adbusluaI_stringField(L, 1, "name", &name, &nsz))
+        return lua_error(L);
+    if (!name)
+        return luaL_error(L, "Missing 'name' field - expected a string");
+
+    i->interface = adbus_iface_new(name, nsz);
+
+    UnpackInterfaceTable(L, i, 1);
 
     return 1;
 }
@@ -449,17 +404,17 @@ static int NewInterface(lua_State* L)
 
 static int FreeInterface(lua_State* L)
 {
-    adbus_Interface** piface = (adbus_Interface**) luaL_checkudata(L, 1, HANDLE);
-    adbus_iface_free(*piface);
+    struct Interface* iface = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
+    adbus_iface_free(iface->interface);
     return 0;
 }
 
 /* ------------------------------------------------------------------------- */
 
-adbus_Interface* adbuslua_check_interface(lua_State* L, int index)
+adbus_Interface* adbusluaI_check_interface(lua_State* L, int index)
 {
-    adbus_Interface** piface = (adbus_Interface**) luaL_checkudata(L, index, HANDLE);
-    return *piface;
+    struct Interface* i = (struct Interface*) luaL_checkudata(L, index, INTERFACE);
+    return i->interface;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -472,7 +427,7 @@ static const luaL_Reg reg[] = {
 
 void adbusluaI_reg_interface(lua_State* L)
 {
-    luaL_newmetatable(L, HANDLE);
+    luaL_newmetatable(L, INTERFACE);
     luaL_register(L, NULL, reg);
 }
 

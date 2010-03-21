@@ -23,18 +23,168 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbus.h>
+#include "misc.h"
 #include "sha1.h"
-#include "memory/kstring.h"
 
-#include <string.h>
+#include "dmem/string.h"
+#include "dmem/queue.h"
 
-#include <stdlib.h>
+#include <adbus.h>
 #include <stdio.h>
 
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
+/** \struct adbus_Auth
+ *  \brief Minimal SASL client and server to connect to DBUS
+ *  
+ *  \note The auth module is not tied to the adbus_Connection or adbus_Server
+ *  modules and can be used independently and can be replaced if needed.
+ *
+ *  \note The auth module does _not_ send the leading null byte. This must be
+ *  sent seperately.
+ *
+ *  \note If using adbus_auth_parse(), you should use the same buffer for the
+ *  connnection or remote parsing, as received data after the auth is complete
+ *  is left in the buffer.
+ *
+ *  The adbus_Auth is used for both client and server connections. The
+ *  client specific function begin with adbus_cauth_, server specific
+ *  adbus_sauth_, and common adbus_auth_.
+ *
+ *  The auth module is designed to be extendable by allowing the user of the
+ *  API to manually filter out lines and handle them themselves. For example
+ *  you could add a filter for "STARTTLS" which would then initiate TLS on the
+ *  connection.
+ *
+ *  \section client Client Authentication
+ *
+ *  The workflow for client auth is:
+ *  -# Create the auth structure using adbus_cauth_new().
+ *  -# Setup auth mechanisms for example adbus_cauth_external().
+ *  -# Start the auth with adbus_cauth_start().
+ *  -# Feed responses from the remote using adbus_auth_parse() or
+ *  adbus_auth_line() until they return a non-zero value.
+ *  -# Free the auth structure.
+ *
+ *  For example (this is the actual code for adbus_sock_cauth):
+ *  \code
+ *  int Send(void* user, const char* data, size_t sz)
+ *  {
+ *      adbus_Socket s = *(adbus_Socket*) user;
+ *      return send(s, data, sz, 0);
+ *  }
+ *
+ *  uint8_t Rand(void* user)
+ *  {
+ *      (void) user;
+ *      return (uint8_t) rand();
+ *  }
+ *
+ *  #define RECV_SIZE 1024
+ *  int adbus_sock_cauth(adbus_Socket sock, adbus_Buffer* buffer)
+ *  {
+ *      int ret = 0;
+ *
+ *      adbus_Auth* a = adbus_cauth_new(&Send, &Rand, &sock);
+ *      adbus_cauth_external(a);
+ *
+ *      if (send(sock, "\0", 1, 0) != 1)
+ *          goto err;
+ *
+ *      if (adbus_cauth_start(a))
+ *          goto err;
+ *
+ *      while (!ret) {
+ *          // Try and get some data
+ *          char* dest = adbus_buf_recvbuf(buffer, RECV_SIZE);
+ *          int read = recv(sock, dest, RECV_SIZE, 0);
+ *          adbus_buf_recvd(buffer, RECV_SIZE, read);
+ *          if (read < 0)
+ *              goto err;
+ *
+ *          // Hand the received data off to the auth module
+ *          ret = adbus_auth_parse(a, buffer);
+ *          if (ret < 0)
+ *              goto err;
+ *      }
+ *
+ *      adbus_auth_free(a);
+ *      return 0;
+ *
+ *  err:
+ *      adbus_auth_free(a);
+ *      return -1;
+ *  }
+ *  \endcode
+ *
+ *  \note If working with blocking BSD sockets, adbus_sock_cauth() performs
+ *  the entire procudure.
+ *
+ *  \sa adbus_sock_cauth()
+ *
+ *
+ *
+ *  \section server Server Authentication
+ *
+ *  \note Server here refers to the bus server, not bus services.
+ *
+ *  The workflow for server auth is:
+ *  -# Create the auth structure.
+ *  -# Setup auth mechansims eg adbus_sauth_external.
+ *  -# Feed requests from the remote using adbus_auth_parse() or
+ *  adbus_auth_line() until they return a non-zero value.
+ *  -# Free the auth structure.
+ *
+ *  \note There is no server equivalent of adbus_cauth_start(), as the SASL
+ *  protocol is client initiated.
+ *
+ *  For example:
+ *  \code
+ *  adbus_Bool IsExternalValid(void* user, const char* id)
+ *  {
+ *      adbus_Socket s = *(adbus_Socket*) user;
+ *      return IsSocketValidForId(s, id);
+ *  }
+ *
+ *  int AuthRemote(adbus_Socket sock, adbus_Buffer* buffer)
+ *  {
+ *      int ret = 0;
+ *
+ *      adbus_Auth* a = adbus_sauth_new(&Send, &Rand, &sock);
+ *      adbus_sauth_external(a, &IsExternalValid);
+ *
+ *      // Make sure we get the beginnig null correctly
+ *      char buf[1];
+ *      if (recv(sock, &buf, 1, 0) != 1 || buf[0] != '\0')
+ *          goto err;
+ *
+ *      while (!ret) {
+ *          // Get some data
+ *          char* dest = adbus_buf_recvbuf(buffer, RECV_SIZE);
+ *          int read = recv(sock, dest, RECV_SIZE, 0);
+ *          adbus_buf_recvd(buffer, RECV_SIZE, read);
+ *          if (read < 0)
+ *              goto err;
+ *
+ *          // Hand the received data off to the auth module
+ *          ret = adbus_auth_parse(a, buffer);
+ *          if (ret < 0)
+ *              goto err;
+ *      }
+ *
+ *      adbus_auth_free(a);
+ *      return 0;
+ *
+ *  err:
+ *      adbus_auth_free(a);
+ *      return -1;
+ *  }
+ *  \endcode
+ *
+ *  
+ */
+
+DQUEUE_INIT(char, char);
+
+/* -------------------------------------------------------------------------- */
 
 #ifdef _WIN32
 #define WINVER 0x0500	// Allow use of features specific to Windows 2000 or later.
@@ -43,7 +193,7 @@
 #include <windows.h>
 #include <sddl.h>
 
-static void LocalId(kstring_t* id)
+static void LocalId(d_String* id)
 {
     HANDLE process_token = NULL;
     TOKEN_USER *token_user = NULL;
@@ -74,11 +224,10 @@ static void LocalId(kstring_t* id)
 
 #ifdef UNICODE
     size_t sidlen = wcslen(stringsid);
-    ks_clear(id);
     for (size_t i = 0; i < sidlen; ++i)
-        ks_cat_char(id, (char) stringsid[i]);
+        ds_cat_char(id, (char) stringsid[i]);
 #else
-    ks_set(id, stringsid);
+    ds_cat(id, stringsid);
 #endif
 
     LocalFree(stringsid);
@@ -93,20 +242,17 @@ failed:
 #include <unistd.h>
 #include <sys/types.h>
 
-static void LocalId(kstring_t* id)
+static void LocalId(d_String* id)
 {
     uid_t uid = geteuid();
-    char buf[32];
-    snprintf(buf, 31, "%d", (int) uid);
-    buf[31] = '\0';
-    ks_set(id, buf);
+    ds_cat_f(id, "%d", (int) uid);
 }
 
 #endif
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static void HexDecode(kstring_t* out, const char* str, size_t size)
+static void HexDecode(d_String* out, const char* str, size_t size)
 {
     if (size % 2 != 0)
         return;
@@ -134,13 +280,13 @@ static void HexDecode(kstring_t* out, const char* str, size_t size)
         else
             return;
 
-        ks_cat_char(out, (hi << 4) | lo);
+        ds_cat_char(out, (hi << 4) | lo);
     }
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static void HexEncode(kstring_t* out, const char* data, size_t size)
+static void HexEncode(d_String* out, const char* data, size_t size)
 {
     const uint8_t* udata = (const uint8_t*) data;
     for (size_t i = 0; i < size; ++i)
@@ -157,31 +303,31 @@ static void HexEncode(kstring_t* out, const char* data, size_t size)
         else
             lo += 'a' - 10;
 
-        ks_cat_char(out, hi);
-        ks_cat_char(out, lo);
+        ds_cat_char(out, hi);
+        ds_cat_char(out, lo);
     }
 }
 
-// ----------------------------------------------------------------------------
-
-static void GetCookie(const char* keyring,
+/* -------------------------------------------------------------------------- */
+static int GetCookie(const char* keyring,
                       const char* id,
-                      kstring_t* cookie)
+                      d_String* cookie)
 {
-    kstring_t* keyringFile = ks_new();
+    d_String keyringFile;
+    ZERO(&keyringFile);
 #ifdef _WIN32
     const char* home = getenv("userprofile");
 #else
     const char* home = getenv("HOME");
 #endif
     if (home) {
-        ks_cat(keyringFile, home);
-        ks_cat(keyringFile, "/");
+        ds_cat(&keyringFile, home);
+        ds_cat(&keyringFile, "/");
     }
     // If no HOME env then we go off the current directory
-    ks_cat(keyringFile, ".dbus-keyrings/");
-    ks_cat(keyringFile, keyring);
-    FILE* file = fopen(ks_cstr(keyringFile), "r");
+    ds_cat(&keyringFile, ".dbus-keyrings/");
+    ds_cat(&keyringFile, keyring);
+    FILE* file = fopen(ds_cstr(&keyringFile), "r");
     if (!file)
         goto end;
     char buf[4096];
@@ -202,7 +348,7 @@ static void GetCookie(const char* keyring,
 
             const char* dataBegin = timeEnd + 1;
             const char* dataEnd = bufEnd - 1; // -1 for \n
-            ks_set_n(cookie, dataBegin, dataEnd - dataBegin);
+            ds_set_n(cookie, dataBegin, dataEnd - dataBegin);
             break;
         }
     }
@@ -210,193 +356,437 @@ static void GetCookie(const char* keyring,
 end:
     if (file)
         fclose(file);
-    ks_free(keyringFile);
+    ds_free(&keyringFile);
+    return ds_size(cookie) == 0;
 }
 
-// ----------------------------------------------------------------------------
-
+/* -------------------------------------------------------------------------- */
 static int ParseServerData(const char* data,
-                           kstring_t* keyring,
-                           kstring_t* id,
-                           kstring_t* serverData)
+                           d_String* keyring,
+                           d_String* id,
+                           d_String* serverData)
 {
-    kstring_t* decoded = ks_new();
-    const char* commandEnd = NULL;;
-    const char* hexDataBegin = NULL;
-    const char* hexDataEnd = NULL;
-    const char* keyringEnd = NULL;
-    const char* idBegin = NULL;
-    const char* idEnd = NULL;
-
-    commandEnd = strchr(data, ' ');
-    if (!commandEnd)
-        goto err;
-    hexDataBegin = commandEnd + 1;
-    hexDataEnd = strchr(hexDataBegin, '\r');
-    if (!hexDataEnd)
-        goto err;
-    
-    HexDecode(decoded, hexDataBegin, hexDataEnd - hexDataBegin);
-
-    const char* cdecoded = ks_cstr(decoded);
-    
-    keyringEnd = strchr(cdecoded, ' ');
+    const char* keyringEnd = strchr(data, ' ');
     if (!keyringEnd)
-        goto err;
+        return 1;
 
     if (keyring)    
-        ks_set_n(keyring, cdecoded, keyringEnd - cdecoded);
+        ds_set_n(keyring, data, keyringEnd - data);
     
-    idBegin = keyringEnd + 1;
-    idEnd = strchr(idBegin, ' ');
+    const char* idBegin = keyringEnd + 1;
+    const char* idEnd = strchr(idBegin, ' ');
     if (!idEnd)
-        goto err;
+        return 1;
     
     if (id)
-        ks_set_n(id, idBegin, idEnd - idBegin);
+        ds_set_n(id, idBegin, idEnd - idBegin);
     if (serverData)
-        ks_set(serverData, idEnd + 1);
+        ds_set(serverData, idEnd + 1);
 
-    ks_free(decoded);
     return 0;
-
-err:
-    ks_free(decoded);
-    return 1;
 }
 
-// ----------------------------------------------------------------------------
 
-static void GenerateReply(const char*   hexserver,
-                          const char*   hexcookie,
-                          const char*   localData,
-                          size_t        localDataSize,
-                          kstring_t*    reply)
+
+
+
+
+
+/* -------------------------------------------------------------------------- */
+enum
 {
-    kstring_t* shastr = ks_new();
-    kstring_t* replyarg = ks_new();
+    NOT_TRIED,
+    NOT_SUPPORTED,
+    BEGIN,
+};
 
-    ks_set(shastr, hexserver);
-    ks_cat(shastr, ":");
-    HexEncode(shastr, localData, localDataSize);
-    ks_cat(shastr, ":");
-    ks_cat(shastr, hexcookie);
+typedef int (*DataCallback)(adbus_Auth* a, d_String* data);
 
+struct adbus_Auth
+{
+    /** \privatesection */
+    adbus_Bool              server;
+    int                     cookie;
+    int                     external;
+    adbus_SendCallback      send;
+    adbus_RandCallback      rand;
+    adbus_ExternalCallback  externalcb;
+    void*                   data;
+    DataCallback            onData;
+    d_Queue(char)           buf;
+    d_String                id;
+    d_String                okCmd;
+    adbus_Bool              okSent;
+};
+
+/* -------------------------------------------------------------------------- */
+/** Free an auth structure 
+ *  \relates adbus_Auth
+ */
+void adbus_auth_free(adbus_Auth* a)
+{
+    if (a) {
+        dq_free(char, &a->buf);
+        ds_free(&a->id);
+        ds_free(&a->okCmd);
+        free(a);
+    }
+}
+
+
+
+
+/* -------------------------------------------------------------------------- */
+/** Create an auth structure for server use
+ *  \relates adbus_Auth
+ */
+adbus_Auth* adbus_sauth_new(
+        adbus_SendCallback  send,
+        adbus_RandCallback  rand,
+        void*               data)
+{
+    adbus_Auth* a   = NEW(adbus_Auth);
+    a->server       = 1;
+    a->external     = NOT_SUPPORTED;
+    a->send         = send;
+    a->rand         = rand;
+    a->data         = data;
+
+    ds_set(&a->okCmd, "OK 1234deadbeef\r\n");
+
+    return a;
+}
+
+/* -------------------------------------------------------------------------- */
+/** Sets the server uuid
+ *  \relates adbus_Auth
+ */
+void adbus_sauth_setuuid(adbus_Auth* a, const char* uuid)
+{
+    ds_clear(&a->okCmd);
+    ds_cat(&a->okCmd, "OK ");
+    HexEncode(&a->okCmd, uuid, strlen(uuid));
+    ds_cat(&a->okCmd, "\r\n");
+}
+
+/* -------------------------------------------------------------------------- */
+/** Sets up a server auth for the external auth mechanism
+ *  \relates adbus_Auth
+ *
+ *  The supplied callback is called to see if the remote can authenticate
+ *  using the external auth mechanism. The user data supplied to the callback
+ *  is the user data supplied in adbus_sauth_new().
+ *
+ */
+ADBUS_API void adbus_sauth_external(
+        adbus_Auth*             a,
+        adbus_ExternalCallback  cb)
+{
+    assert(a->server && a->external == NOT_SUPPORTED);
+    a->external   = NOT_TRIED;
+    a->externalcb = cb;
+}
+
+
+
+
+/* -------------------------------------------------------------------------- */
+/** Create an auth structure for client use
+ *  \relates adbus_Auth
+ */
+adbus_Auth* adbus_cauth_new(
+        adbus_SendCallback  send,
+        adbus_RandCallback  rand,
+        void*               data)
+{
+    adbus_Auth* a   = NEW(adbus_Auth);
+    a->server       = 0;
+    a->external     = NOT_SUPPORTED;
+    a->send         = send;
+    a->rand         = rand;
+    a->data         = data;
+
+    LocalId(&a->id);
+
+    return a;
+}
+
+/* -------------------------------------------------------------------------- */
+/** Sets up a client auth to try the external auth mechanism
+ *  \relates adbus_Auth
+ */
+ADBUS_API void adbus_cauth_external(adbus_Auth* a)
+{
+    assert(!a->server && a->external == NOT_SUPPORTED);
+    a->external   = NOT_TRIED;
+}
+
+/* -------------------------------------------------------------------------- */
+static int ClientReset(adbus_Auth* a);
+
+/** Initiates the client auth
+ *  \relates adbus_Auth
+ */
+ADBUS_API int adbus_cauth_start(adbus_Auth* a)
+{ return ClientReset(a); }
+
+
+
+
+
+/* -------------------------------------------------------------------------- */
+static void RandomData(adbus_Auth* a, d_String* str)
+{
+    for (size_t i = 0; i < 64; i++) {
+        ds_cat_char(str, a->rand(a->data));
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+static int Send(adbus_Auth* a, const char* data)
+{
+    size_t sz = strlen(data);
+    adbus_ssize_t sent = a->send(a->data, data, sz);
+    if (sent < 0) {
+        return -1;
+    } else if (sent != (adbus_ssize_t) sz) {
+        assert(0);
+        return -1;
+    } else {
+        return 0;
+    }
+}
+
+
+
+
+/* -------------------------------------------------------------------------- */
+static int ServerReset(adbus_Auth* a)
+{ 
+    a->okSent = 0;
+    return Send(a, "REJECTED EXTERNAL\r\n"); 
+}
+
+/* -------------------------------------------------------------------------- */
+static int ServerOk(adbus_Auth* a)
+{
+    a->okSent = 1;
+    return Send(a, ds_cstr(&a->okCmd));
+}
+
+/* -------------------------------------------------------------------------- */
+static int ServerExternalInit(adbus_Auth* a)
+{ 
+    a->external = BEGIN;
+    if (a->externalcb == NULL || a->externalcb(a->data, ds_cstr(&a->id))) {
+        return ServerOk(a);
+    } else {
+        return ServerReset(a);
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+#define MATCH(STR1, SZ1, STR2) (SZ1 == strlen(STR2) && memcmp(STR1, STR2, SZ1) == 0)
+static int ServerAuth(adbus_Auth* a, const char* mech, size_t mechsz, d_String* data)
+{
+    ds_set_s(&a->id, data);
+    if (a->external == NOT_TRIED && MATCH(mech, mechsz, "EXTERNAL")) {
+        return ServerExternalInit(a);
+    } else {
+        return ServerReset(a);
+    }
+}
+
+
+
+
+
+/* -------------------------------------------------------------------------- */
+static int ClientCookie(adbus_Auth* a, d_String* data)
+{
+    int ret = 0;
+    d_String keyring;   ZERO(&keyring);
+    d_String keyringid; ZERO(&keyringid);
+    d_String servdata;  ZERO(&servdata);
+    d_String cookie;    ZERO(&cookie);
+    d_String shastr;    ZERO(&shastr);
+    d_String reply;     ZERO(&reply);
+    d_String replyarg;  ZERO(&replyarg);
+    d_String localdata; ZERO(&localdata);
+    uint8_t* digest     = NULL;
     SHA1 sha;
+
+
+    if (    ParseServerData(ds_cstr(data), &keyring, &keyringid, &servdata)
+        ||  GetCookie(ds_cstr(&keyring), ds_cstr(&keyringid), &cookie))
+    {
+        ret = -1;
+        goto end;
+    }
+
+    RandomData(a, &localdata);
+
+    ds_cat_s(&shastr, &servdata);
+    ds_cat(&shastr, ":");
+    HexEncode(&shastr, ds_cstr(&localdata), ds_size(&localdata));
+    ds_cat(&shastr, ":");
+    ds_cat_s(&shastr, &cookie);
+
     SHA1Init(&sha);
-    SHA1AddBytes(&sha, ks_cstr(shastr), (int) ks_size(shastr));
+    SHA1AddBytes(&sha, ds_cstr(&shastr), ds_size(&shastr));
+    digest = SHA1GetDigest(&sha);
 
-    char* digest = (char*) SHA1GetDigest(&sha);
+    HexEncode(&replyarg, ds_cstr(&localdata), ds_size(&localdata));
+    ds_cat(&replyarg, " ");
+    HexEncode(&replyarg, (char*) digest, 20);
 
-    ks_clear(replyarg);
-    HexEncode(replyarg, localData, localDataSize);
-    ks_cat(replyarg, " ");
-    HexEncode(replyarg, digest, 20);
+    ds_cat(&reply, "DATA ");
+    HexEncode(&reply, ds_cstr(&replyarg), ds_size(&replyarg));
+    ds_cat(&reply, "\r\n");
+
+    ret = Send(a, ds_cstr(&reply));
+
+end:
+    ds_free(&keyring);
+    ds_free(&keyringid);
+    ds_free(&servdata);
+    ds_free(&cookie);
+    ds_free(&shastr);
+    ds_free(&reply);
+    ds_free(&replyarg);
+    ds_free(&localdata);
     free(digest);
-
-    ks_set(reply, "DATA ");
-    HexEncode(reply, ks_cstr(replyarg), ks_size(replyarg));
-    ks_cat(reply, "\r\n");
-
-    ks_free(shastr);
-    ks_free(replyarg);
+    return ret;
 }
 
-// ----------------------------------------------------------------------------
-
-int adbus_auth_dbuscookiesha1(
-        adbus_AuthSendCallback      send,
-        adbus_AuthRecvCallback      recv,
-        adbus_AuthRandCallback      rand,
-        void*                       data)
+/* -------------------------------------------------------------------------- */
+static int ClientReset(adbus_Auth* a)
 {
-    kstring_t* id         = ks_new();
-    kstring_t* auth       = ks_new();
-    kstring_t* cookie     = ks_new();
-    kstring_t* keyring    = ks_new();
-    kstring_t* keyringid  = ks_new();
-    kstring_t* servdata   = ks_new();
-    kstring_t* reply      = ks_new();
+    int ret = 0;
+    d_String msg;
+    ZERO(&msg);
 
-    send(data, "\0", 1);
+    if (a->external == NOT_TRIED) {
+        ds_cat(&msg, "AUTH EXTERNAL ");
+        a->onData = NULL;
+        a->external = BEGIN;
+    } else if (a->cookie == NOT_TRIED) {
+        ds_cat(&msg, "AUTH DBUS_COOKIE_SHA1 ");
+        a->onData = &ClientCookie;
+        a->cookie = BEGIN;
+    } else {
+        ret = -1;
+        goto end;
+    }
 
-    LocalId(id);
+    HexEncode(&msg, ds_cstr(&a->id), ds_size(&a->id));
+    ds_cat(&msg, "\r\n");
 
-    ks_cat(auth, "AUTH DBUS_COOKIE_SHA1 ");
-    HexEncode(auth, ks_cstr(id), ks_size(id));
-    ks_cat(auth, "\r\n");
+    ret = Send(a, ds_cstr(&msg));
+end:
+    ds_free(&msg);
+    return ret;
+}
 
-    send(data, ks_cstr(auth), ks_size(auth));
+/* -------------------------------------------------------------------------- */
+/** Parses a line received from the remote.
+ *  \relates adbus_Auth
+ *  
+ *  This is mainly used if you want to filter the received auth lines.
+ *  Otherwise its easier to use adbus_auth_parse().
+ *
+ *  \return 1 on success
+ *  \return 0 on continue
+ *  \return -1 on error
+ */
+int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
+{
+    if (line[len - 1] == '\n')
+        len--;
+    if (line[len - 1] == '\r')
+        len--;
 
-    char buf[4096];
-    int len = recv(data, buf, 4096);
-    buf[len] = '\0';
+    const char* end = line + len;
 
-    char randomData[32];
-    for (size_t i = 0; i < 32; ++i)
-        randomData[i] = rand(data);
+    const char* cmdb = line;
+    const char* cmde = (const char*) memchr(cmdb, ' ', end - cmdb);
+    if (cmde == NULL)
+        cmde = end;
+    size_t cmdsz = cmde - cmdb;
 
-    ParseServerData(buf, keyring, keyringid, servdata);
-    GetCookie(ks_cstr(keyring), ks_cstr(keyringid), cookie);
-    GenerateReply(ks_cstr(servdata), ks_cstr(cookie), randomData, 32, reply);
+    if (a->server && cmde != end && MATCH(cmdb, cmdsz, "AUTH")) {
+        const char* mechb = cmde + 1;
+        const char* meche = (const char*) memchr(mechb, ' ', end - mechb);
+        if (meche) {
+            const char* datab = meche + 1;
+            d_String data;
+            ZERO(&data);
 
-    send(data, ks_cstr(reply), ks_size(reply));
-    len = recv(data, buf, 4096);
-    buf[len] = '\0';
-    if (strncmp(buf, "OK ", strlen("OK ")) != 0)
+            HexDecode(&data, datab, end - datab);
+
+            int ret = ServerAuth(a, mechb, meche - mechb, &data);
+            ds_free(&data);
+            return ret;
+
+        } else {
+            Send(a, "ERROR\r\n");
+            return 0;
+        }
+
+    } else if (a->onData && MATCH(cmdb, cmdsz, "DATA")) {
+        d_String data;
+        ZERO(&data);
+        if (cmde != end) {
+            const char* datab = line + sizeof("DATA");
+            HexDecode(&data, datab, end - datab);
+        }
+
+        int ret = a->onData(a, &data);
+        ds_free(&data);
+        return ret;
+        
+    } else if (a->server && MATCH(cmdb, cmdsz, "CANCEL")) {
+        return ServerReset(a);
+
+    } else if (a->server && a->okSent && MATCH(cmdb, cmdsz, "BEGIN")) {
+        return 1;
+
+    } else if (!a->server && MATCH(cmdb, cmdsz, "OK")) {
+        Send(a, "BEGIN\r\n");
+        return 1;
+
+    } else if (!a->server && MATCH(cmdb, cmdsz, "REJECTED")) {
+        return ClientReset(a);
+
+    } else if (MATCH(cmdb, cmdsz, "ERROR")) {
+        // We have no way of handling these
         return -1;
 
-    send(data, "BEGIN\r\n", strlen("BEGIN\r\n"));
-
-    ks_free(id);
-    ks_free(auth);
-    ks_free(cookie);
-    ks_free(keyring);
-    ks_free(keyringid);
-    ks_free(servdata);
-    ks_free(reply);
-    return 0;
+    } else {
+        Send(a, "ERROR\r\n");
+        return 0;
+    }
 }
 
-// ----------------------------------------------------------------------------
-
-int adbus_auth_external(
-        adbus_AuthSendCallback      send,
-        adbus_AuthRecvCallback      recv,
-        void*                       data)
+/* -------------------------------------------------------------------------- */
+/** Consumes auth lines from the supplied buffer
+ *  \relates adbus_Auth
+ *
+ *  \return 1 on success
+ *  \return 0 on continue
+ *  \return -1 on error
+ */
+int adbus_auth_parse(adbus_Auth* a, adbus_Buffer* buf)
 {
-    kstring_t* id = ks_new();
-    kstring_t* auth = ks_new();
-
-    send(data, "\0", 1);
-
-    LocalId(id);
-
-    ks_cat(auth, "AUTH EXTERNAL ");
-    HexEncode(auth, ks_cstr(id), ks_size(id));
-    ks_cat(auth, "\r\n");
-
-    send(data, ks_cstr(auth), ks_size(auth));
-
-    char buf[4096];
-    int len = recv(data, buf, 4096);
-    buf[len] = '\0';
-    if (strncmp(buf, "OK ", strlen("OK ")) != 0)
-        return -1;
-
-    send(data, "BEGIN\r\n", strlen("BEGIN\r\n"));
-
-    ks_free(id);
-    ks_free(auth);
-    return 0;
+    size_t len;
+    int ret = 0;
+    const char* line = adbus_buf_line(buf, &len);
+    while (line && !ret) {
+        ret = adbus_auth_line(a, line, len);
+        adbus_buf_remove(buf, 0, len);
+        line = adbus_buf_line(buf, &len);
+    }
+    return ret;
 }
-
-
-
-
-
-
-
-
 
 

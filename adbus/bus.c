@@ -23,46 +23,48 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbus.h>
+#include <adbus.h>
 
 #include "connection.h"
 #include "misc.h"
 
 // ----------------------------------------------------------------------------
 
-static int ConnectCallback(adbus_CbData* d)
+static int adbusI_ConnectCallback(adbus_CbData* d)
 {
     size_t uniqueSize;
     const char* unique = adbus_check_string(d, &uniqueSize);
 
+    adbusI_log("connected %*s", uniqueSize, unique);
+
     adbus_Connection* c = d->connection;
-    free(c->uniqueService);
+    assert(!c->uniqueService);
     c->uniqueService = adbusI_strdup(unique);
     c->connected = 1;
 
-    adbus_ConnectCallback callback
-            = (adbus_ConnectCallback) adbusI_puser_get(d->user1);
-
-    if (callback) {
-        callback(unique, uniqueSize, d->user2);
+    if (c->connectCallback) {
+        c->connectCallback(c->connectData);
     }
     return 0;
 }
 
 void adbus_conn_connect(
-        adbus_Connection*     c,
-        adbus_ConnectCallback     callback,
-        adbus_User*           callbackData)
+        adbus_Connection*       c,
+        adbus_Callback          callback,
+        void*                   user)
 {
-    assert(!c->connected);
+    adbusI_log("connecting");
 
-    adbus_Caller f;
-    adbus_call_proxy(&f, c->bus, "Hello", -1);
-    f.callback  = &ConnectCallback;
-    f.user1     = adbusI_puser_new(callback);
-    f.user2     = callbackData;
+    assert(!c->connected && !c->connectCallback);
 
-    adbus_call_send(&f);
+    c->connectCallback  = callback;
+    c->connectData      = user;
+
+    adbus_Call f;
+    adbus_call_method(c->bus, &f, "Hello", -1);
+    f.callback  = &adbusI_ConnectCallback;
+
+    adbus_call_send(c->bus, &f);
 }
 
 // ----------------------------------------------------------------------------
@@ -81,69 +83,6 @@ const char*  adbus_conn_uniquename(
     if (size)
         *size = c->connected ? strlen(c->uniqueService) : 0;
     return c->connected ? c->uniqueService : NULL;
-}
-
-// ----------------------------------------------------------------------------
-
-static int ServiceCallback(adbus_CbData* d)
-{
-    adbus_NameCallback callback
-            = (adbus_NameCallback) adbusI_puser_get(d->user1);
-
-    uint32_t retcode = adbus_check_uint32(d);
-    callback(d->user2, retcode);
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-uint32_t adbus_conn_requestname(
-        adbus_Connection*             c,
-        const char*                         service,
-        int                                 size,
-        uint32_t                            flags,
-        adbus_NameCallback                callback,
-        adbus_User*                   user)
-{
-    adbus_Caller f;
-    adbus_call_proxy(&f, c->bus, "RequestName", -1);
-
-    adbus_msg_append(f.msg, "su", -1);
-    adbus_msg_string(f.msg, service, size);
-    adbus_msg_uint32(f.msg, flags);
-
-    if (callback) {
-        f.callback  = &ServiceCallback;
-        f.user1     = adbusI_puser_new(callback);
-        f.user2     = user;
-    }
-
-    return adbus_call_send(&f);
-}
-
-// ----------------------------------------------------------------------------
-
-uint32_t adbus_conn_releasename(
-        adbus_Connection*             c,
-        const char*                         service,
-        int                                 size,
-        adbus_NameCallback                callback,
-        adbus_User*                   user)
-{
-
-    adbus_Caller f;
-    adbus_call_proxy(&f, c->bus, "ReleaseName", -1);
-
-    adbus_msg_append(f.msg, "s", -1);
-    adbus_msg_string(f.msg, service, size);
-
-    if (callback) {
-        f.callback  = &ServiceCallback;
-        f.user1     = adbusI_puser_new(callback);
-        f.user2     = user;
-    }
-
-    return adbus_call_send(&f);
 }
 
 

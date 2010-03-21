@@ -29,9 +29,9 @@ extern void TestVector();
 int main()
 {
 #ifndef NDEBUG
-    TestBuffer();
-    TestVector();
-    TestIterator();
+    //TestBuffer();
+    //TestVector();
+    //TestIterator();
 #endif
     return 0;
 }

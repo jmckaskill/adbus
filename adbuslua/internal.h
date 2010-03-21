@@ -25,8 +25,7 @@
 
 #pragma once
 
-#include <adbus/adbuslua.h>
-
+#include <adbuslua.h>
 
 #if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && defined(__ELF__)
 #   define IFUNC __attribute__((visibility("hidden"))) extern
@@ -34,33 +33,72 @@
 #   define IFUNC extern
 #endif
 
+#define NEW(type) ((type*) calloc(1, sizeof(type)))
+#define ZERO(p) memset(p, 0, sizeof(*p))
+#define UNUSED(x) ((void) (x))
+
 IFUNC int adbusluaI_check_fields(lua_State* L, int table, const char** valid);
 IFUNC int adbusluaI_check_fields_numbers(lua_State* L, int table, const char** valid);
 
-IFUNC int adbusluaI_getoption(lua_State* L, int index, const char** types, const char* error);
-IFUNC adbus_Bool adbusluaI_getboolean(lua_State* L, int index, const char* error);
-IFUNC lua_Number adbusluaI_getnumber(lua_State* L, int index, const char* error);
-IFUNC const char* adbusluaI_getstring(lua_State* L, int index, size_t* sz, const char* error);
+IFUNC int adbusluaI_boolField(lua_State* L, int table, const char* field, adbus_Bool* val);
+IFUNC int adbusluaI_intField(lua_State* L, int table, const char* field, int64_t* val);
+IFUNC int adbusluaI_stringField(lua_State* L, int table, const char* field, const char** str, int* sz);
+IFUNC int adbusluaI_functionField(lua_State* L, int table, const char* field, int* function);
 
 IFUNC void adbusluaI_reg_connection(lua_State* L);
 IFUNC void adbusluaI_reg_interface(lua_State* L);
-IFUNC void adbusluaI_reg_object(lua_State* L);
 IFUNC void adbusluaI_reg_socket(lua_State* L);
+IFUNC void adbusluaI_reg_object(lua_State* L);
 
-typedef struct adbuslua_Data
+IFUNC int adbusluaI_tomatch(lua_State* L, int index, adbus_Match* m, int* callback, int* object, adbus_Bool* unpack);
+IFUNC int adbusluaI_toreply(lua_State* L, int index, adbus_Reply* r, int* callback, int* object, adbus_Bool* unpack);
+
+IFUNC adbus_Interface* adbusluaI_check_interface(lua_State* L, int index);
+
+struct Connection
 {
-    adbus_User          h;
-    lua_State*          L;
-    int                 callback;
-    int                 argument;
-    int                 connection;
-    int                 interface;
-    char*               signature;
-    uint                debug;
-} adbuslua_Data;
+    adbus_Connection*       connection;
+    adbus_MsgFactory*       message;
+    adbus_Buffer*           buf;
+    lua_State*              L;
+    int                     sender;
+    int                     connect;
+    int                     errors;
+};
 
-IFUNC adbuslua_Data* adbusluaI_newdata(lua_State* L);
-IFUNC void adbusluaI_push(lua_State* L, int ref);
-IFUNC int  adbusluaI_ref(lua_State* L, int index);
+struct Member
+{
+    lua_State*              L;
+    int                     method;
+    int                     getter;
+    int                     setter;
+    int                     argsig;
+    int                     retsig;
+    adbus_Bool              unpack;
+};
+
+struct Interface
+{
+    adbus_Interface*        interface;
+};
+
+struct Object
+{
+    lua_State*              L;
+    struct Connection*      connection;
+    int                     callback;
+    int                     object;
+    adbus_Bool              unpack;
+    adbus_ConnMatch*        match;
+    adbus_ConnReply*        reply;
+    adbus_ConnBind*         bind;
+};
+
+IFUNC int adbusluaI_callback(adbus_CbData* d);
+IFUNC int adbusluaI_method(adbus_CbData* d);
+IFUNC int adbusluaI_getproperty(adbus_CbData* d);
+IFUNC int adbusluaI_setproperty(adbus_CbData* d);
+IFUNC void adbusluaI_connect(void* u);
+IFUNC adbus_ssize_t adbusluaI_send(void* u, adbus_Message* msg);
 
 

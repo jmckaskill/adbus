@@ -1,0 +1,4 @@
+include_rules
+
+CFLAGS += -fvisibility=hidden
+: foreach *.c |> !c99 |> %B.o

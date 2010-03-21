@@ -1,0 +1,6 @@
+include_rules
+
+: foreach *.c |> !cpp |> %B.o
+: iterator.o ../adbus.so |> !ldpp |> iterator
+: iterator |> lua iterator.lua |> data.txt output.txt
+

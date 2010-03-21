@@ -26,13 +26,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
-#if defined __WIN32__ || defined WIN32
+#if defined __WIN32__ || defined _WIN32
 # include <windows.h>
 # define _EXPORT __declspec(dllexport)
 #else
 # define _EXPORT
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -220,7 +223,7 @@ const char* Tokenizer_next(Tokenizer* tok) {
 		++tok->i;
 		if((tok->i>=tok->s_size)||(tokenComplete&&tok->m_token_size)) {
 			tokenComplete=0;
-			while(tok->m_token_size&&isspace(tok->m_token[tok->m_token_size-1])) // trim whitespace
+			while(tok->m_token_size&&isspace(((unsigned char*) tok->m_token)[tok->m_token_size-1])) // trim whitespace
 				tok->m_token[--tok->m_token_size]=0;
 			if(tok->m_token_size) break;
 		}
@@ -248,7 +251,7 @@ static void Xml_pushDecode(lua_State* L, const char* s, size_t s_size) {
 	const char* found = strstr(s, "&#");
 	if(!found) pos = s_size;
 	else pos = found-s;
-	while(found&&(pos+5<s_size)&&(*(found+5)==';')&&isdigit(*(found+2))&&isdigit(*(found+3))&&isdigit(*(found+4)) ) {
+	while(found&&(pos+5<s_size)&&(*(found+5)==';')&&isdigit(*(unsigned char*)(found+2))&&isdigit(*(unsigned char*)(found+3))&&isdigit(*(unsigned char*)(found+4)) ) {
 		if(pos>start) luaL_addlstring(&b,s+start, pos-start);
 		luaL_addchar(&b, 100*(s[pos+2]-48)+10*(s[pos+3]-48)+(s[pos+4]-48));
 		start=pos+6;
@@ -427,3 +430,7 @@ int _EXPORT luaopen_LuaXML_lib (lua_State* L) {
 	}
 	return 1;
 }
+
+#ifdef __cplusplus
+}
+#endif

@@ -24,188 +24,134 @@
  */
 
 
-#include <adbus/adbus.h>
-#include <adbus/adbuslua.h>
+#include <adbus.h>
+#include <adbuslua.h>
 #include "internal.h"
 
 #include <assert.h>
-#include <stdio.h>
 
-#define HANDLE "adbuslua_Connection*"
+#define CONNECTION "adbuslua_Connection*"
 
-typedef struct Connection Connection;
-
-struct Connection
-{
-    adbus_Connection*       connection;
-    adbus_Message*          message;
-    adbus_Stream*           stream;
-    adbus_Bool              free;
-    adbus_Bool              debug;
-};
+static int ThrowError(lua_State* L, int errlist);
 
 /* ------------------------------------------------------------------------- */
 
-adbus_Connection* adbuslua_check_connection(lua_State* L, int index)
+static struct Connection* CheckConnection(lua_State* L, int index)
 {
-    Connection* c = (Connection*) luaL_checkudata(L, index, HANDLE);
-    return c->connection;
+    struct Connection* c = (struct Connection*) luaL_checkudata(L, index, CONNECTION);
+    return c->connection ? c : NULL;
 }
 
-/* ------------------------------------------------------------------------- */
-
-static void PushConnection(lua_State* L, adbus_Connection* conn, adbus_Bool debug, adbus_Bool free)
+static struct Connection* CheckOpenedConnection(lua_State* L, int index)
 {
-    Connection* c = (Connection*) lua_newuserdata(L, sizeof(Connection));
-    luaL_getmetatable(L, HANDLE);
-    lua_setmetatable(L, -2);
-    c->connection   = conn;
-    c->free         = free;
-    c->message      = adbus_msg_new();
-    c->stream       = adbus_stream_new();
-    c->debug        = debug;
+    struct Connection* c = CheckConnection(L, index);
+    if (!c) {
+        luaL_error(L, "Connection is closed");
+        return NULL;
+    }
+    return c;
 }
 
 /* ------------------------------------------------------------------------- */
 
 static int NewConnection(lua_State* L)
 {
-    adbus_Bool debug = lua_type(L, 1) == LUA_TBOOLEAN && lua_toboolean(L, 1);
-    PushConnection(L, adbus_conn_new(), debug, 1);
+    struct Connection* c = (struct Connection*) lua_newuserdata(L, sizeof(struct Connection));
+    luaL_getmetatable(L, CONNECTION);
+    lua_setmetatable(L, -2);
+
+    adbus_ConnectionCallbacks cb = {};
+    cb.send_message = &adbusluaI_send;
+
+    c->L            = L;
+    c->connection   = adbus_conn_new(&cb, c);
+    c->message      = adbus_msg_new();
+    c->buf          = adbus_buf_new();
+
+    lua_newtable(L);
+    c->errors = luaL_ref(L, LUA_REGISTRYINDEX);
+
     return 1;
 }
 
 /* ------------------------------------------------------------------------- */
 
-int adbuslua_push_connection(lua_State* L, adbus_Connection* connection)
+static int CloseConnection(lua_State* L)
 {
-    PushConnection(L, connection, 0, 0);
-    return 0;
-}
+    struct Connection* c = CheckConnection(L, 1);
+    if (!c)
+        return 0;
 
-/* ------------------------------------------------------------------------- */
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
 
-static int FreeConnection(lua_State* L)
-{
-    Connection* c = (Connection*) luaL_checkudata(L, 1, HANDLE);
-    if (c->free)
-      adbus_conn_free(c->connection);
+    adbus_conn_free(c->connection);
     adbus_msg_free(c->message);
-    adbus_stream_free(c->stream);
+    adbus_buf_free(c->buf);
+    luaL_unref(L, LUA_REGISTRYINDEX, c->sender);
+    luaL_unref(L, LUA_REGISTRYINDEX, c->connect);
+    luaL_unref(L, LUA_REGISTRYINDEX, c->errors);
+
+    c->connection = NULL;
+
+    if (lua_objlen(L, errlist) > 0)
+        return ThrowError(L, errlist);
+
     return 0;
-}
-
-/* ------------------------------------------------------------------------- */
-
-static const char SendHeader[]    =   "Sending ";
-static const char ReceiveHeader[] =   "Received";
-static const char BlankHeader[]   = "\n        ";
-
-static const char* strchrnul_(const char* str, int ch)
-{
-    while (*str != '\0' && *str != ch)
-        ++str;
-    return str;
-}
-
-static void PrintMessage(
-        lua_State*              L,
-        const char*             header,
-        adbus_Message*          message)
-{
-    int args = 0;
-    const char* msg = adbus_msg_summary(message, NULL);
-
-    lua_getglobal(L, "print");
-    for (const char* line = msg; *line != '\0';) {
-        const char* lineend = strchrnul_(line, '\n');
-        lua_checkstack(L, 3);
-        lua_pushstring(L, header);
-        lua_pushlstring(L, line, lineend - line);
-        line = lineend + 1;
-        header = BlankHeader;
-        args += 2;
-    }
-    lua_pushstring(L, "\n");
-    lua_call(L, args + 1, 0);
 }
 
 /* ------------------------------------------------------------------------- */
 
 static int Parse(lua_State* L)
 {
-    Connection* c = (Connection*) luaL_checkudata(L, 1, HANDLE);
     size_t size;
-    const uint8_t* data = (const uint8_t*) luaL_checklstring(L, 2, &size);
+    struct Connection* c = CheckOpenedConnection(L, 1);
+    const char* data = luaL_checklstring(L, 2, &size);
 
-    while (size > 0) {
-        if (adbus_stream_parse(c->stream, c->message, &data, &size))
-            return luaL_error(L, "Parse error");
-        if (c->debug)
-            PrintMessage(L, ReceiveHeader, c->message);
-        if (adbus_conn_dispatch(c->connection, c->message))
-            return luaL_error(L, "Dispatch error");
-    }
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    adbus_buf_append(c->buf, data, size);
+    if (adbus_conn_parse(c->connection, c->buf))
+        return luaL_error(L, "Parse error");
+
+    if (lua_objlen(L, errlist) > 0)
+        return ThrowError(L, errlist);
+
     return 0;
 }
 
 /* ------------------------------------------------------------------------- */
-
-static void Sender(adbus_Message* message, const adbus_User* user)
-{
-    const adbuslua_Data* d = (adbuslua_Data*) user;
-
-    if (d->debug) {
-        PrintMessage(d->L, SendHeader, message);
-    }
-
-    size_t size;
-    const uint8_t* data = adbus_msg_data(message, &size);
-
-    adbusluaI_push(d->L, d->callback);
-    lua_pushlstring(d->L, (const char*) data, size);
-    lua_call(d->L, 1, 0);
-}
 
 static int SetSender(lua_State* L)
 {
-    Connection* c = (Connection*) luaL_checkudata(L, 1, HANDLE);
+    struct Connection* c = CheckOpenedConnection(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
 
-    adbuslua_Data* d = adbusluaI_newdata(L);
-    d->callback = adbusluaI_ref(L, 2);
-    d->debug = c->debug;
+    if (c->sender)
+        luaL_unref(L, LUA_REGISTRYINDEX, c->sender);
 
-    adbus_conn_setsender(c->connection, &Sender, &d->h);
+    lua_pushvalue(L, 2);
+    c->sender = luaL_ref(L, LUA_REGISTRYINDEX);
 
     return 0;
 }
 
 /* ------------------------------------------------------------------------- */
 
-static void ConnectCallback(
-        const char*             unique,
-        size_t                  uniqueSize,
-        const adbus_User*       user)
-{
-    const adbuslua_Data* d = (adbuslua_Data*) user;
-    adbusluaI_push(d->L, d->callback);
-    lua_pushlstring(d->L, unique, uniqueSize);
-    lua_call(d->L, 1, 0);
-}
-
 static int Connect(lua_State* L)
 {
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
+    struct Connection* c = CheckOpenedConnection(L, 1);
+
+    if (c->connect)
+        luaL_unref(L, LUA_REGISTRYINDEX, c->connect);
 
     if (lua_isfunction(L, 2)) {
-        adbuslua_Data* d = adbusluaI_newdata(L);
-        d->callback = adbusluaI_ref(L, 2);
-
-        adbus_conn_connect(c, &ConnectCallback, &d->h);
-
+        lua_pushvalue(L, 2);
+        c->connect = luaL_ref(L, LUA_REGISTRYINDEX);
+        adbus_conn_connect(c->connection, &adbusluaI_connect, c);
     } else {
-        adbus_conn_connect(c, NULL, NULL);
+        adbus_conn_connect(c->connection, NULL, NULL);
     }
 
     return 0;
@@ -215,8 +161,8 @@ static int Connect(lua_State* L)
 
 static int IsConnected(lua_State* L)
 {
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
-    lua_pushboolean(L, adbus_conn_isconnected(c));
+    struct Connection* c = CheckOpenedConnection(L, 1);
+    lua_pushboolean(L, adbus_conn_isconnected(c->connection));
     return 1;
 }
 
@@ -224,10 +170,10 @@ static int IsConnected(lua_State* L)
 
 static int UniqueName(lua_State* L)
 {
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
+    struct Connection* c = CheckOpenedConnection(L, 1);
 
     size_t size;
-    const char* name = adbus_conn_uniquename(c, &size);
+    const char* name = adbus_conn_uniquename(c->connection, &size);
     if (!name)
         return 0;
 
@@ -239,8 +185,8 @@ static int UniqueName(lua_State* L)
 
 static int Serial(lua_State* L)
 {
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
-    lua_pushinteger(L, adbus_conn_serial(c));
+    struct Connection* c = CheckOpenedConnection(L, 1);
+    lua_pushinteger(L, adbus_conn_serial(c->connection));
     return 1;
 }
 
@@ -248,124 +194,518 @@ static int Serial(lua_State* L)
 
 static int Send(lua_State* L)
 {
-    Connection* c = (Connection*) luaL_checkudata(L, 1, HANDLE);
-    adbuslua_check_message(L, 2, c->message);
-    adbus_conn_send(c->connection, c->message);
+    struct Connection* c = CheckOpenedConnection(L, 1);
+
+    if (adbuslua_to_message(L, 2, c->message)) {
+        return lua_error(L);
+    }
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    adbus_msg_send(c->message, c->connection);
+
+    if (lua_objlen(L, errlist) > 0)
+        return ThrowError(L, errlist);
 
     return 0;
 }
 
 /* ------------------------------------------------------------------------- */
 
-static int Emit(lua_State* L)
+#define OBJECT "adbuslua_Object"
+
+static struct Object* CheckObject(lua_State* L, int index)
+{ return (struct Object*) luaL_checkudata(L, index, OBJECT); }
+
+static struct Object* NewObject(lua_State* L)
 {
-    if (!lua_istable(L, 1))
-        return luaL_error(L, "Expected a table of fields");
+    struct Object* o = (struct Object*) lua_newuserdata(L, sizeof(struct Object));
+    memset(o, 0, sizeof(struct Object));
+    luaL_getmetatable(L, OBJECT);
+    lua_setmetatable(L, -2);
+    return o;
+}
 
-    // Connection
-    lua_getfield(L, 1, "connection");
-    if (!lua_isuserdata(L, -1)) {
-        return luaL_error(L, "Missing connection field");
+static void DoCloseObject(struct Object* o)
+{
+    lua_State* L = o->L;
+    adbus_Connection* c = o->connection->connection;
+
+    assert(L && c);
+
+    if (o->bind)
+        adbus_conn_unbind(c, o->bind);
+    if (o->match)
+        adbus_conn_removematch(c, o->match);
+    if (o->reply)
+        adbus_conn_removereply(c, o->reply);
+    if (o->callback)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->callback);
+    if (o->object)
+        luaL_unref(L, LUA_REGISTRYINDEX, o->object);
+
+    o->L = NULL;
+}
+
+static int CloseObject(lua_State* L)
+{
+    struct Object* o = CheckObject(L, 1);
+    if (o->L) {
+        lua_rawgeti(L, LUA_REGISTRYINDEX, o->connection->errors);
+        int errlist = lua_gettop(L);
+
+        DoCloseObject(o);
+
+        if (lua_objlen(L, errlist) > 0)
+            return ThrowError(L, errlist);
+
     }
-    Connection* c = (Connection*) luaL_checkudata(L, -1, HANDLE);
-
-
-    // Path
-    lua_getfield(L, 1, "path");
-    if (!lua_isstring(L, -1)) {
-        return luaL_error(L, "Missing path field");
-    }
-    const char* pname = lua_tostring(L, -1);
-    adbus_Path* path = adbus_conn_path(c->connection, pname, -1);
-
-
-    // Interface
-    lua_getfield(L, 1, "interface");
-    if (!lua_isuserdata(L, 3)) {
-        return luaL_error(L, "Missing interface field");
-    }
-    adbus_Interface* iface = adbuslua_check_interface(L, 3);
-
-
-    // Member
-    lua_getfield(L, 1, "member");
-    if (!lua_isstring(L, -1)) {
-        return luaL_error(L, "Missing member field");
-    }
-    const char* mname = lua_tostring(L, -1);
-    adbus_Member* mbr = adbus_iface_signal(iface, mname, -1);
-    if (mbr == NULL) {
-        return luaL_error(L, "Invalid signal name");
-    }
-
-
-    // Signature
-    lua_getfield(L, 1, "signature");
-    if (!lua_isstring(L, -1)) {
-        return luaL_error(L, "Missing signature field");
-    }
-    const char* sig = lua_tostring(L, -1);
-
-
-    adbus_setup_signal(c->message, path, mbr);
-    adbus_msg_append(c->message, sig, -1);
-
-    adbus_Buffer* b = adbus_msg_buffer(c->message);
-    int args = lua_objlen(L, 1);
-    for (int i = 1; i <= args; ++i) {
-        if (adbuslua_check_argument(L, i, NULL, 0, b)) {
-            return luaL_error(L, "Error on marshalling arguments.");
-        }
-    }
-
-    adbus_conn_send(c->connection, c->message);
-
-    lua_pop(L, 5); // conn + path + iface + mbr + sig
-
     return 0;
 }
 
-/* ------------------------------------------------------------------------- */
+static void ReleaseObject(void* d)
+{
+    struct Object* o = (struct Object*) d;
+    o->bind = NULL;
+    o->reply = NULL;
+    o->match = NULL;
+    DoCloseObject(o);
+}
+
+static const luaL_Reg objectreg[] = {
+    { "__gc", &CloseObject },
+    { "close", &CloseObject },
+    { NULL, NULL },
+};
+
+void adbusluaI_reg_object(lua_State* L)
+{
+    luaL_newmetatable(L, OBJECT);
+    luaL_register(L, NULL, objectreg);
+}
 
 static int AddMatch(lua_State* L)
 {
+    int top = lua_gettop(L);
+    UNUSED(top);
+
+    struct Connection* c = CheckOpenedConnection(L, 1);
+
+    struct Object* o = NewObject(L);
+    o->L = L;
+    o->connection = c;
+
     adbus_Match m;
+    adbusluaI_tomatch(L, 2, &m, &o->callback, &o->object, &o->unpack);
 
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
-    adbuslua_check_match(L, 2, &m);
+    m.callback      = &adbusluaI_callback;
+    m.cuser         = o;
+    m.release[0]    = &ReleaseObject;
+    m.ruser[0]      = o;
 
-    uint32_t id = adbus_conn_addmatch(c, &m);
-    lua_pushnumber(L, id);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    o->match = adbus_conn_addmatch(c->connection, &m);
+    free(m.arguments);
+
+    if (lua_objlen(L, errlist) > 0)
+        return ThrowError(L, errlist);
+
+    if (!o->match)
+        return luaL_error(L, "Failed to add match");
+
+    lua_remove(L, errlist);
+
+    assert(top + 1 == lua_gettop(L));
+    return 1;
+}
+
+static int AddReply(lua_State* L)
+{
+    int top = lua_gettop(L);
+    UNUSED(top);
+
+    struct Connection* c = CheckOpenedConnection(L, 1);
+
+    struct Object* o = NewObject(L);
+    o->L = L;
+    o->connection = c;
+
+    adbus_Reply r;
+    adbusluaI_toreply(L, 2, &r, &o->callback, &o->object, &o->unpack);
+
+    r.callback      = &adbusluaI_callback;
+    r.cuser         = o;
+    r.error         = &adbusluaI_callback;
+    r.euser         = o;
+    r.release[0]    = &ReleaseObject;
+    r.ruser[0]      = o;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    o->reply = adbus_conn_addreply(c->connection, &r);
+
+    if (lua_objlen(L, errlist) > 0)
+        return ThrowError(L, errlist);
+
+    if (!o->reply)
+        return luaL_error(L, "Failed to add reply");
+
+    lua_remove(L, errlist);
+
+    assert(top + 1 == lua_gettop(L));
+    return 1;
+}
+
+static int Bind(lua_State* L)
+{
+    int top = lua_gettop(L);
+    UNUSED(top);
+
+    size_t pathsz;
+    struct Connection* c    = CheckOpenedConnection(L, 1);
+    const char* path        = luaL_checklstring(L, 2, &pathsz);
+    adbus_Interface* i      = adbusluaI_check_interface(L, 3);
+
+    struct Object* o = NewObject(L);
+    o->L = L;
+    o->connection = c;
+
+    adbus_Bind b;
+    adbus_bind_init(&b);
+    b.path        = path;
+    b.pathSize    = pathsz;
+    b.interface   = i;
+    b.cuser2      = o;
+    b.release[0]  = &ReleaseObject;
+    b.ruser[0]    = o;
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    o->bind = adbus_conn_bind(c->connection, &b);
+
+    if (lua_objlen(L, errlist) > 0)
+        return ThrowError(L, errlist);
+
+    if (!o->bind)
+        return luaL_error(L, "Failed to bind");
+
+    lua_remove(L, errlist);
+
+    assert(top + 1 == lua_gettop(L));
     return 1;
 }
 
 /* ------------------------------------------------------------------------- */
 
-static int RemoveMatch(lua_State* L)
+static int Traceback (lua_State *L) 
 {
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
-    uint32_t id = (uint32_t) luaL_checknumber(L, 2);
+    if (!lua_isstring(L, 1))  /* 'message' not a string? */
+        return 1;  /* keep it intact */
+    lua_getfield(L, LUA_GLOBALSINDEX, "debug");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return 1;
+    }
+    lua_getfield(L, -1, "traceback");
+    if (!lua_isfunction(L, -1)) {
+        lua_pop(L, 2);
+        return 1;
+    }
+    lua_pushvalue(L, 1);  /* pass error message */
+    lua_pushinteger(L, 2);  /* skip this function and traceback */
+    lua_call(L, 2, 1);  /* call debug.traceback */
+    return 1;
+}
 
-    adbus_conn_removematch(c, id);
+static void CollectError(adbus_CbData* d, lua_State* L, int errlist)
+{
+    if (d)
+        adbus_error(d, "nz.co.foobar.LuaError", -1, NULL, -1);
+    int errorlen = lua_objlen(L, errlist);
+    lua_rawseti(L, errlist, errorlen + 1);
+}
+
+static int ThrowError(lua_State* L, int errlist)
+{
+    int errorlen = lua_objlen(L, errlist);
+    int top = lua_gettop(L);
+    lua_checkstack(L, 2 * errorlen + 2);
+    lua_pushstring(L, "The following errors were collected in callbacks:");
+    for (int i = 1; i <= errorlen; i++) {
+        lua_pushfstring(L, "\n%d. ", i);
+        lua_rawgeti(L, errlist, i);
+        lua_pushnil(L);
+        lua_rawseti(L, errlist, i);
+    }
+    lua_pushstring(L, "\n");
+    lua_concat(L, lua_gettop(L) - top);
+    return lua_error(L);
+}
+
+adbus_ssize_t adbusluaI_send(void* user, adbus_Message* msg)
+{
+    struct Connection* c = (struct Connection*) user;
+
+    if (!c->sender)
+        return -1;
+
+    lua_State* L = c->L;
+    int top = lua_gettop(L);
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    lua_pushcfunction(L, &Traceback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->sender);
+    lua_pushlstring(L, msg->data, msg->size);
+
+    // WARNING: this callback may result in c being closed/freed so 
+    // we shouldn't use them after this point
+
+    if (lua_pcall(L, 1, 0, -2)) {
+        CollectError(NULL, L, errlist);
+        lua_settop(L, top);
+        return -1;
+    }
+
+    lua_settop(L, top);
+    return (adbus_ssize_t) msg->size;
+}
+
+void adbusluaI_connect(void* user)
+{
+    struct Connection* c = (struct Connection*) user;
+    lua_State* L = c->L;
+    int top = lua_gettop(L);
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
+    int errlist = lua_gettop(L);
+
+    lua_pushcfunction(L, &Traceback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, c->connect);
+    lua_pushstring(L, adbus_conn_uniquename(c->connection, NULL));
+
+    // WARNING: this callback may result in c being closed/freed so 
+    // we shouldn't use them after this point
+
+    if (lua_pcall(L, 1, 0, -2)) {
+        CollectError(NULL, L, errlist);
+    }
+
+    lua_settop(L, top);
+}
+
+int adbusluaI_callback(adbus_CbData* d)
+{
+    struct Object* o = (struct Object*) d->user1;
+
+    lua_State* L = o->L;
+
+    int top = lua_gettop(L);
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->connection->errors);
+    int errlist = lua_gettop(L);
+
+    lua_pushcfunction(L, &Traceback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->callback); 
+
+    int fun = lua_gettop(L);
+
+    if (o->object)
+        lua_rawgeti(L, LUA_REGISTRYINDEX, o->object);
+
+    if (adbuslua_push_message(L, d->msg, o->unpack)) {
+        lua_settop(L, top);
+        return -1;
+    }
+
+    // WARNING: this callback may result in o being closed/freed
+    // so we shouldn't use it after this point
+
+    if (lua_pcall(L, lua_gettop(L) - fun, 0, fun - 1)) {
+        CollectError(d, L, errlist);
+        lua_settop(L, top);
+        return 0;
+    }
+
+    lua_settop(L, top);
     return 0;
 }
 
-/* ------------------------------------------------------------------------- */
-
-static int MatchId(lua_State* L)
+int adbusluaI_method(adbus_CbData* d)
 {
-    adbus_Connection* c = adbuslua_check_connection(L, 1);
+    struct Member* m = (struct Member*) d->user1;
+    struct Object* o = (struct Object*) d->user2;
 
-    uint32_t id = adbus_conn_matchid(c);
-    lua_pushnumber(L, (lua_Number) id);
-    return 1;
+    lua_State* L = o->L;
+    int top = lua_gettop(L);
+
+    // Check the signature
+    
+    lua_rawgeti(L, LUA_REGISTRYINDEX, m->argsig);
+    size_t argsz;
+    const char* argsig = lua_tolstring(L, -1, &argsz);
+    if (argsz != d->msg->signatureSize || memcmp(argsig, d->msg->signature, argsz) != 0) {
+        lua_settop(L, top);
+        return -1;
+    }
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, m->retsig);
+    const char* retsig = lua_tostring(L, -1);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->connection->errors);
+    int errlist = lua_gettop(L);
+
+    // Push the function and object
+
+    lua_pushcfunction(L, &Traceback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, m->method);
+
+    int fun = lua_gettop(L);
+
+    if (o->object)
+        lua_rawgeti(L, LUA_REGISTRYINDEX, o->object);
+
+    // Push the message
+
+    if (adbuslua_push_message(L, d->msg, m->unpack)) {
+        lua_settop(L, top);
+        return -1;
+    }
+
+    int rets;
+    if (d->ret && m->unpack && retsig) {
+        rets = LUA_MULTRET;
+    } else if (d->ret && retsig) {
+        rets = 1;
+    } else {
+        rets = 0;
+    }
+
+    // WARNING: this callback may result in m and/or o being closed/freed
+    // so we shouldn't use them after this point
+
+    if (lua_pcall(L, lua_gettop(L) - fun, rets, fun - 1)) {
+        CollectError(d, L, errlist);
+        lua_settop(L, top);
+        return 0;
+    }
+
+    if (rets == LUA_MULTRET) {
+        if (adbuslua_to_message_unpacked(L, fun, lua_gettop(L), retsig, -1, d->ret)) {
+            CollectError(d, L, errlist);
+            lua_settop(L, top);
+            return 0;
+        }
+    } else if (rets == 1) {
+        if (adbuslua_to_message(L, -1, d->ret)) {
+            CollectError(d, L, errlist);
+            lua_settop(L, top);
+            return 0;
+        }
+    }
+
+    lua_settop(L, top);
+    return 0;
 }
+
+
+int adbusluaI_getproperty(adbus_CbData* d)
+{
+    struct Member* m = (struct Member*) d->user1;
+    struct Object* o = (struct Object*) d->user2;
+
+    lua_State* L = o->L;
+    int top = lua_gettop(L);
+
+    // The signature has already been checked by the caller
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->connection->errors);
+    int errlist = lua_gettop(L);
+
+    // Push the function and object
+
+    lua_pushcfunction(L, &Traceback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, m->getter);
+
+    int fun = lua_gettop(L);
+
+    if (o->object)
+        lua_rawgeti(L, LUA_REGISTRYINDEX, o->object);
+
+    // WARNING: this callback may result in m and/or o being closed/freed
+    // so we shouldn't use them after this point
+
+    if (lua_pcall(L, lua_gettop(L) - fun, 1, fun - 1)) {
+        CollectError(d, L, errlist);
+        lua_settop(L, top);
+        return 0;
+    } 
+
+    if (adbuslua_to_argument(L, -1, d->getprop)) {
+        CollectError(d, L, errlist);
+        lua_settop(L, top);
+        return 0;
+    }
+
+    lua_settop(L, top);
+    return 0;
+}
+
+
+int adbusluaI_setproperty(adbus_CbData* d)
+{
+    struct Member* m = (struct Member*) d->user1;
+    struct Object* o = (struct Object*) d->user2;
+
+    lua_State* L = o->L;
+    int top = lua_gettop(L);
+
+    // The signature has already been checked by the caller
+
+    lua_rawgeti(L, LUA_REGISTRYINDEX, o->connection->errors);
+    int errlist = lua_gettop(L);
+
+    // Push the function and object
+
+    lua_pushcfunction(L, &Traceback);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, m->setter);
+
+    int fun = lua_gettop(L);
+
+    if (o->object)
+        lua_rawgeti(L, LUA_REGISTRYINDEX, o->object);
+
+    if (adbuslua_push_argument(L, &d->setprop)) {
+        lua_settop(L, top);
+        return -1;
+    }
+
+    // WARNING: this callback may result in m and/or o being closed/freed
+    // so we shouldn't use them after this point
+
+    if (lua_pcall(L, lua_gettop(L) - fun, 0, fun - 1)) {
+        CollectError(d, L, errlist);
+        lua_settop(L, top);
+        return 0;
+    } 
+
+    lua_settop(L, top);
+    return 0;
+}
+
+
 
 /* ------------------------------------------------------------------------- */
 
 static const luaL_Reg reg[] = {
     { "new", &NewConnection },
-    { "__gc", &FreeConnection },
+    //{ "__gc", &CloseConnection },
+    { "close", &CloseConnection },
     { "parse", &Parse },
     { "set_sender", &SetSender },
     { "connect_to_bus", &Connect },
@@ -373,16 +713,15 @@ static const luaL_Reg reg[] = {
     { "unique_name", &UniqueName },
     { "serial", &Serial },
     { "send", &Send },
-    { "emit", &Emit },
     { "add_match", &AddMatch },
-    { "remove_match", &RemoveMatch },
-    { "match_id", &MatchId },
+    { "add_reply", &AddReply },
+    { "bind", &Bind },
     { NULL, NULL }
 };
 
 void adbusluaI_reg_connection(lua_State* L)
 {
-    luaL_newmetatable(L, HANDLE);
+    luaL_newmetatable(L, CONNECTION);
     luaL_register(L, NULL, reg);
 }
 

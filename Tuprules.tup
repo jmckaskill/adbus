@@ -1,0 +1,31 @@
+.gitignore
+
+CFLAGS += -W
+CFLAGS += -Wall
+CFLAGS += -Werror
+CFLAGS += -Wcast-align
+CFLAGS += -Wchar-subscripts
+CFLAGS += -Wpointer-arith
+CFLAGS += -Wredundant-decls
+CFLAGS += -Wwrite-strings
+# qHash(QString) in qt public headers qdbusextrastypes.h and qdbusargument.h
+CFLAGS += -Wno-redundant-decls
+CFLAGS += -Wno-missing-field-initializers
+CFLAGS += -fno-common
+CFLAGS += -fno-strict-aliasing
+
+C99FLAGS += -Wnested-externs
+C99FLAGS += -Wstrict-prototypes
+C99FLAGS += -Wmissing-prototypes
+C99FLAGS += -Wbad-function-cast
+
+ifeq (@(ADBUS_RELEASE),y)
+    CFLAGS += -O2 -DNDEBUG
+    LDFLAGS += --strip-all
+else
+    CFLAGS += -DDEBUG -g -O0
+endif
+
+include qt.tup
+include include.tup
+

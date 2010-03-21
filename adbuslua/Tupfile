@@ -1,0 +1,3 @@
+include_rules
+CFLAGS += -fvisibility=hidden $(CFLAGS_LUA)
+: foreach *.c |> !c99 |> %B.o

@@ -1,0 +1,2 @@
+include_rules
+: foreach *.cpp |> !cpp |> %B.o

@@ -23,50 +23,84 @@
 --
 -------------------------------------------------------------------------------
 
-local table         = require("table")
-local string        = require("string")
-local setmetatable  = _G.setmetatable
-local error         = _G.error
-local unpack        = _G.unpack
-local ipairs        = _G.ipairs
-local print         = _G.print
-local rawget        = _G.rawget
-local rawset        = _G.rawset
-local assert        = _G.assert
 
-require("LuaXml")
-local luaxml = _G.xml
+smodule 'adbus'
+require 'xml'
+require 'table'
+require 'string'
 
 -------------------------------------------------------------------------------
 -- Proxy API
 -------------------------------------------------------------------------------
 
-module("adbus")
+_M.proxy = _M.proxy or {}
+proxy = _M.proxy
 
-proxy = {}
 local proxy_mt = {}
-local call_method
+local call
 local process_introspection
 
 --- Gets the connection object associated with the proxy
 function proxy.connection(self)
-    return rawget(self, "_connection")
+    return rawget(self, "_p").connection
 end
 
 --- Gets the path of the remote object
 function proxy.path(self)
-    return rawget(self, "_path")
+    return rawget(self, "_p").path
 end
 
 --- Gets the name of the remote
 function proxy.service(self)
-    return rawget(self, "_service")
+    return rawget(self, "_p").service
 end
 
 --- Gets the interface associated with the proxy if it was specified
 --- originally
 function proxy.interface(self)
-    return rawget(self, "_interface")
+    return rawget(self, "_p").interface
+end
+
+function proxy.node(self, path)
+    local c = proxy.connection(self)
+    local s = proxy.service(self)
+    local p = proxy.path(self)
+    if p ~= '/' then p = p .. '/' end
+    return c:proxy(s, p .. path)
+end
+
+local function lassert(nil_check, name, msg, ...)
+    if nil_check == nil and name then
+        return assert(nil, name .. ":\n" .. (msg and (msg .. "\n") or ''))
+    else
+        return nil_check, name, msg, ...
+    end
+end
+
+function proxy.call(self, t)
+    local c = proxy.connection(self)
+    t.path = proxy.path(self)
+    t.destination = proxy.service(self)
+    t.interface = t.interface or proxy.interface(self)
+    if t.reply == nil or t.reply then
+        return lassert(c:call(t))
+    else
+        c:call(t)
+    end
+end
+
+function proxy.member_type(self, member)
+    if type(rawget(self, member)) == "function" then
+        return "method"
+    elseif rawget(self, "_p").signals[member] then
+        return "signal"
+    elseif rawget(self, "_p").get_properties[member] then
+        return "property"
+    elseif rawget(self, "_p").set_properties[member] then
+        return "property"
+    else
+        return "unknown"
+    end
 end
 
 --- Connects a signal
@@ -78,71 +112,75 @@ end
 -- \param[opt]  t.unpack_message    Whether to unpack the message when calling
 --                                  the callback (default true)
 --
--- \return  match id which can be used with proxy.disconnect to disconnect the
+-- \return  match which can be used with proxy.disconnect to disconnect the
 --          signal
 --
 -- The callback function's arguments are the same as for the
 -- connection.add_match's callback.
-function proxy.connect(t)
-    local self       = t.proxy
-    local match_ids  = rawget(self, "_signal_match_ids");
+function proxy.connect(self, t)
+    local matches    = rawget(self, "_p").signal_matches
     local connection = proxy.connection(self)
-    local sigs       = rawget(self, "_signals");
+    local sigs       = rawget(self, "_p").signals
     local interface  = sigs[t.member]
     assert(interface, "Invalid signal name")
 
-    local id = connection:add_match{
+    local match = {
         add_match_to_bus_daemon = true,
         type            = "signal",
-        interface       = interface,
         path            = proxy.path(self),
         sender          = proxy.service(self),
-        member          = signal_name,
-        callback        = t.callback,
-        object          = t.object,
+        interface       = interface,
         unpack_message  = t.unpack_message,
+        object          = t.object,
+        callback        = t.callback,
     }
 
-    table.insert(match_ids, id)
-    return id
+    local m = connection:add_match(match)
+
+    matches[m] = true
+    return m
 end
 
 --- Disconnects one or all signals
 -- 
 -- \param       self        The proxy object
--- \param[opt]  match_id    The match_id returned from a call to proxy.connect
+-- \param[opt]  match       The match returned from a call to proxy.connect
 --
--- If the match_id is not specified this will disconnect all signals.
-function proxy.disconnect(self, match_id)
+-- If the match is not specified this will disconnect all signals.
+function proxy.disconnect(self, match)
     local connection = proxy.connection(self)
-    if match_id == nil then
-        for _,id in ipairs(rawget(self, "_signal_match_ids")) do
-            connection:remove_match(match_id)
+    if not match then
+        local p = rawget(self, "_p")
+        for match in pairs(p.signal_matches) do
+            match:close()
         end
+        p.signal_matches = {}
     else
-        connection:remove_match(match_id)
+        match:close()
+        p.signal_matches[match] = nil
     end
 end
 
 -- Properties
 
 function proxy_mt:__index(key)
-    local props = rawget(self, "_get_properties")
+    local props = rawget(self, "_p").get_properties
     local prop  = props[key]
     assert(prop, "Invalid property name")
 
     local interface = prop[2]
 
-    return call_method(self,
-                       "org.freedesktop.DBus.Properties",
-                       "Get",
-                       "ss",
-                       interface,
-                       key)
+    return self:_call{
+        interface   = 'org.freedesktop.DBus.Properties',
+        member      = 'Get',
+        signature   = "ss",
+        interface,
+        key,
+    }
 end
 
 function proxy_mt:__newindex(key, value)
-    local props = rawget(self, "_set_properties")
+    local props = rawget(self, "_p").set_properties
     local prop  = props[key]
     assert(prop, "Invalid property name")
 
@@ -158,13 +196,18 @@ function proxy_mt:__newindex(key, value)
         print(table.show(value, proxy.path(self) .. "." .. key))
     end
 
-    return call_method(self,
-                       "org.freedesktop.DBus.Properties",
-                       "Set",
-                       "ssv",
-                       interface,
-                       key,
-                       data)
+    return self:_call{
+        interface   = 'org.freedesktop.DBus.Properties',
+        member      = 'Set',
+        signature   = "ssv",
+        interface,
+        key,
+        data,
+    }
+end
+
+function proxy_mt:__tostring()
+    return proxy.help(self)
 end
 
 -------------------------------------------------------------------------------
@@ -172,80 +215,50 @@ end
 -------------------------------------------------------------------------------
 
 -- Constructor called from connection.proxy
-function proxy._new(connection, reg)
-    if reg.path == nil or reg.service == nil then
+function proxy._new(connection, service, path, interface)
+    if path == nil or service == nil then
         error("Proxies require an explicit service and path")
     end
 
     local self = {}
     setmetatable(self, proxy_mt)
 
-    rawset(self, "_get_properties", {})
-    rawset(self, "_set_properties", {})
-    rawset(self, "_signals", {})
-    rawset(self, "_signal_match_ids", {})
-    rawset(self, "_interface", reg.interface)
-    rawset(self, "_path", reg.path)
-    rawset(self, "_service", reg.service)
-    rawset(self, "_connection", connection)
+    local p = {}
+    p.get_properties    = {}
+    p.set_properties    = {}
+    p.signals           = {}
+    p.signal_matches    = {}
+    p.nodes             = {}
+    p.interface         = interface
+    p.path              = path
+    p.service           = service
+    p.connection        = connection
+    rawset(self, "_p", p)
 
-    local xml = call_method(self,
-                            "org.freedesktop.DBus.Introspectable",
-                            "Introspect")
+    rawset(self, "_introspect", function()
+        return self:_call{
+            interface   = 'org.freedesktop.DBus.Introspectable',
+            member      = 'Introspect',
+        }
+    end)
 
-    process_introspection(self, xml)
+    rawset(self, "_help", proxy.help)
+    rawset(self, "_path", proxy.path)
+    rawset(self, "_connection", proxy.connection)
+    rawset(self, "_service", proxy.service)
+    rawset(self, "_connect", proxy.connect)
+    rawset(self, "_disconnect", proxy.disconnect)
+    rawset(self, "_call", proxy.call)
+    rawset(self, "_node", proxy.node)
+    rawset(self, "_member_type", proxy.member_type)
+
+    process_introspection(self, self:_introspect())
 
     return self
 end
 
-
--- Method callers
-
-local function method_callback(self, message)
-    rawset(self, "_method_return_message", message)
-end
-
-call_method = function(self, interface, name, signature, ...)
-    local connection = proxy.connection(self)
-    local serial = connection:serial()
-
-    local message = {
-        type        = "method_call",
-        destination = proxy.service(self),
-        path        = proxy.path(self),
-        interface   = interface,
-        member      = name,
-        signature   = signature,
-        serial      = serial,
-        ...
-    }
-
-    connection:send(message)
-
-    local match = connection:add_match{
-        reply_serial    = serial,
-        unpack_message  = false,
-        callback        = method_callback,
-        object          = self,
-        remove_on_first_match = true,
-    }
-
-    connection:process_until_match(match)
-
-    local ret = rawget(self, "_method_return_message")
-    rawset(self, "_method_return_message", nil)
-
-    if ret.type == "error" then
-        assert(nil, ret.error_name .. ": " .. ret[1])
-    else
-        return unpack(ret)
-    end
-end
-
 -- Introspection XML processing
-
 local function process_method(self, interface, member)
-    local name = member.name
     local signature = ""
 
     for _,arg in ipairs(member) do
@@ -254,14 +267,20 @@ local function process_method(self, interface, member)
         end
     end
 
-    rawset(self, name, function(proxy, ...)
-        return call_method(self, interface, name, signature, ...)
+    rawset(self, member.name, function(self, ...)
+        local t = {
+            member = member.name,
+            interface = interface,
+            signature = signature,
+            ...
+        }
+        return self:_call(t)
     end)
 end
 
 local function process_signal(self, interface, member)
     local name = member.name
-    local sigs = rawget(self, "_signals")
+    local sigs = rawget(self, "_p").signals
 
     sigs[name] = interface
 end
@@ -272,33 +291,42 @@ local function process_property(self, interface, member)
     local access    = member.access
 
     if access == "read" or access == "readwrite" then
-        local get_props = rawget(self, "_get_properties")
+        local get_props = rawget(self, "_p").get_properties
         get_props[name] = {signature, interface}
     end
 
     if access == "write" or access == "readwrite" then
-        local set_props = rawget(self, "_set_properties")
+        local set_props = rawget(self, "_p").set_properties
         set_props[name] = {signature, interface}
     end
 end
 
+local function process_node(self, node)
+    local c = proxy.connection(self)
+    local nodes = rawget(self, "_p").nodes
+    local path = proxy.path(self)
+    nodes[node.name] = true
+end
+
 
 process_introspection = function(self, introspection)
-    local x         = luaxml.eval(introspection)
+    local x         = xml.eval(introspection)
     local interface = proxy.interface(self)
 
-    for _,xml_interface in ipairs(x) do
-        if interface == nil or xml_interface.name == interface then
-            for _,xml_member in ipairs(xml_interface) do
-                local tag = xml_member:tag()
+    for _,node in ipairs(x) do
+        if node:tag() == "interface" and (interface == nil or node.name == interface) then
+            for _,member in ipairs(node) do
+                local tag = member:tag()
                 if tag == "method" then
-                    process_method(self, xml_interface.name, xml_member)
+                    process_method(self, node.name, member)
                 elseif tag == "signal" then
-                    process_signal(self, xml_interface.name, xml_member)
+                    process_signal(self, node.name, member)
                 elseif tag == "property" then
-                    process_property(self, xml_interface.name, xml_member)
+                    process_property(self, node.name, member)
                 end
             end
+        elseif node:tag() == "node" then
+            process_node(self, node)
         end
     end
 end

@@ -25,23 +25,15 @@
 
 #pragma once
 
-#include <adbus/adbus.h>
-#include "memory/khash.h"
-#include "memory/kvector.h"
+#include "misc.h"
+#include "dmem/hash.h"
+#include "dmem/vector.h"
+#include <adbus.h>
 
 // ----------------------------------------------------------------------------
 
-KHASH_MAP_INIT_STR(StringPair, char*)
-
-struct Argument
-{
-    char*           name;
-    char*           type;
-};
-
-KVECTOR_INIT(Argument, struct Argument)
-
-// ----------------------------------------------------------------------------
+DHASH_MAP_INIT_STR(StringPair, char*);
+DVECTOR_INIT(String, char*);
 
 typedef enum adbusI_MemberType
 {
@@ -52,43 +44,52 @@ typedef enum adbusI_MemberType
 
 struct adbus_Member
 {
-    char*                       name;
+    /** \privatesection */
+    dh_strsz_t              name;
 
-    adbus_Interface*      interface;
-    adbusI_MemberType        type;
+    adbus_Interface*        interface;
+    adbusI_MemberType       type;
 
-    char*                       propertyType;
+    char*                   propertyType;
 
-    kvector_t(Argument)*        inArguments;
-    kvector_t(Argument)*        outArguments;
+    d_Vector(String)        arguments;
+    d_Vector(String)        returns;
+    d_String                argsig;
+    d_String                retsig;
 
-    khash_t(StringPair)*        annotations;
+    d_Hash(StringPair)      annotations;
 
-    adbus_Callback        methodCallback;
-    adbus_Callback        getPropertyCallback;
-    adbus_Callback        setPropertyCallback;
+    adbus_MsgCallback       methodCallback;
+    adbus_MsgCallback       getPropertyCallback;
+    adbus_MsgCallback       setPropertyCallback;
 
-    adbus_User*           methodData;
-    adbus_User*           getPropertyData;
-    adbus_User*           setPropertyData;
+    adbus_Callback          release[2];
+    void*                   ruser[2];
+
+    void*                   methodData;
+    void*                   getPropertyData;
+    void*                   setPropertyData;
 };
 
-KHASH_MAP_INIT_STR(MemberPtr, adbus_Member*)
+DHASH_MAP_INIT_STRSZ(MemberPtr, adbus_Member*)
 
 // ----------------------------------------------------------------------------
 
 struct adbus_Interface
 {
-    char*                   name;
-    khash_t(MemberPtr)*     members;
+    /** \privatesection */
+    volatile long           ref;
+    dh_strsz_t              name;
+    d_Hash(MemberPtr)       members;
 };
 
 // ----------------------------------------------------------------------------
 
-int adbusI_introspect(adbus_CbData* details);
-int adbusI_getProperty(adbus_CbData* details);
-int adbusI_getAllProperties(adbus_CbData* details);
-int adbusI_setProperty(adbus_CbData* details);
+ADBUSI_FUNC int adbusI_introspect(adbus_CbData* details);
+ADBUSI_FUNC int adbusI_getProperty(adbus_CbData* details);
+ADBUSI_FUNC int adbusI_getAllProperties(adbus_CbData* details);
+ADBUSI_FUNC int adbusI_setProperty(adbus_CbData* details);
+
 
 
 

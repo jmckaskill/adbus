@@ -23,47 +23,28 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbuscpp.h>
+#include <adbuscpp.h>
 
-#include <sys/socket.h>
 #include <string.h>
 #include <stdio.h>
+#ifdef _WIN32
+#   include <windows.h>
+#else
+#   include <sys/socket.h>
+#endif
 
-class Socket : public adbus::User
-{
-public:
-    Socket(adbus_Socket sock):s(sock){}
-    adbus_Socket s;
-};
-
-static void Send(adbus_Message* m, const adbus_User* u)
-{
-    const char* msg = adbus_msg_summary(m, NULL);
-    fprintf(stderr, "Sending\n%s\n\n", msg);
-
-    Socket* s = (Socket*) u;
-    size_t size;
-    const uint8_t* data = adbus_msg_data(m, &size);
-    send(s->s, data, size, 0);
-}
+static adbus_ssize_t Send(void* d, adbus_Message* m)
+{ return send(*(adbus_Socket*) d, m->data, m->size, 0); }
 
 
-class Quitter;
-static adbus::Interface<Quitter>* Interface();
-
-class Quitter
+class Quitter : public adbus::State
 {
 public:
     Quitter() :m_Quit(false) {}
 
-    void bind(adbus::Path p)
-    { p.bind(Interface(), this); }
-
     void quit()
-    {
-        m_Quit = true;
-    }
-    
+    { m_Quit = true; }
+
     bool m_Quit;
 };
 
@@ -79,44 +60,38 @@ static adbus::Interface<Quitter>* Interface()
     return i;
 }
 
-
+#define RECV_SIZE 64 * 1024
 
 int main()
 {
+    adbus_Buffer* buf = adbus_buf_new();
     adbus_Socket s = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (s == ADBUS_SOCK_INVALID)
-        return 1;
+    if (s == ADBUS_SOCK_INVALID || adbus_sock_cauth(s, buf))
+        abort();
 
-    adbus_Message* msg = adbus_msg_new();
-    adbus_Stream* stream = adbus_stream_new();;
-    adbus::Connection c;
-    c.setSender(&Send, new Socket(s));
+    adbus_ConnectionCallbacks cbs = {};
+    cbs.send_message = &Send;
+    adbus::Connection c(&cbs, &s);
 
     Quitter q;
-    q.bind(c.path("/"));
+    q.bind(c, "/", Interface(), &q);
 
     // Once we are all setup, we connect to the bus
     c.connectToBus();
-    c.requestName("nz.co.foobar.adbus.Test");
+    adbus::State state;
+    adbus::Proxy bus(&state);
+    bus.init(c, "org.freedesktop.DBus", "/");
+    bus.call("RequestName", "nz.co.foobar.adbus.SimpleCppTest", uint32_t(0));
 
-    char buf[64 * 1024];
     while(!q.m_Quit) {
-        int recvd = recv(s, buf, sizeof(buf), 0);
+        char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
+        adbus_ssize_t recvd = recv(s, dest, RECV_SIZE, 0);
+        adbus_buf_recvd(buf, RECV_SIZE, recvd);
         if (recvd < 0)
-            return 2;
+            abort();
 
-        const uint8_t* data = (const uint8_t*) buf;
-        size_t size = recvd;
-        while (size > 0) {
-            if (adbus_stream_parse(stream, msg, &data, &size))
-                return 3;
-
-            const char* summary = adbus_msg_summary(msg, NULL);
-            fprintf(stderr, "Received\n%s\n\n", summary);
-
-            if (c.dispatch(msg))
-                return 4;
-        }
+        if (c.parse(buf))
+            abort();
     }
 
     return 0;

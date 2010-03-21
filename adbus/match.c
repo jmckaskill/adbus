@@ -23,25 +23,190 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <adbus/adbus.h>
-
 #include "connection.h"
 #include "misc.h"
 
 #include <string.h>
 
+/** \struct adbus_Match
+ *  \brief Data structure used to register general matches.
+ *
+ *  \note An adbus_Match structure should always be initialised using
+ *  adbus_match_init().
+ *
+ *  \note The proxy and relproxy fields should almost always be initialised
+ *  using adbus_conn_getproxy().
+ *
+ *  Matches are used to register for any message by specifying specific values
+ *  to look for for the various message header fields. They can also be pushed
+ *  through to the bus server. There are mostly used to register callbacks for
+ *  signals from a specific remote object.
+ *
+ *  For example:
+ *  \code
+ *  static int Signal(adbus_CbData* d)
+ *  {
+ *      Object* o = (Object*) d->user1;
+ *      o->OnSignal();
+ *      return 0;
+ *  }
+ *
+ *  void RegisterForSignal(adbus_Connection* c, Object* o)
+ *  {
+ *      adbus_Match m;
+ *      adbus_match_init(&m);
+ *      m.addMatchToBusDaemon = 1;
+ *      m.type      = ADBUS_MSG_SIGNAL;
+ *      m.sender    = "com.example.Service";
+ *      m.path      = "/";
+ *      m.member    = "ExampleSignal";
+ *      m.callback  = &Signal;
+ *      m.cuser     = o;
+ *      adbus_state_addmatch(o->state(), c, &m);
+ *  }
+ *  \endcode
+ *
+ *  \note If writing C code, the adbus_State and adbus_Proxy modules \b vastly
+ *  simplify the unregistering and thread jumping issues.
+ *
+ *  \sa adbus_Connection, adbus_conn_addmatch(), adbus_conn_addmatch(),
+ *  adbus_Proxy
+ */
+
+/** \var adbus_Match::type
+ *  Type of message to match or ADBUS_MSG_INVALID (default).
+ */
+
+/** \var adbus_Match::addMatchToBusDaemon
+ *  Whether the match should be added to bus daemon (default not).
+ */
+
+/** \var adbus_Match::replySerial
+ *  Reply serial to match or -1 (default).
+ */
+
+/** \var adbus_Match::sender
+ *  Sender field to match or NULL (default).
+ */
+
+/** \var adbus_Match::senderSize
+ *  Length of the adbus_Match::sender field or -1 if null terminated
+ *  (default).
+ */
+
+/** \var adbus_Match::destination
+ *  Destination field to match or NULL (default).
+ */
+
+/** \var adbus_Match::destinationSize
+ *  Length of the adbus_Match::destination field or -1 if null terminated
+ *  (default).
+ */
+
+/** \var adbus_Match::interface
+ *  Interface field to match or NULL (default).
+ */
+
+/** \var adbus_Match::interfaceSize
+ *  Length of the adbus_Match::interface field or -1 if null terminated
+ *  (default).
+ */
+
+/** \var adbus_Match::path
+ *  Object path field to match or NULL (default).
+ */
+
+/** \var adbus_Match::pathSize
+ *  Length of the adbus_Match::path field or -1 if null terminated
+ *  (default).
+ */
+
+/** \var adbus_Match::member
+ *  Member field to match or NULL (default).
+ */
+
+/** \var adbus_Match::memberSize
+ *  Length of the adbus_Match::member field or -1 if null terminated
+ *  (default).
+ */
+
+/** \var adbus_Match::error
+ *  Error name field to match or NULL (default).
+ */
+
+/** \var adbus_Match::errorSize
+ *  Length of the adbus_Match::error field or -1 if null terminated
+ *  (default).
+ */
+
+/** \var adbus_Match::arguments
+ *  Array of adbus_Argument detailing what string arguments to match or NULL
+ *  to not match arguments (default).
+ */
+
+/** \var adbus_Match::argumentsSize
+ *  Size of the adbus_Match::argument array.
+ */
+
+/** \var adbus_Match::callback
+ *  Function to call when a message matches the supplied fields.
+ */
+
+/** \var adbus_Match::cuser
+ *  User data for the adbus_Match::callback function.
+ */
+
+/** \var adbus_Match::proxy
+ *  Proxy function for the adbus_Match::callback function.
+ *
+ *  Should be default set using adbus_conn_getproxy().
+ */
+
+/** \var adbus_Match::puser
+ *  User data for the adbus_Match::proxy function.
+ *
+ *  Should be default set using adbus_conn_getproxy().
+ */
+
+/** \var adbus_Match::release
+ *  Function called when the match is removed from the connection.
+ */
+
+/** \var adbus_Match::ruser
+ *  User data for the adbus_Match::release functions.
+ */
+
+/** \var adbus_Match::relproxy
+ *  Proxy function for the adbus_Match::release field.
+ *
+ *  Should be default set using adbus_conn_getproxy().
+ */
+
+/** \var adbus_Match::relpuser
+ *  User data for the adbus_Match::relproxy field.
+ *
+ *  Should be default set using adbus_conn_getproxy().
+ */
+
+
 // ----------------------------------------------------------------------------
 
-void adbus_matchargument_init(struct adbus_MatchArgument* args, size_t num)
+/** Initialise an argument array
+ *  \relates adbus_Argument
+ */
+void adbus_arg_init(adbus_Argument* args, size_t num)
 {
-    memset(args, 0, sizeof(adbus_MatchArgument) * num);
+    memset(args, 0, sizeof(adbus_Argument) * num);
     for (size_t i = 0; i < num; ++i) {
-        args->valueSize = -1;
+        args[i].size = -1;
     }
 }
 
 // ----------------------------------------------------------------------------
 
+/** Initialise a match
+ *  \relates adbus_Match
+ */
 void adbus_match_init(adbus_Match* pmatch)
 {
     memset(pmatch, 0, sizeof(adbus_Match));
@@ -51,36 +216,7 @@ void adbus_match_init(adbus_Match* pmatch)
     pmatch->interfaceSize   = -1;
     pmatch->pathSize        = -1;
     pmatch->memberSize      = -1;
-    pmatch->errorNameSize   = -1;
-}
-
-// ----------------------------------------------------------------------------
-
-void adbusI_freeMatchData(struct Match* m)
-{
-    if (m) {
-        free((char*) m->m.sender);
-        free((char*) m->m.destination);
-        free((char*) m->m.interface);
-        free((char*) m->m.member);
-        free((char*) m->m.errorName);
-        free((char*) m->m.path);
-        adbus_user_free(m->m.user1);
-        adbus_user_free(m->m.user2);
-        for (size_t i = 0; i < m->m.argumentsSize; ++i) {
-            free((char*) m->m.arguments[i].value);
-        }
-        free(m->m.arguments);
-    }
-}
-
-void adbusI_freeService(struct Service* s)
-{
-    if (s) {
-        free(s->serviceName);
-        free(s->uniqueName);
-        free(s);
-    }
+    pmatch->errorSize       = -1;
 }
 
 // ----------------------------------------------------------------------------
@@ -95,242 +231,251 @@ static void CloneString(const char* from, int fsize, const char** to, int* tsize
     }
 }
 
-static void CloneMatch(const adbus_Match* from,
-                       struct Match* to)
+static void CloneMatch(const adbus_Match* from, adbus_Match* to)
 {
-    memset(to, 0, sizeof(struct Match));
-    to->m.type                  = from->type;
-    to->m.addMatchToBusDaemon   = from->addMatchToBusDaemon;
-    to->m.removeOnFirstMatch    = from->removeOnFirstMatch;
-    to->m.replySerial           = from->replySerial;
-    to->m.callback              = from->callback;
-    to->m.user1                 = from->user1;
-    to->m.user2                 = from->user2;
-    to->m.id                    = from->id;
+    to->type                = from->type;
+    to->addMatchToBusDaemon = from->addMatchToBusDaemon;
+    to->replySerial         = from->replySerial;
+    to->callback            = from->callback;
+    to->cuser               = from->cuser;
+    to->proxy               = from->proxy;
+    to->puser               = from->puser;
+    to->release[0]          = from->release[0];
+    to->ruser[0]            = from->ruser[0];
+    to->release[1]          = from->release[1];
+    to->ruser[1]            = from->ruser[1];
+    to->relproxy            = from->relproxy;
+    to->relpuser            = from->relpuser;
 
-#define STRING(NAME) CloneString(from->NAME, from->NAME ## Size, &to->m.NAME, &to->m.NAME ## Size)
-    STRING(sender);
-    STRING(destination);
-    STRING(interface);
-    STRING(member);
-    STRING(errorName);
+    CloneString(from->destination, from->destinationSize, &to->destination, &to->destinationSize);
+    CloneString(from->interface, from->interfaceSize, &to->interface, &to->interfaceSize);
+    CloneString(from->member, from->memberSize, &to->member, &to->memberSize);
+    CloneString(from->error, from->errorSize, &to->error, &to->errorSize);
+
     if (from->path) {
-        kstring_t* sanitised = ks_new();
-        adbusI_relativePath(sanitised, from->path, from->pathSize, NULL, 0);
-        to->m.pathSize = ks_size(sanitised);
-        to->m.path     = ks_release(sanitised);
-        ks_free(sanitised);
+        d_String sanitised;
+        ZERO(&sanitised);
+        adbusI_relativePath(&sanitised, from->path, from->pathSize, NULL, 0);
+        to->pathSize = ds_size(&sanitised);
+        to->path     = ds_release(&sanitised);
     }
-    to->m.arguments = NEW_ARRAY(adbus_MatchArgument, from->argumentsSize);
-    to->m.argumentsSize = from->argumentsSize;
-    for (size_t i = 0; i < from->argumentsSize; ++i) {
-        to->m.arguments[i].number = from->arguments[i].number;
-        STRING(arguments[i].value);
+
+    if (from->arguments && from->argumentsSize > 0) {
+        to->arguments = NEW_ARRAY(adbus_Argument, from->argumentsSize);
+        to->argumentsSize = from->argumentsSize;
+        for (size_t i = 0; i < from->argumentsSize; ++i) {
+            CloneString(from->arguments[i].value,
+                        from->arguments[i].size,
+                        &to->arguments[i].value,
+                        &to->arguments[i].size);
+        }
     }
-#undef STRING
 }
 
 // ----------------------------------------------------------------------------
 
-static int GetNameOwner(adbus_CbData* d)
+adbus_ConnMatch* adbus_conn_addmatch(
+        adbus_Connection*       c,
+        const adbus_Match*      reg)
 {
-    struct Service* s = (struct Service*) adbusI_puser_get(d->user1);
+    assert(reg->callback);
 
-    s->methodMatch = 0;
-
-    const char* unique = adbus_check_string(d, NULL);
-    adbus_check_end(d);
-
-    free(s->uniqueName);
-    s->uniqueName = adbusI_strdup(unique);
-
-    return 0;
-}
-
-static int NameOwnerChanged(adbus_CbData* d)
-{
-    struct Service* s = (struct Service*) adbusI_puser_get(d->user1);
-
-    adbus_check_string(d, NULL);
-    adbus_check_string(d, NULL);
-    const char* to = adbus_check_string(d, NULL);
-    adbus_check_end(d);
-
-    free(s->uniqueName);
-    s->uniqueName = adbusI_strdup(to);
-
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-
-static struct Service* RefService(adbus_Connection* c, const char* servname)
-{
-    struct Service* s = NULL;
-
-    int added = 0;
-    khiter_t si = kh_put(Service, c->services, servname, &added);
-    if (!added) {
-        s = kh_val(c->services, si);
-        s->refCount++;
-    } else {
-        s = NEW(struct Service);
-        s->refCount = 1;
-        s->serviceName = adbusI_strdup(servname);
-
-        kh_key(c->services, si) = s->serviceName;
-        kh_val(c->services, si) = s;
+    if (ADBUS_TRACE_MATCH) {
+        adbusI_logmatch("add match", reg);
     }
-    return s;
+
+    adbus_ConnMatch* m = NEW(adbus_ConnMatch);
+    memset(m, 0, sizeof(adbus_ConnMatch));
+    CloneMatch(reg, &m->m);
+    m->service = adbusI_lookupService(c, reg->sender, reg->senderSize);
+
+    if (!m->service) {
+        CloneString(reg->sender, reg->senderSize, &m->m.sender, &m->m.senderSize);
+    }
+
+    if (m->m.addMatchToBusDaemon) {
+        adbus_Proxy* proxy = c->bus;
+
+        adbus_Call f;
+        adbus_call_method(proxy, &f, "AddMatch", -1);
+
+        adbus_msg_setsig(f.msg, "s", 1);
+
+        d_String s;
+        ZERO(&s);
+        adbusI_matchString(&s, &m->m);
+        adbus_msg_string(f.msg, ds_cstr(&s), ds_size(&s));
+        ds_free(&s);
+
+        adbus_call_send(proxy, &f);
+    }
+
+    dil_insert_after(Match, &c->matches, m, &m->hl);
+
+    return m;
 }
 
 // ----------------------------------------------------------------------------
 
-static void UnrefService(adbus_Connection* c, struct Service* s)
-{
-    s->refCount--;
-    if (s->refCount > 0)
-        return;
-
-    khiter_t si = kh_get(Service, c->services, s->serviceName);
-    if (si != kh_end(c->services))
-        kh_del(Service, c->services, si);
-
-    if (s->methodMatch)
-        adbus_conn_removematch(c, s->methodMatch);
-    if (s->signalMatch)
-        adbus_conn_removematch(c, s->signalMatch);
-    adbusI_freeService(s);
-}
-
-// ----------------------------------------------------------------------------
-
-static void AddServiceCallbacks(
-        adbus_Connection* c,
-        struct Service*         s)
-{
-    // Add the NameOwnerChanged match
-    adbus_MatchArgument arg0;
-    adbus_matchargument_init(&arg0, 1);
-    arg0.number = 0;
-    arg0.value = s->serviceName;
-
-    adbus_Match match;
-    adbus_match_init(&match);
-    match.type = ADBUS_MSG_SIGNAL;
-    match.addMatchToBusDaemon = 1;
-    match.sender = "org.freedesktop.DBus";
-    match.path = "/org/freedesktop/DBus";
-    match.interface = "org.freedesktop.DBus";
-    match.member = "NameOwnerChanged";
-    match.arguments = &arg0;
-    match.argumentsSize = 1;
-    match.callback = &NameOwnerChanged;
-    match.user1 = adbusI_puser_new(s);
-
-    s->signalMatch = adbus_conn_addmatch(c, &match);
-
-    // Call GetNameOwner - do this after adding the NameOwnerChanged match to
-    // avoid a race condition. Setup the match for the reply first
-    adbus_Caller f;
-    adbus_call_proxy(&f, c->bus, "GetNameOwner", -1);
-    f.callback  = &GetNameOwner;
-    f.user1     = adbusI_puser_new(s);
-
-    adbus_msg_append(f.msg, "s", -1);
-    adbus_msg_string(f.msg, s->serviceName, -1);
-
-    s->methodMatch = adbus_call_send(&f);
-}
-
-
-// ----------------------------------------------------------------------------
-
-uint32_t adbus_conn_addmatch(
+void adbus_conn_removematch(
         adbus_Connection*     c,
-        const adbus_Match*    reg)
+        adbus_ConnMatch*      m)
 {
-    struct Match* match = kv_push(Match, c->registrations, 1);
-    CloneMatch(reg, match);
-    if (match->m.id == 0) {
-        match->m.id = adbus_conn_matchid(c);
+    if (ADBUS_TRACE_MATCH) {
+        adbusI_logmatch("rm match", &m->m);
     }
 
-    if (match->m.addMatchToBusDaemon) {
-        adbus_Caller f;
-        adbus_call_proxy(&f, c->bus, "AddMatch", -1);
-        adbus_msg_append(f.msg, "s", -1);
+    if (m->m.addMatchToBusDaemon) {
+        adbus_Proxy* proxy = m->proxy ? m->proxy : c->bus;
 
-        kstring_t* s = adbusI_matchString(&match->m);
-        adbus_msg_string(f.msg, ks_cstr(s), ks_size(s));
-        ks_free(s);
+        adbus_Call f;
+        adbus_call_method(proxy, &f, "RemoveMatch", -1);
 
-        adbus_call_send(&f);
+        adbus_msg_setsig(f.msg, "s", 1);
+
+        d_String s;
+        ZERO(&s);
+        adbusI_matchString(&s, &m->m);
+        adbus_msg_string(f.msg, ds_cstr(&s), ds_size(&s));
+        ds_free(&s);
+
+        adbus_call_send(proxy, &f);
     }
 
-    uint32_t id = match->m.id;
-
-    // If the sender field is a service name we have to track the service name
-    // assignments
-    if (match->m.sender
-     && adbusI_requiresServiceLookup(match->m.sender, match->m.senderSize))
-    {
-        struct Service* s = RefService(c, match->m.sender);
-        match->service = s;
-        // WARNING: AddServiceCallbacks will call adbus_conn_addMatch which may cause
-        // match to be a dangling pointer
-        if (s->signalMatch == 0) {
-            AddServiceCallbacks(c, s);
-        }
-    }
-
-    return id;
+    adbusI_freeMatch(m);
 }
 
 // ----------------------------------------------------------------------------
 
-void adbus_conn_removematch(adbus_Connection* c, uint32_t id)
+void adbusI_freeMatch(adbus_ConnMatch* m)
 {
-    for (size_t i = 0; i < kv_size(c->registrations); ++i) {
-        if (kv_a(c->registrations, i).m.id == id) {
-            struct Match* match = &kv_a(c->registrations, i);
-            struct Service* s = match->service;
+    dil_remove(Match, m, &m->hl);
 
-            if (match->m.addMatchToBusDaemon) {
-                adbus_Caller f;
-                adbus_call_proxy(&f, c->bus, "RemoveMatch", -1);
-                adbus_msg_append(f.msg, "s", -1);
-
-                kstring_t* s = adbusI_matchString(&match->m);
-                adbus_msg_string(f.msg, ks_cstr(s), ks_size(s));
-                ks_free(s);
-
-                adbus_call_send(&f);
-            }
-
-            adbusI_freeMatchData(match);
-            kv_remove(Match, c->registrations, i, 1);
-
-            // Remove the service after removing the match - as removing the
-            // service will remove more matches
-            if (s) {
-                UnrefService(c, s);
-            }
-
-            return;
+    if (m->m.release[0]) {
+        if (m->m.relproxy) {
+            m->m.relproxy(m->m.relpuser, m->m.release[0], m->m.ruser[0]);
+        } else {
+            m->m.release[0](m->m.ruser[0]);
         }
     }
 
+    if (m->m.release[1]) {
+        if (m->m.relproxy) {
+            m->m.relproxy(m->m.relpuser, m->m.release[1], m->m.ruser[1]);
+        } else {
+            m->m.release[1](m->m.ruser[1]);
+        }
+    }
+
+    adbus_state_free(m->state);
+    adbus_proxy_free(m->proxy);
+    free((char*) m->m.sender);
+    free((char*) m->m.destination);
+    free((char*) m->m.interface);
+    free((char*) m->m.member);
+    free((char*) m->m.error);
+    free((char*) m->m.path);
+    for (size_t i = 0; i < m->m.argumentsSize; i++) {
+        free((char*) m->m.arguments[i].value);
+    }
+    free(m->m.arguments);
+    free(m);
 }
 
 // ----------------------------------------------------------------------------
 
-uint32_t adbus_conn_matchid(adbus_Connection* c)
+static adbus_Bool Matches(
+        const char*     matchstr,
+        size_t          matchsz,
+        const char*     msgstr,
+        size_t          msgsz)
 {
-    if (c->nextMatchId == UINT32_MAX)
-        c->nextSerial = 1;
-    return c->nextMatchId++;
+    // Should this field be ignored
+    if (!matchstr)
+        return 1;
+
+    // Does the message have this field
+    if (!msgstr)
+        return 0;
+
+    if (matchsz != msgsz)
+        return 0;
+
+    return memcmp(matchstr, msgstr, matchsz) == 0;
 }
 
+static adbus_Bool ArgsMatch(
+        adbus_Match*    match,
+        adbus_Message*  msg)
+{
+    if (msg->argumentsSize < match->argumentsSize)
+        return 0;
+
+    for (size_t i = 0; i < match->argumentsSize; i++) {
+        adbus_Argument* matcharg = &match->arguments[i];
+        adbus_Argument* msgarg = &msg->arguments[i];
+
+        if (!matcharg->value)
+            continue;
+
+        if (msgarg->value == NULL)
+            return 0;
+
+        if (msgarg->size != matcharg->size)
+            return 0;
+
+        if (memcmp(msgarg->value, matcharg->value, matcharg->size) != 0)
+            return 0;
+
+    }
+    return 1;
+}
+
+int adbusI_dispatchMatch(adbus_CbData* d)
+{
+    adbus_Connection* c = d->connection;
+    adbus_ConnMatch* m;
+    DIL_FOREACH(Match, m, &c->matches, hl) {
+
+        if (m->m.type != ADBUS_MSG_INVALID && d->msg->type != m->m.type) {
+            continue;
+        }
+
+        if (    m->m.replySerial >= 0
+            && (    !d->msg->replySerial 
+                ||  *d->msg->replySerial != m->m.replySerial))
+        {
+            continue;
+        }
+
+        if (    (m->service && !Matches(m->service->unique.str, m->service->unique.sz, d->msg->sender, d->msg->senderSize))
+            ||  !Matches(m->m.sender, m->m.senderSize, d->msg->sender, d->msg->senderSize)
+            ||  !Matches(m->m.destination, m->m.destinationSize, d->msg->destination, d->msg->destinationSize)
+            ||  !Matches(m->m.interface, m->m.interfaceSize, d->msg->interface, d->msg->interfaceSize)
+            ||  !Matches(m->m.path, m->m.pathSize, d->msg->path, d->msg->pathSize)
+            ||  !Matches(m->m.member, m->m.memberSize, d->msg->member, d->msg->memberSize)
+            ||  !Matches(m->m.error, m->m.errorSize, d->msg->error, d->msg->errorSize))
+        {
+            continue;
+        }
+
+        if (m->m.arguments) {
+            if (adbus_parseargs(d->msg))
+                return -1;
+            if (!ArgsMatch(&m->m, d->msg))
+                continue;
+        }
+
+        d->user1 = m->m.cuser;
+
+        if (m->m.proxy) {
+            return m->m.proxy(m->m.puser, m->m.callback, d);
+        } else {
+            return adbus_dispatch(m->m.callback, d);
+        }
+    }
+
+    return 0;
+}
 
 
