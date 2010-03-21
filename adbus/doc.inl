@@ -2,11 +2,14 @@
 
 /** \mainpage adbus
  *
+ *
  *  \section dbus About DBus the Protocol
  *
  *  \todo Give brief about dbus - for now see
  *  http://www.freedesktop.org/wiki/Software/dbus and
  *  http://doc.trolltech.com/4.6/intro-to-dbus.html
+ *
+ *
  *
  *  \section about About adbus
  *
@@ -34,6 +37,8 @@
  *  The multithreading support is incomplete and untested. For the moment
  *  being it would be unwise to use a connection on multiple threads, but this
  *  will be addressed soon.
+ *
+ *
  *  
  *  \section build Building
  *
@@ -48,7 +53,10 @@
  *
  *  To build adbus with tup:
  *  \code
- *  tup upd
+ *  git clone git://github.com/jmckaskill/adbus.git
+ *  cd adbus
+ *  ../tup/tup init
+ *  ../tup/tup upd
  *  \endcode
  *
  *  Building on other platforms or manually with gcc is fairly
@@ -60,9 +68,14 @@
  *
  *  For MSVC you will need the provided stdint.h in deps/msvc/stdint.h.
  *
+ *
+ *
+ *
  *  \section design Design
+ *
  *  The adbus API is composed of a number of modules centred around the major
  *  types. These modules can be grouped into 4 groups:
+ *
  *  -# Low level modules - This mainly deals with building/parsing messages
  *  and serialising/deserialising dbus data. This incudes:
  *      - adbus_Iterator - Iterator to deserialise dbus data.
@@ -95,6 +108,60 @@
  *      - \ref adbus_Misc - Miscellaneous functions
  *  -# Server API
  *      - adbus_Server - Simple single threaded dbus bus server.
+ *
+ *
+ *
+ *  \section Full Example
+ *
+ *  Example blocking BSD sockets main loop.
+ *
+ *  \code
+ *  static void SetupConnection(adbus_Connection* c)
+ *  {
+ *      // Do connection setup
+ *  }
+ *
+ *  static adbus_ssize_t SendMessage(void* user, adbus_Message* m)
+ *  { return send(*(adbus_Socket*) user, m->data, m->size, 0); }
+ *
+ *  # define RECV_SIZE 64 * 1024
+ *  int main(void)
+ *  {
+ *      adbus_Buffer* buffer;
+ *      adbus_Connection* connection;
+ *      adbus_Socket socket;
+ *      adbus_ConnectionCallbacks callbacks;
+ *
+ *      // Connect and authenticate
+ *      buffer = adbus_buf_new();
+ *      socket = adbus_sock_connect(ADBUS_DEFAULT_BUS);
+ *      if (socket == ADBUS_SOCK_INVALID || adbus_sock_cauth(socket, buffer))
+ *          return 1;
+ *
+ *      // Create and setup connection
+ *      memset(&callbacks, 0, sizeof(callbacks));
+ *      callbacks.send_message = &SendMessage;
+ *      connection = adbus_conn_new(&callbacks, &socket);
+ *      SetupConnection(connection);
+ *
+ *      // Connect to bus server
+ *      adbus_conn_connect(connection, NULL, NULL);
+ *
+ *      while (1) {
+ *          // Get the next chunk of data
+ *          char* dest = adbus_buf_recvbuf(buffer, RECV_SIZE);
+ *          adbus_ssize_t recvd = recv(socket, buffer, RECV_SIZE, 0);
+ *          adbus_buf_recvd(buffer, RECV_SIZE, recvd);
+ *
+ *          if (recvd < 0)
+ *              return 2;
+ *
+ *          // Dispatch received data
+ *          if (adbus_conn_parse(connection, buffer))
+ *              return 3;
+ *      }
+ *  }
+ *  \endcode
  *
  */
 
