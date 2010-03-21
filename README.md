@@ -105,9 +105,9 @@ and serialising/deserialising dbus data. This incudes:
     - adbus_Auth - Simple SASL implementation for both client and server
     side.
     - adbus_Signal - Helper for emitting signals from C.
-    - \ref adbus_Socket - Helper functions to create sockets using the BSD
+    - adbus_Socket - Helper functions to create sockets using the BSD
     sockets API.
-    - \ref adbus_Misc - Miscellaneous functions
+    - adbus_Misc - Miscellaneous functions
 4. Server API
     - adbus_Server - Simple single threaded dbus bus server.
 
