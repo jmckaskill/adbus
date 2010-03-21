@@ -98,7 +98,7 @@ and serialising/deserialising dbus data. This incudes:
     - adbus_CbData - Functions and data structure used for message
     callbacks.
 3. Client utilities
-    - adbus_State - Connection service management - \b strongly advised
+    - adbus_State - Connection service management - strongly advised
     when using the API directly.
     - adbus_Proxy - Proxy module to ease interacting with a specific
     remote object.
