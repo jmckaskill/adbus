@@ -324,7 +324,7 @@ ADBUS_API int adbus_cauth_start(adbus_Auth* a);
 
 ADBUS_API void adbus_auth_free(adbus_Auth* a);
 
-/* Returns -1 on error, 1 on completion, on 0 on continue */
+/* Returns -1 on error, 1 on completion, and 0 on continue */
 ADBUS_API int adbus_auth_parse(adbus_Auth* a, adbus_Buffer* buf);
 ADBUS_API int adbus_auth_line(adbus_Auth* a, const char* line, size_t len);
 
@@ -678,15 +678,15 @@ ADBUS_API void adbus_mbr_setsetter(
 #ifdef DOC
 ADBUS_INLINE int adbus_iter_align(adbus_Iterator* i, int alignment);
 ADBUS_INLINE int adbus_iter_alignfield(adbus_Iterator* i, char field);
-ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, adbus_Bool** v);
-ADBUS_INLINE int adbus_iter_u8(adbus_Iterator* i, uint8_t** v);
-ADBUS_INLINE int adbus_iter_i16(adbus_Iterator* i, int16_t** v);
-ADBUS_INLINE int adbus_iter_u16(adbus_Iterator* i, uint16_t** v);
-ADBUS_INLINE int adbus_iter_i32(adbus_Iterator* i, int32_t** v);
-ADBUS_INLINE int adbus_iter_u32(adbus_Iterator* i, uint32_t** v);
-ADBUS_INLINE int adbus_iter_i64(adbus_Iterator* i, int64_t** v);
-ADBUS_INLINE int adbus_iter_u64(adbus_Iterator* i, uint64_t** v);
-ADBUS_INLINE int adbus_iter_double(adbus_Iterator* i, double** v);
+ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, const adbus_Bool** v);
+ADBUS_INLINE int adbus_iter_u8(adbus_Iterator* i, const uint8_t** v);
+ADBUS_INLINE int adbus_iter_i16(adbus_Iterator* i, const int16_t** v);
+ADBUS_INLINE int adbus_iter_u16(adbus_Iterator* i, const uint16_t** v);
+ADBUS_INLINE int adbus_iter_i32(adbus_Iterator* i, const int32_t** v);
+ADBUS_INLINE int adbus_iter_u32(adbus_Iterator* i, const uint32_t** v);
+ADBUS_INLINE int adbus_iter_i64(adbus_Iterator* i, const int64_t** v);
+ADBUS_INLINE int adbus_iter_u64(adbus_Iterator* i, const uint64_t** v);
+ADBUS_INLINE int adbus_iter_double(adbus_Iterator* i, const double** v);
 ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** pstr, size_t* pstrsz);
 ADBUS_INLINE int adbus_iter_objectpath(adbus_Iterator* i, const char** str, size_t* strsz);
 ADBUS_INLINE int adbus_iter_signature(adbus_Iterator* i, const char** pstr, size_t* pstrsz);

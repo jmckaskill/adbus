@@ -1,3 +1,4 @@
 include_rules
 
-: *.c |> gcc -Os -Wall -fPIC -c %f -o %o $(CFLAGS_LUA)|> %B.o
+: foreach *.c |> !c99 |> %B.o
+

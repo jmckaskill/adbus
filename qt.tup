@@ -1,6 +1,6 @@
 # vim: set et sts=2 ts=2 sw=2 tw=78:
 
-QTDIR = @(ADBUS_QTDIR)
+QTDIR = @(QTDIR)
 
 MOC = $(QTDIR)/bin/moc
 RCC = $(QTDIR)/bin/rcc
@@ -26,7 +26,7 @@ LDFLAGS_QT_GUI      = -lQtGui
 LDFLAGS_QT_OPENGL   = -lQtOpenGL
 LDFLAGS_QT_XML      = -lQtXml
 
-!moc = |> ^ MOC %f^ $(MOC) %f -o %o $(MOCFLAGS) $(MOCFLAGS_%f)|>
+!moc = |> ^ MOC %f^ $(MOC) %f -o %o -nw $(MOCFLAGS) $(MOCFLAGS_%f)|>
 !rcc = |> ^ RCC %f^ $(RCC) %f -o %o $(RCCFLAGS) $(RCCFLAGS_%f)|>
 !uic = |> ^ UIC %f^ $(UIC) %f -o %o $(UICFLAGS) $(UICFLAGS_%f)|>
 !dbus_interface = |> ^ QDBUS INTERFACE %f^ $(QDBUSXML2CPP) %f -p %B_interface |>

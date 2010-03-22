@@ -8,13 +8,19 @@ local function test(t)
     local outputf = io.open("output.txt", "rb")
     local got = outputf:read("*a")
     outputf:close()
-    local expected = table.concat(t, '\n')
-    if output2 == output then
-        print("Pass:", t.sig)
+    local expected = table.concat(t, '\n') .. "\n"
+    if expected == got then
+        print("Test", t.sig, "PASS")
     else
-        print("Fail:", t.sig)
-        print("Expected:", expected)
-        print("Got:", got)
+        print("Test", t.sig, "FAIL")
+        print()
+        print("Expected")
+        print(expected)
+        print()
+        print("Got")
+        print(got)
+        print()
+        print()
     end
 end
 
@@ -35,6 +41,26 @@ test {
     "DATA 'q' 2",
     "ITER 'q' 0/2",
     "U16 0 258",
+    "ITER '' 2/0"
+}
+
+test {
+    cmd = 'n',
+    sig = 'n',
+    data = "\002\001",
+    "DATA 'n' 2",
+    "ITER 'n' 0/2",
+    "I16 0 258",
+    "ITER '' 2/0"
+}
+
+test {
+    cmd = 'n',
+    sig = 'n',
+    data = "\254\254",
+    "DATA 'n' 2",
+    "ITER 'n' 0/2",
+    "I16 0 -258",
     "ITER '' 2/0"
 }
 

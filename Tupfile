@@ -1,23 +1,41 @@
 include_rules
 
-LDFLAGS += -L. -Ldmem
+LD_QT = $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK) $(LDFLAGS_QT_XML)
 
-LDFLAGS_LuaXML_lib.so += -shared
-LDFLAGS_adbus.so += -shared
-LDFLAGS_adbuslua_core.so += -shared
-LDFLAGS_libQtDBus.so += -shared $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK) $(LDFLAGS_QT_XML)
-LDFLAGS_ex_bus_qt += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
-LDFLAGS_ex_client_qt += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
-LDFLAGS_ex_simpleqt += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
-LDFLAGS_ex_client_qt += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
-LDFLAGS_ex_simpleqt += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
-LDFLAGS_ex_qtdbus_ping += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
-LDFLAGS_ex_qtdbus_pong += $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK)
 
-: deps/LuaXML/*.o |> !ld |> LuaXML_lib.so
-: adbus/*.o dmem/lib.a |> !ld |> adbus.so
-: adbuslua/*.o adbus.so |> !ld |> adbuslua_core.so
-#: adbusqt/*.o adbus.so |> !ldpp |> libQtDBus.so
+
+# Libraries
+
+LDFLAGS_lua5.1.so    += -lm -lreadline
+LDFLAGS_libQtDBus.so += $(LD_QT)
+
+: deps/lua/src/lib_*.o |> !ld-so |> lua5.1.so
+: deps/LuaXML/*.o |> !ld-so |> LuaXML_lib.so
+: adbus/*.o dmem/lib.a |> !ld-so |> adbus.so
+: adbuslua/*.o adbus.so lua5.1.so |> !ld-so |> adbuslua_core.so
+#: adbusqt/*.o adbus.so |> !ldpp-so |> libQtDBus.so
+
+
+
+
+# Apps
+
+LDFLAGS_lua += -lm -lreadline
+: deps/lua/src/app_*.o deps/lua/src/lib_*.o |> !ld |> lua
+
+
+
+
+# Examples
+
+LDFLAGS_ex_bus_qt       += $(LD_QT)
+LDFLAGS_ex_client_qt    += $(LD_QT)
+LDFLAGS_ex_simpleqt     += $(LD_QT)
+LDFLAGS_ex_client_qt    += $(LD_QT)
+LDFLAGS_ex_simpleqt     += $(LD_QT)
+LDFLAGS_ex_qtdbus_ping  += $(LD_QT)
+LDFLAGS_ex_qtdbus_pong  += $(LD_QT)
+
 : example/bus-qt/*.o adbus.so |> !ldpp |> ex_bus_qt
 : example/client-qt/*.o adbus.so |> !ldpp |> ex_client_qt
 : example/simple/*.o adbus.so |> !ld |> ex_simple
