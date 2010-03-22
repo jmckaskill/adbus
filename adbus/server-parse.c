@@ -24,6 +24,7 @@
  */
 
 
+#define ADBUS_LIBRARY
 #include "server.h"
 #include <adbus.h>
 

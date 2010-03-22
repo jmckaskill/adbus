@@ -28,6 +28,10 @@
 
 #include "Server.h"
 
+#ifdef _MSC_VER
+#   pragma warning(disable:4127) // conditional expression is constant
+#endif
+
 class Thread : public EventLoop
 {
 public:
@@ -62,8 +66,8 @@ int main()
     Server s;
     s.Init(&t);
 
-    while (1) {
-        DWORD ret = WaitForMultipleObjects(t.handles.size(), &t.handles[0], FALSE, INFINITE);
+    while (true) {
+        DWORD ret = WaitForMultipleObjects((DWORD) t.handles.size(), &t.handles[0], FALSE, INFINITE);
         if (ret >= WAIT_OBJECT_0 + t.handles.size())
             abort();
 

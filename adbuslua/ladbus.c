@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define ADBUSLUA_LIBRARY
 #include <adbuslua.h>
 #include "internal.h"
 
@@ -102,7 +103,7 @@ int adbusluaI_intField(lua_State* L, int table, const char* field, int64_t* val)
 {
     lua_getfield(L, table, field);
     if (lua_isnumber(L, -1)) {
-        *val = lua_tonumber(L, -1);
+        *val = (int64_t) lua_tonumber(L, -1);
         lua_pop(L, 1);
         return 0;
     } else if (lua_isnil(L, -1)) {
@@ -121,7 +122,7 @@ int adbusluaI_stringField(lua_State* L, int table, const char* field, const char
     if (lua_isstring(L, -1)) {
         size_t size;
         *str = lua_tolstring(L, -1, &size);
-        *sz = size;
+        *sz = (int) size;
         lua_pop(L, 1);
         return 0;
     } else if (lua_isnil(L, -1)) {

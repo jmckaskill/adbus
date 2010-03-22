@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define ADBUS_LIBRARY
 #include <adbus.h>
 #include "message.h"
 #include "misc.h"
@@ -263,7 +264,7 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
     struct adbusI_Header header;
     header.endianness   = adbusI_nativeEndianness();
     header.type         = (uint8_t) m->messageType;
-    header.flags        = m->flags;
+    header.flags        = (uint8_t) m->flags;
     header.version      = adbusI_majorProtocolVersion;
     header.length       = adbus_buf_size(m->argbuf);
     header.serial       = (uint32_t) m->serial;
@@ -477,7 +478,7 @@ adbus_MessageType adbus_msg_type(const adbus_MsgFactory* m)
 /** Returns the current value of the message type field.
  *  \relates adbus_MsgFactory
  */
-uint8_t adbus_msg_flags(const adbus_MsgFactory* m)
+int adbus_msg_flags(const adbus_MsgFactory* m)
 {
     return m->flags;
 }
@@ -541,7 +542,7 @@ void adbus_msg_setserial(adbus_MsgFactory* m, uint32_t serial)
 /** Sets the message flags
  *  \relates adbus_MsgFactory
  */
-void adbus_msg_setflags(adbus_MsgFactory* m, uint8_t flags)
+void adbus_msg_setflags(adbus_MsgFactory* m, int flags)
 {
     m->flags = flags;
 }

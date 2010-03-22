@@ -1,4 +1,4 @@
-#error This file is only meant to be included only by doxygen.
+#error This file is only meant to be included by doxygen.
 
 /** \mainpage adbus
  *

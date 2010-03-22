@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define ADBUS_LIBRARY
 #include "misc.h"
 #include "dmem/vector.h"
 #include <adbus.h>

@@ -26,6 +26,9 @@
 #ifndef ADBUS_H
 #define ADBUS_H
 
+#define __STDC_LIMIT_MACROS
+#define __STDC_CONSTANT_MACROS
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <setjmp.h>
@@ -241,7 +244,7 @@ struct adbus_Message
     size_t                  argsize;
 
     adbus_MessageType       type;
-    uint8_t                 flags;
+    int                     flags;
     uint32_t                serial;
 
     const char*             signature;
@@ -828,14 +831,14 @@ ADBUS_API const char* adbus_msg_member(const adbus_MsgFactory* m, size_t* len);
 ADBUS_API const char* adbus_msg_error(const adbus_MsgFactory* m, size_t* len);
 
 ADBUS_API adbus_MessageType adbus_msg_type(const adbus_MsgFactory* m);
-ADBUS_API uint8_t  adbus_msg_flags(const adbus_MsgFactory* m);
-ADBUS_API int64_t  adbus_msg_serial(const adbus_MsgFactory* m);
+ADBUS_API int     adbus_msg_flags(const adbus_MsgFactory* m);
+ADBUS_API int64_t adbus_msg_serial(const adbus_MsgFactory* m);
 ADBUS_API adbus_Bool adbus_msg_reply(const adbus_MsgFactory* m, uint32_t* serial);
 
 
 ADBUS_API void adbus_msg_settype(adbus_MsgFactory* m, adbus_MessageType type);
 ADBUS_API void adbus_msg_setserial(adbus_MsgFactory* m, uint32_t serial);
-ADBUS_API void adbus_msg_setflags(adbus_MsgFactory* m, uint8_t flags);
+ADBUS_API void adbus_msg_setflags(adbus_MsgFactory* m, int flags);
 ADBUS_API void adbus_msg_setreply(adbus_MsgFactory* m, uint32_t reply);
 
 ADBUS_API void adbus_msg_setpath(adbus_MsgFactory* m, const char* str, int size);

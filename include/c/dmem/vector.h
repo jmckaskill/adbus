@@ -12,7 +12,7 @@
 #endif
 
 #ifdef NDEBUG
-#   define DV_MEMSET(p,x,s) do { (void) (p); (void) (x); (void) (s); }while(0)
+#   define DV_MEMSET(p,x,s)
 #else
 #   define DV_MEMSET(p,x,s) memset(p,x,s)
 #endif
@@ -37,6 +37,8 @@
     {                                                                       \
         type* end = v->data + v->size;                                      \
         type* allocend = v->data + v->alloc;                                \
+        (void) end;                                                         \
+        (void) allocend;                                                    \
         DV_MEMSET(end, '?', allocend - end);                                \
     }                                                                       \
     INLINE void dv_clear_##name(dv_##name##_t* v)                           \

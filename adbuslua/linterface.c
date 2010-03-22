@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define ADBUSLUA_LIBRARY
 #include <adbuslua.h>
 #include "internal.h"
 

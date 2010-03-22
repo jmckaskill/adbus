@@ -134,7 +134,7 @@ void Server::OnEvent(HANDLE event)
     if (events.lNetworkEvents & FD_ACCEPT) {
         SOCKET sock = accept(m_Socket, NULL, NULL);
         if (sock != INVALID_SOCKET) {
-            Remote* remote = new Remote(this, sock);
+            new Remote(this, sock);
         }
     }
 }
@@ -165,13 +165,13 @@ Remote::~Remote()
 adbus_ssize_t Remote::SendMsg(void* d, adbus_Message* m)
 {
     Remote* r = (Remote*) d;
-    return (adbus_ssize_t) send(r->m_Socket, m->data, m->size, 0);
+    return (adbus_ssize_t) send(r->m_Socket, m->data, (int) m->size, 0);
 }
 
 adbus_ssize_t Remote::Send(void* d, const char* b, size_t sz)
 {
     Remote* r = (Remote*) d;
-    return (adbus_ssize_t) send(r->m_Socket, b, sz, 0);
+    return (adbus_ssize_t) send(r->m_Socket, b, (int) sz, 0);
 }
 
 uint8_t Remote::Rand(void* d)

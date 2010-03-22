@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define ADBUS_LIBRARY
 #include <adbus.h>
 #include "interface.h"
 

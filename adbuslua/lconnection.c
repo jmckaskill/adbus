@@ -24,6 +24,7 @@
  */
 
 
+#define ADBUSLUA_LIBRARY
 #include <adbus.h>
 #include <adbuslua.h>
 #include "internal.h"
@@ -377,7 +378,7 @@ static int Bind(lua_State* L)
     adbus_Bind b;
     adbus_bind_init(&b);
     b.path        = path;
-    b.pathSize    = pathsz;
+    b.pathSize    = (int) pathsz;
     b.interface   = i;
     b.cuser2      = o;
     b.release[0]  = &ReleaseObject;
@@ -426,13 +427,13 @@ static void CollectError(adbus_CbData* d, lua_State* L, int errlist)
 {
     if (d)
         adbus_error(d, "nz.co.foobar.LuaError", -1, NULL, -1);
-    int errorlen = lua_objlen(L, errlist);
+    int errorlen = (int) lua_objlen(L, errlist);
     lua_rawseti(L, errlist, errorlen + 1);
 }
 
 static int ThrowError(lua_State* L, int errlist)
 {
-    int errorlen = lua_objlen(L, errlist);
+    int errorlen = (int) lua_objlen(L, errlist);
     int top = lua_gettop(L);
     lua_checkstack(L, 2 * errorlen + 2);
     lua_pushstring(L, "The following errors were collected in callbacks:");

@@ -36,7 +36,7 @@ struct adbus_MsgFactory
 
     // Base header
     adbus_MessageType     messageType;
-    uint8_t               flags;
+    int                   flags;
     int64_t               serial;
     size_t                argumentOffset;
 

@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define ADBUSLUA_LIBRARY
 #include <adbuslua.h>
 #include "internal.h"
 #include "dmem/string.h"
@@ -236,6 +237,10 @@ static int AppendMap(
 static const char kBooleanArg[] = "Expected boolean argument";
 static const char kNumberArg[] = "Expected number argument";
 static const char kStringArg[] = "Expected string argument";
+
+#ifdef _MSC_VER
+# pragma warning(disable:4244) // conversion from 'lua_Number' to *
+#endif
 
 int adbuslua_to_argument(
         lua_State*          L,
