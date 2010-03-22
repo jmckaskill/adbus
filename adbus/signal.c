@@ -24,8 +24,6 @@
  */
 
 #define ADBUS_LIBRARY
-#include <adbus.h>
-
 #include "misc.h"
 #include "interface.h"
 

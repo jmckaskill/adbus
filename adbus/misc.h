@@ -25,6 +25,14 @@
 
 #pragma once
 
+#ifndef __STDC_LIMIT_MACROS
+#   define __STDC_LIMIT_MACROS
+#endif
+
+#ifndef __STDC_CONSTANT_MACROS
+#   define __STDC_CONSTANT_MACROS
+#endif
+
 #include <adbus.h>
 
 #include "dmem/hash.h"

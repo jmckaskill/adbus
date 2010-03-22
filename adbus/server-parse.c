@@ -26,7 +26,6 @@
 
 #define ADBUS_LIBRARY
 #include "server.h"
-#include <adbus.h>
 
 /* -------------------------------------------------------------------------- */
 static void InitBuffer(adbus_Buffer* b)

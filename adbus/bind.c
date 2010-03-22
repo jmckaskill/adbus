@@ -24,11 +24,8 @@
  */
 
 #define ADBUS_LIBRARY
-#include <adbus.h>
-
 #include "connection.h"
 #include "interface.h"
-#include "misc.h"
 
 /** \struct adbus_Bind
  *  \brief Data structure used to bind interfaces to a particular path.

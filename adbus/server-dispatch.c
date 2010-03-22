@@ -25,7 +25,6 @@
 
 #define ADBUS_LIBRARY
 #include "server.h"
-#include <stdio.h>
 
 /* -------------------------------------------------------------------------- */
 static adbus_Bool StringMatches(

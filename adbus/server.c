@@ -25,7 +25,6 @@
 
 #define ADBUS_LIBRARY
 #include "server.h"
-#include "misc.h"
 
 /** \struct adbus_Server
  *  \brief Bus server

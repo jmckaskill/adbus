@@ -25,7 +25,6 @@
 
 #define ADBUS_LIBRARY
 #include "misc.h"
-#include <adbus.h>
 
 /** Skip over a single complete type.
  * \relates adbus_Iterator

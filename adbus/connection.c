@@ -24,10 +24,8 @@
  */
 
 #define ADBUS_LIBRARY
-#include <adbus.h>
 #include "connection.h"
 #include "interface.h"
-#include "misc.h"
 #include "message.h"
 
 #include "dmem/vector.h"

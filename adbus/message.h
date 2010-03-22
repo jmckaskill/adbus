@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include <adbus.h>
 #include "misc.h"
 
 struct adbus_MsgFactory

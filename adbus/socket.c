@@ -24,7 +24,6 @@
  */
 
 #define ADBUS_LIBRARY
-#include <adbus.h>
 #include "misc.h"
 
 #ifdef _WIN32

@@ -25,7 +25,6 @@
 
 #define ADBUS_LIBRARY
 #include "connection.h"
-#include "misc.h"
 
 #include <string.h>
 

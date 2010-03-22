@@ -25,7 +25,6 @@
 
 #define ADBUS_LIBRARY
 #include "server.h"
-#include <adbus.h>
 
 /* -------------------------------------------------------------------------- */
 static int Hello(adbus_CbData* d)
