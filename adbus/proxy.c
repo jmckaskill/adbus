@@ -43,7 +43,7 @@
  *  be modified, freed, reset, etc without losing the original callbacks.
  *
  *  The user can optionally set the interface, but this is required for
- *  accessing properties and signals.
+ *  accessing properties.
  *
  *  \warning Only one adbus_Call can be active at a time.
  *  \warning The proxy can only be used from the creating thread and must be
@@ -166,9 +166,6 @@
  *  \endcode
  *
  *  \section signals Setting up Signal Matches
- *
- *  \note This requires that the interface be set with
- *  adbus_proxy_setinterface().
  *
  *  The proxy can also add signal matches through to the state for this remote
  *  object.
@@ -310,8 +307,6 @@ void adbus_proxy_signal(
         const char*         signal,
         int                 size)
 {
-    assert(ds_size(&p->interface) > 0);
-
     m->type                 = ADBUS_MSG_SIGNAL;
     m->addMatchToBusDaemon  = 1;
     m->member               = signal;
@@ -320,8 +315,11 @@ void adbus_proxy_signal(
     m->senderSize           = ds_size(&p->service);
     m->path                 = ds_cstr(&p->path);
     m->pathSize             = ds_size(&p->path);
-    m->interface            = ds_cstr(&p->interface);
-    m->interfaceSize        = ds_size(&p->interface);
+
+    if (ds_size(&p->interface) > 0) {
+        m->interface            = ds_cstr(&p->interface);
+        m->interfaceSize        = ds_size(&p->interface);
+    }
 
     adbus_state_addmatch(p->state, p->connection, m);
 }

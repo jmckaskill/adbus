@@ -279,12 +279,7 @@
         ADBUSCPP_NOT_COPYABLE(NUM(Signal));
     public:
         NUM(Signal)(adbus_Member* mbr) : m_Signal(adbus_sig_new(mbr))
-        {
-            std::string& signature = m_Sig;
-            // signature += adbus_type_string((A0*) NULL);
-            APPEND_SIGS;
-            (void) signature;
-        }
+        {}
 
         ~NUM(Signal)() 
         { adbus_sig_free(m_Signal); }
@@ -307,7 +302,6 @@
 
             Buffer b;
             b.b = adbus_msg_argbuffer(m);
-            adbus_buf_appendsig(b, m_Sig.c_str(), (int) m_Sig.size());
 
             // a0 >> b; ...
             APPEND_ARGS;
@@ -323,7 +317,6 @@
 
     private:
         adbus_Signal* m_Signal;
-        std::string   m_Sig;
     };
 
 

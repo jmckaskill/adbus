@@ -60,13 +60,13 @@ QtClient::~QtClient()
 adbus_ssize_t QtClient::SendMsg(void* d, adbus_Message* m)
 {
     QtClient* c = (QtClient*) d;
-    return (adbus_ssize_t) c->m_Socket->write(m->data, m->size);
+    return c->m_Socket ? (adbus_ssize_t) c->m_Socket->write(m->data, m->size) : -1;
 }
 
 adbus_ssize_t QtClient::Send(void* d, const char* b, size_t sz)
 {
     QtClient* c = (QtClient*) d;
-    return (adbus_ssize_t) c->m_Socket->write(b, sz);
+    return c->m_Socket ? (adbus_ssize_t) c->m_Socket->write(b, sz) : -1;
 }
 
 uint8_t QtClient::Rand(void* d)

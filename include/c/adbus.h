@@ -26,9 +26,6 @@
 #ifndef ADBUS_H
 #define ADBUS_H
 
-#define __STDC_LIMIT_MACROS
-#define __STDC_CONSTANT_MACROS
-
 #include <stdint.h>
 #include <stdlib.h>
 #include <setjmp.h>

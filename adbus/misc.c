@@ -23,6 +23,14 @@
  * ----------------------------------------------------------------------------
  */
 
+#ifndef __STDC_LIMIT_MACROS
+#define __STDC_LIMIT_MACROS
+#endif
+
+#ifndef __STDC_CONSTANT_MACROS
+#define __STDC_CONSTANT_MACROS
+#endif
+
 #define ADBUS_LIBRARY
 #include <adbus.h>
 #include "misc.h"
