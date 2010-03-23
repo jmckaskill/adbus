@@ -25,55 +25,37 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
+DVECTOR_INIT(ServiceQueue, adbusI_ServiceQueue*);
 
-
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+struct adbus_Remote
 {
-    /** \privatesection */
-    volatile long               ref;
+    d_List(Remote)          hl;
 
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
+    adbus_Server*           server;
+    d_String                unique;
 
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
+    adbus_SendMsgCallback   send;
+    void*                   data;
 
-    d_IList(Bind)               binds;
+    adbusI_ServerMatchList  matches;
 
-    d_Hash(ServiceLookup)       services;
+    // The first message on connecting a new remote needs to be a method call
+    // to "Hello" on the bus, if not we kick the connection
+    adbus_Bool              haveHello;
 
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    // Only use from the service queue code
+    d_Vector(ServiceQueue)  services;
 };
 
+struct adbusI_RemoteSet
+{
+    d_Hash(Remote)          lookup;
+    unsigned int            nextRemote;
+};
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
-
-
-
+ADBUSI_FUNC adbus_Remote* adbusI_serv_remote(adbusI_RemoteSet* s, const char* name, size_t sz);
+ADBUSI_FUNC adbus_Remote* adbusI_serv_createRemote(adbus_Server* s, adbus_SendMsgCallback send, void* data, const char* unique, adbus_Bool needhello);
+ADBUS_API adbus_Remote* adbus_serv_connect(adbus_Server* s,adbus_SendMsgCallback send, void* data);
+ADBUS_API void adbus_remote_disconnect(adbus_Remote* r);

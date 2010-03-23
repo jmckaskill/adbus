@@ -25,55 +25,42 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
+DILIST_INIT(Reply, adbus_ConnReply);
 
-
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+struct adbus_ConnReply
 {
-    /** \privatesection */
-    volatile long               ref;
+    d_IList(Reply)              hl;
 
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
+    adbusI_ReplySet*            set;
 
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
+    adbusI_TrackedRemote*       remote;
+    uint32_t                    serial;
 
-    d_IList(Bind)               binds;
+    adbus_MsgCallback           callback;
+    void*                       cuser;
 
-    d_Hash(ServiceLookup)       services;
+    adbus_MsgCallback           error;
+    void*                       euser;
 
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
+    adbus_ProxyMsgCallback      proxy;
+    void*                       puser;
 
-    adbus_Callback              connectCallback;
-    void*                       connectData;
+    adbus_Callback              release[2];
+    void*                       ruser[2];
 
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    adbus_ProxyCallback         relproxy;
+    void*                       relpuser;
 };
 
+DHASH_MAP_INIT_UINT32(Reply, adbus_ConnReply*);
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
+struct adbusI_ReplySet
+{
+    d_IList(Reply)              list;
+    d_Hash(Reply)               lookup;
+};
 
-
-
+ADBUSI_FUNC void adbusI_freeReply(adbus_ConnReply* reply);
+ADBUSI_FUNC int adbusI_dispatchReply(adbusI_ReplySet* r, adbus_CbData* d);

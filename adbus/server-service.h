@@ -25,55 +25,36 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
-
-
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+struct adbusI_ServiceOwner
 {
-    /** \privatesection */
-    volatile long               ref;
-
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
-
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
-
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    adbus_Remote*           remote;
+    adbus_Bool              allowReplacement;
+    adbus_Bool              reserved;
 };
 
+DVECTOR_INIT(ServiceOwner, adbusI_ServiceOwner);
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
+DHASH_MAP_INIT_STR(ServiceQueue, adbusI_ServiceQueue*);
 
+struct adbusI_ServiceQueue
+{
+    // The owner is the head [0] of the queue
+    d_Vector(ServiceOwner)  v;
+    char*                   name;
+};
+
+struct adbusI_ServiceQueueSet
+{
+    adbusI_BusServer*       busServer;
+    d_Hash(ServiceQueue)    queues;
+};
+
+ADBUSI_FUNC void adbusI_initServiceQueue(adbusI_ServiceQueueSet* s, adbusI_BusServer* bus);
+ADBUSI_FUNC void adbusI_freeServiceQueue(adbusI_ServiceQueueSet* s);
+ADBUSI_FUNC int adbusI_requestService(adbusI_ServiceQueueSet* s, adbus_Remote* r, const char* name, uint32_t flags);
+ADBUSI_FUNC int adbusI_releaseService(adbusI_ServiceQueueSet* s, adbus_Remote* r, const char* name);
+ADBUSI_FUNC adbus_Remote* adbusI_lookupRemote(adbusI_ServiceQueueSet* s, const char* name);
 
 

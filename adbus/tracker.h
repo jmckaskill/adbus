@@ -25,55 +25,33 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
-
-
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+struct adbusI_TrackedRemote
 {
-    /** \privatesection */
-    volatile long               ref;
+    adbusI_RemoteTracker*   tracker;
+    int                     ref;
+    dh_strsz_t              service;
+    dh_strsz_t              unique;
+};
 
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
+ADBUSI_FUNC void adbusI_refTrackedRemote(adbusI_TrackedRemote* r);
+ADBUSI_FUNC void adbusI_derefTrackedRemote(adbusI_TrackedRemote* r);
 
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
+DHASH_MAP_INIT_STRSZ(Tracked, adbusI_TrackedRemote*);
 
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+struct adbusI_RemoteTracker
+{
+    adbus_Connection*       connection;
+    d_Hash(Tracked)         remotes;
 };
 
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
+// Tracked remote comes pre-refed
+ADBUSI_FUNC adbusI_TrackedRemote* adbusI_getTrackedRemote(
+        adbusI_RemoteTracker* t,
+        const char*           service,
+        int                   size);
 
-
-
+ADBUSI_FUNC void adbusI_initRemoteTracker(adbusI_RemoteTracker* t, adbus_Connection* c);
+ADBUSI_FUNC void adbusI_freeRemoteTracker(adbusI_RemoteTracker* t);

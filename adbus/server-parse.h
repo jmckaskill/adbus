@@ -25,55 +25,25 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
-
-
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+enum adbusI_ServerParseState
 {
-    /** \privatesection */
-    volatile long               ref;
-
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
-
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
-
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    PARSE_BEGIN,
+    PARSE_HEADER,
+    PARSE_DATA,
 };
 
+struct adbusI_ServerParser
+{
+    adbusI_ServerParseState parseState;
+    adbus_Buffer*           msg;
+    adbus_Buffer*           dispatch;
+    adbus_Bool              native;
+    size_t                  headerSize;
+    size_t                  msgSize;
+    size_t                  parsedMsgSize;
+};
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
-
-
-
+ADBUS_API int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m);
+ADBUS_API int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* buf);

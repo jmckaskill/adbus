@@ -25,55 +25,28 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
+/* The match lookup is simply a linked list of matches which we run through
+ * checking the message against each match. Every message runs through this
+ * list.
+ */
 
+DILIST_INIT(Match, adbus_ConnMatch);
 
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+struct adbus_ConnMatch
 {
-    /** \privatesection */
-    volatile long               ref;
-
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
-
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
-
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    d_IList(Match)          hl;
+    adbus_Match             m;
+    adbus_State*            state;
+    adbus_Proxy*            proxy;
+    adbusI_TrackedRemote*   sender;
 };
 
+struct adbusI_ConnMatchList
+{
+    d_IList(Match)          matches;
+};
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
-
-
-
+ADBUSI_FUNC void adbusI_freeMatch(adbus_ConnMatch* m);
+ADBUSI_FUNC int adbusI_dispatchMatch(adbusI_MatchSet* s, adbus_CbData* d);

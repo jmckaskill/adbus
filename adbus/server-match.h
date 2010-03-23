@@ -25,55 +25,21 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
-
-
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
+struct adbusI_ServerMatch
 {
-    /** \privatesection */
-    volatile long               ref;
-
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
-
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
-
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    d_List(Match)           hl;
+    adbus_Match             m;
 };
 
+struct adbusI_ServerMatchList
+{
+    d_IList(Match)          list;
+};
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
-
-
+ADBUSI_FUNC int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);
+ADBUSI_FUNC int adbusI_serv_removeMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);
+ADBUSI_FUNC void adbusI_serv_freeMatches(adbusI_ServerMatchList* list);
+ADBUSI_FUNC adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list);
 

@@ -35,103 +35,6 @@
 
 
 
-
-
-static adbus_LogCallback sLog;
-void adbus_set_logger(adbus_LogCallback cb)
-{ sLog = cb; }
-
-int adbusI_log_enabled()
-{ return sLog != 0; }
-
-void adbusI_klog(d_String* log)
-{ 
-    if (sLog)
-        sLog(ds_cstr(log), ds_size(log)); 
-}
-
-void adbusI_dolog(const char* format, ...)
-{
-    if (!sLog)
-        return;
-
-    d_String log;
-    ZERO(&log);
-
-    va_list ap;
-    va_start(ap, format);
-    ds_cat_vf(&log, format, ap);
-    va_end(ap);
-
-    adbusI_klog(&log);
-
-    ds_free(&log);
-}
-
-#ifdef _WIN32
-#   define alloca _alloca
-#endif
-
-void adbusI_addheader(d_String* str, const char* format, ...)
-{
-    size_t begin = ds_size(str);
-    va_list ap;
-    va_start(ap, format);
-    ds_insert_vf(str, 0, format, ap);
-    va_end(ap);
-
-    size_t hsize = ds_size(str) - begin;
-    char* spaces = (char*) alloca(hsize);
-    memset(spaces, ' ', hsize);
-
-    size_t i = 0;
-    while (i < ds_size(str) - 1) { // we don't care about the last char being a '\n'
-        if (ds_a(str, i) == '\n') {
-            ds_insert_n(str, i + 1, spaces, hsize);
-        }
-        ++i;
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-static const char sRequiredAlignment[256] =
-{
-    /*  0 \0*/ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 10 \n*/ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 20 SP*/ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 30 RS*/ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 40 ( */ 8, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 50 2 */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 60 < */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 70 F */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 80 P */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /* 90 Z */ 0, 0, 0, 0, 0,    0, 0, 4, 4, 0,
-    /*100 d */ 8, 0, 0, 1, 0,    4, 0, 0, 0, 0,
-    /*110 n */ 2, 4, 0, 2, 0,    4, 8, 4, 1, 0,
-    /*120 x */ 8, 1, 0, 8, 0,    0, 0, 0, 0, 0,
-    /*130   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*140   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*150   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*160   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*170   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*180   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*190   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*200   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*210   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*220   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*230   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*240   */ 0, 0, 0, 0, 0,    0, 0, 0, 0, 0,
-    /*250   */ 0, 0, 0, 0, 0,    0
-};
-
-
-int adbusI_alignment(char ch)
-{
-    assert(sRequiredAlignment[(int)ch] > 0);
-    return sRequiredAlignment[ch & 0x7F];
-}
-
 // ----------------------------------------------------------------------------
 
 char adbusI_nativeEndianness(void)
@@ -318,109 +221,6 @@ adbus_Bool adbusI_isValidMemberName(const char* str, size_t len)
 
 // ----------------------------------------------------------------------------
 
-adbus_Bool adbusI_hasNullByte(const char* str, size_t len)
-{
-    return memchr(str, '\0', len) != NULL;
-}
-
-// ----------------------------------------------------------------------------
-
-#if 0
-adbus_Bool adbusI_isValidUtf8(const char* str, size_t len)
-{
-    if (!str)
-        return 1;
-    const char* s = str;
-    const char* end = str + len;
-    while (s < end)
-    {
-        if (s[0] < 0x80)
-        {
-            // 1 byte sequence (US-ASCII)
-            s += 1;
-        }
-        else if (s[0] < 0xC0)
-        {
-            // Multi-byte data without start
-            return 0;
-        }
-        else if (s[0] < 0xE0)
-        {
-            // 2 byte sequence
-            if (end - s < 2)
-                return 0;
-
-            // Check the continuation bytes
-            if (!(0x80 <= s[1] && s[1] < 0xC0))
-                return 0;
-
-            // Check for overlong encoding
-            // 0x80 -> 0xC2 0x80
-            if (s[0] < 0xC2)
-                return 0;
-
-            s += 2;
-        }
-        else if (s[0] < 0xF0)
-        {
-            // 3 byte sequence
-            if (end - s < 3)
-                return 0;
-
-            // Check the continuation bytes
-            if (!(  0x80 <= s[1] && s[1] < 0xC0
-                        && 0x80 <= s[2] && s[2] < 0xC0))
-                return 0;
-
-            // Check for overlong encoding
-            // 0x08 00 -> 0xE0 A0 90
-            if (s[0] == 0xE0 && s[1] < 0xA0)
-                return 0;
-
-            // Code points [0xD800, 0xE000) are invalid
-            // (UTF16 surrogate characters)
-            // 0xD8 00 -> 0xED A0 80
-            // 0xDF FF -> 0xED BF BF
-            // 0xE0 00 -> 0xEE 80 80
-            if (s[0] == 0xED && s[1] >= 0xA0)
-                return 0;
-
-            s += 3;
-        }
-        else if (s[0] < 0xF5)
-        {
-            // 4 byte sequence
-            if (end - s < 4)
-                return 0;
-
-            // Check the continuation bytes
-            if (!(  0x80 <= s[1] && s[1] < 0xC0
-                        && 0x80 <= s[2] && s[2] < 0xC0
-                        && 0x80 <= s[3] && s[3] < 0xC0))
-                return 0;
-
-            // Check for overlong encoding
-            // 0x01 00 00 -> 0xF0 90 80 80
-            if (s[0] == 0xF0 && s[1] < 0x90)
-                return 0;
-
-            s += 4;
-        }
-        else
-        {
-            // 4 byte above 0x10FFFF, 5 byte, and 6 byte sequences
-            // restricted by RFC 3639
-            // 0xFE-0xFF invalid
-            return 0;
-        }
-    }
-
-    return s == end ? 1 : 0;
-}
-#endif
-
-// ----------------------------------------------------------------------------
-
 const char* adbus_nextarg(const char* sig)
 {
     switch(*sig)
@@ -519,13 +319,15 @@ void adbusI_parentPath(
         dh_strsz_t  path,
         dh_strsz_t* parent)
 {
-    // Path should have already been sanitised so double /'s should not happen
 #ifndef NDEBUG
-    d_String sanitised;
-    ZERO(&sanitised);
-    adbusI_relativePath(&sanitised, path.str, path.sz, NULL, 0);
-    assert(ds_cmp_n(&sanitised, path.str, path.sz) == 0);
-    ds_free(&sanitised);
+    {
+        // Path should have already been sanitised so double /'s should not happen
+        d_String sanitised;
+        ZERO(&sanitised);
+        adbusI_relativePath(&sanitised, path.str, path.sz, NULL, 0);
+        assert(ds_cmp_n(&sanitised, path.str, path.sz) == 0);
+        ds_free(&sanitised);
+    }
 #endif
 
     int size = path.sz - 1;
@@ -603,111 +405,4 @@ void adbusI_matchString(d_String* s, const adbus_Match* m)
     if (ds_size(s) > 0)
         ds_remove_end(s, 1);
 }
-
-// ----------------------------------------------------------------------------
-
-int adbus_error_argument(adbus_CbData* d)
-{
-    if (d->msg->interface) {
-        return adbus_errorf(
-                d,
-                "nz.co.foobar.adbus.InvalidArgument",
-                "Invalid argument to the method '%s.%s' on %s",
-                d->msg->interface,
-                d->msg->member,
-                d->msg->path);
-    } else {
-        return adbus_errorf(
-                d,
-                "nz.co.foobar.adbus.InvalidArgument",
-                "Invalid argument to the method '%s' on %s",
-                d->msg->member,
-                d->msg->path);
-    }
-}
-
-int adbusI_pathError(adbus_CbData* d)
-{
-    return adbus_errorf(
-            d,
-            "nz.co.foobar.adbus.InvalidPath",
-            "The path '%s' does not exist.",
-            d->msg->path);
-}
-
-int adbusI_interfaceError(adbus_CbData* d)
-{
-    return adbus_errorf(
-            d,
-            "nz.co.foobar.adbus.InvalidInterface",
-            "The path '%s' does not export the interface '%s'.",
-            d->msg->path,
-            d->msg->interface,
-            d->msg->member);
-}
-
-int adbusI_methodError(adbus_CbData* d)
-{
-    if (d->msg->interface) {
-        return adbus_errorf(
-                d,
-                "nz.co.foobar.adbus.InvalidMethod",
-                "The path '%s' does not export the method '%s.%s'.",
-                d->msg->path,
-                d->msg->interface,
-                d->msg->member);
-    } else {
-        return adbus_errorf(
-                d,
-                "nz.co.foobar.adbus.InvalidMethod",
-                "The path '%s' does not export the method '%s'.",
-                d->msg->path,
-                d->msg->member);
-    }
-}
-
-int adbusI_propertyError(adbus_CbData* d)
-{
-    return adbus_errorf(
-            d,
-            "nz.co.foobar.adbus.InvalidProperty",
-            "The path '%s' does not export the property '%s.%s'.",
-            d->msg->path,
-            d->msg->interface,
-            d->msg->member);
-}
-
-int adbusI_propWriteError(adbus_CbData* d)
-{
-    return adbus_errorf(
-            d,
-            "nz.co.foobar.adbus.ReadOnlyProperty",
-            "The property '%s.%s' on '%s' is read only.",
-            d->msg->interface,
-            d->msg->member,
-            d->msg->path);
-}
-
-int adbusI_propReadError(adbus_CbData* d)
-{
-    return adbus_errorf(
-            d,
-            "nz.co.foobar.adbus.WriteOnlyProperty",
-            "The property '%s.%s' on '%s' is write only.",
-            d->msg->interface,
-            d->msg->member,
-            d->msg->path);
-}
-
-int adbusI_propTypeError(adbus_CbData* d)
-{ 
-    return adbus_errorf(
-            d,
-            "nz.co.foobar.adbus.InvalidPropertyType",
-            "Incorrect property type for '%s.%s' on %s.",
-            d->msg->interface,
-            d->msg->member,
-            d->msg->path);
-}
-
 

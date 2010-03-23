@@ -63,41 +63,14 @@ static int DispatchMsg(adbus_Remote* r, adbus_Buffer* b)
         adbusI_logmsg("dispatch", m);
     }
 
-    adbus_Server* s = r->server;
-
-    // If we haven't yet gotten a hello, we only accept a method call to the
-    // hello method. This needs:
-    // type     - method call
-    // dest     - null or "org.freedesktop.DBus"
-    // iface    - null or "org.freedesktop.DBus"
-    // path     - "/" or "/org/freedesktop/DBus"
-    // member   - "Hello"
-    // The arguments will be checked in the callback
-    if (!r->haveHello) {
-        if (m->type != ADBUS_MSG_METHOD)
-            return -1;
-        if (m->destination && strcmp(m->destination, "org.freedesktop.DBus") != 0)
-            return -1;
-        if (m->interface && strcmp(m->interface, "org.freedesktop.DBus") != 0)
-            return -1;
-        if (m->path == NULL || (strcmp(m->path, "/") != 0 && strcmp(m->path, "/org/freedesktop/DBus") != 0))
-            return -1;
-        if (m->member == NULL || strcmp(m->member, "Hello") != 0)
-            return -1;
-
-        assert(s->helloRemote == NULL);
-        s->helloRemote = r;
-    }
-
-    int ret = adbusI_serv_dispatch(r->server, m);
-
-    free(m->arguments);
-    adbus_buf_reset(b);
-
-    s->helloRemote   = NULL;
     r->msgSize       = 0;
     r->headerSize    = 0;
     r->parsedMsgSize = 0;
+
+    int ret = adbusI_serv_dispatch(r->server, r, m);
+
+    adbus_freeargs(m);
+    adbus_buf_reset(b);
 
     return ret;
 }

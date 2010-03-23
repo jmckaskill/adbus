@@ -257,6 +257,112 @@ int adbus_error(
     return 0;
 }
 
+// ----------------------------------------------------------------------------
+
+int adbus_error_argument(adbus_CbData* d)
+{
+    if (d->msg->interface) {
+        return adbus_errorf(
+                d,
+                "nz.co.foobar.adbus.InvalidArgument",
+                "Invalid argument to the method '%s.%s' on %s",
+                d->msg->interface,
+                d->msg->member,
+                d->msg->path);
+    } else {
+        return adbus_errorf(
+                d,
+                "nz.co.foobar.adbus.InvalidArgument",
+                "Invalid argument to the method '%s' on %s",
+                d->msg->member,
+                d->msg->path);
+    }
+}
+
+int adbusI_pathError(adbus_CbData* d)
+{
+    return adbus_errorf(
+            d,
+            "nz.co.foobar.adbus.InvalidPath",
+            "The path '%s' does not exist.",
+            d->msg->path);
+}
+
+int adbusI_interfaceError(adbus_CbData* d)
+{
+    return adbus_errorf(
+            d,
+            "nz.co.foobar.adbus.InvalidInterface",
+            "The path '%s' does not export the interface '%s'.",
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
+}
+
+int adbusI_methodError(adbus_CbData* d)
+{
+    if (d->msg->interface) {
+        return adbus_errorf(
+                d,
+                "nz.co.foobar.adbus.InvalidMethod",
+                "The path '%s' does not export the method '%s.%s'.",
+                d->msg->path,
+                d->msg->interface,
+                d->msg->member);
+    } else {
+        return adbus_errorf(
+                d,
+                "nz.co.foobar.adbus.InvalidMethod",
+                "The path '%s' does not export the method '%s'.",
+                d->msg->path,
+                d->msg->member);
+    }
+}
+
+int adbusI_propertyError(adbus_CbData* d)
+{
+    return adbus_errorf(
+            d,
+            "nz.co.foobar.adbus.InvalidProperty",
+            "The path '%s' does not export the property '%s.%s'.",
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
+}
+
+int adbusI_propWriteError(adbus_CbData* d)
+{
+    return adbus_errorf(
+            d,
+            "nz.co.foobar.adbus.ReadOnlyProperty",
+            "The property '%s.%s' on '%s' is read only.",
+            d->msg->interface,
+            d->msg->member,
+            d->msg->path);
+}
+
+int adbusI_propReadError(adbus_CbData* d)
+{
+    return adbus_errorf(
+            d,
+            "nz.co.foobar.adbus.WriteOnlyProperty",
+            "The property '%s.%s' on '%s' is write only.",
+            d->msg->interface,
+            d->msg->member,
+            d->msg->path);
+}
+
+int adbusI_propTypeError(adbus_CbData* d)
+{ 
+    return adbus_errorf(
+            d,
+            "nz.co.foobar.adbus.InvalidPropertyType",
+            "Incorrect property type for '%s.%s' on %s.",
+            d->msg->interface,
+            d->msg->member,
+            d->msg->path);
+}
+
 
 
 

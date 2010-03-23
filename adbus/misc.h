@@ -260,13 +260,12 @@ enum
 #   define min(x,y) (((y) < (x)) ? (y) : (x))
 #endif
 
-#define CHECK(x) if (!(x)) {assert(0); return -1;}
-
-#define ASSERT_RETURN(x) assert(x); if (!(x)) return;
-
 #ifdef _GNU_SOURCE
 #   define adbusI_strndup strndup
 #   define adbusI_strdup  strdup
+#elif _MSC_VER
+#   define strndup _strndup
+#   define strdup  _strdup
 #else
     static inline char* adbusI_strndup(const char* string, size_t n)
     {
@@ -306,21 +305,11 @@ enum
 ADBUSI_FUNC adbus_Bool adbusI_isValidObjectPath(const char* str, size_t len);
 ADBUSI_FUNC adbus_Bool adbusI_isValidInterfaceName(const char* str, size_t len);
 ADBUSI_FUNC adbus_Bool adbusI_isValidBusName(const char* str, size_t len);
-ADBUSI_FUNC adbus_Bool adbusI_isValidMemberName(const char* str, size_t len);
-ADBUSI_FUNC adbus_Bool adbusI_hasNullByte(const char* str, size_t len);
-ADBUSI_FUNC adbus_Bool adbusI_isValidUtf8(const char* str, size_t len);
 
 // ----------------------------------------------------------------------------
 
 ADBUSI_FUNC int adbusI_dispatch(adbus_MsgCallback cb, adbus_CbData* details);
 
-ADBUSI_FUNC int adbusI_pathError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_interfaceError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_methodError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propertyError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propWriteError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propReadError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propTypeError(adbus_CbData* d);
 
 // ----------------------------------------------------------------------------
 
@@ -329,9 +318,4 @@ ADBUSI_FUNC void adbusI_relativePath(d_String* out, const char* path1, int size1
 ADBUSI_FUNC void adbusI_parentPath(dh_strsz_t path, dh_strsz_t* parent);
 
 ADBUSI_FUNC void adbusI_matchString(d_String* out, const adbus_Match* match);
-
-ADBUSI_FUNC void adbusI_logmsg(const char* header, const adbus_Message* msg);
-ADBUSI_FUNC void adbusI_logbind(const char* header, const adbus_Bind* bind);
-ADBUSI_FUNC void adbusI_logmatch(const char* header, const adbus_Match* match);
-ADBUSI_FUNC void adbusI_logreply(const char* header, const adbus_Reply* reply);
 

@@ -237,12 +237,10 @@ static int MsgSummary(d_String* str, const adbus_Message* m)
 
 void adbusI_logmsg(const char* header, const adbus_Message* msg)
 {
-    if (!adbusI_log_enabled())
-        return;
     d_String str;
     ZERO(&str);
+    ds_cat_f("%s ", &str, header);
     MsgSummary(&str, msg);
-    adbusI_addheader(&str, "%-10s ", header);
     adbusI_klog(&str);
     ds_free(&str);
 }
@@ -294,8 +292,6 @@ static void BindString(d_String* s, const adbus_Bind* b)
 
 void adbusI_logbind(const char* header, const adbus_Bind* b)
 {
-    if (!adbusI_log_enabled())
-        return;
     d_String str;
     ZERO(&str);
     BindString(&str, b);
@@ -343,13 +339,11 @@ static void MatchString(d_String* s, const adbus_Match* m)
 
 void adbusI_logmatch(const char* header, const adbus_Match* m)
 {
-    if (!adbusI_log_enabled())
-        return;
     d_String str;
     ZERO(&str);
+    ds_cat_f(&str, "%s ", header);
     MatchString(&str, m);
-    adbusI_addheader(&str, "%-10s ", header);
-    adbusI_klog(&str);
+    Log(&str);
     ds_free(&str);
 }
 
@@ -371,13 +365,16 @@ static void ReplyString(d_String* s, const adbus_Reply* r)
 
 void adbusI_logreply(const char* header, const adbus_Reply* r)
 {
-    if (!adbusI_log_enabled())
-        return;
     d_String str;
     ZERO(&str);
+    ds_cat_f(&str, "%s ", header);
     ReplyString(&str, r);
-    adbusI_addheader(&str, "%-10s ", header);
-    adbusI_klog(&str);
+    Log(&str);
     ds_free(&str);
 }
 
+/* -------------------------------------------------------------------------- */
+
+void adbusI_log(const char* format, ...)
+{
+}

@@ -170,40 +170,104 @@
 	<References>
 	</References>
 	<Files>
-		<File
-			RelativePath="..\include\c\adbus-iterator.h"
+		<Filter
+			Name="dmem"
 			>
-		</File>
-		<File
-			RelativePath="..\include\c\adbus.h"
+			<File
+				RelativePath="..\include\c\dmem\common.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\dmem\hash.h"
+				>
+			</File>
+			<File
+				RelativePath="..\dmem\istring.c"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\dmem\istring.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\dmem\list.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\dmem\queue.h"
+				>
+			</File>
+			<File
+				RelativePath="..\dmem\string.c"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\dmem\string.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\dmem\vector.h"
+				>
+			</File>
+		</Filter>
+		<Filter
+			Name="includes"
 			>
-		</File>
-		<File
-			RelativePath="..\include\c\adbuscpp-include.h"
-			>
-		</File>
-		<File
-			RelativePath="..\include\c\adbuscpp-multi.h"
-			>
-		</File>
-		<File
-			RelativePath="..\include\c\adbuscpp.h"
-			>
-		</File>
+			<File
+				RelativePath="..\include\c\adbus-iterator.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\adbus.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\adbuscpp-include.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\adbuscpp-multi.h"
+				>
+			</File>
+			<File
+				RelativePath="..\include\c\adbuscpp.h"
+				>
+			</File>
+		</Filter>
 		<File
 			RelativePath=".\auth.c"
 			>
 		</File>
 		<File
-			RelativePath=".\bind.c"
+			RelativePath=".\buffer.c"
 			>
 		</File>
 		<File
-			RelativePath=".\bus.c"
+			RelativePath=".\client-bind.c"
 			>
 		</File>
 		<File
-			RelativePath=".\client-service.c"
+			RelativePath=".\client-bind.h"
+			>
+		</File>
+		<File
+			RelativePath=".\client-bus.c"
+			>
+		</File>
+		<File
+			RelativePath=".\client-match.c"
+			>
+		</File>
+		<File
+			RelativePath=".\client-match.h"
+			>
+		</File>
+		<File
+			RelativePath=".\client-reply.c"
+			>
+		</File>
+		<File
+			RelativePath=".\client-reply.h"
 			>
 		</File>
 		<File
@@ -219,6 +283,10 @@
 			>
 		</File>
 		<File
+			RelativePath=".\debug.h"
+			>
+		</File>
+		<File
 			RelativePath=".\doc.inl"
 			>
 		</File>
@@ -231,11 +299,11 @@
 			>
 		</File>
 		<File
-			RelativePath="..\dmem\istring.c"
+			RelativePath=".\internal.h"
 			>
 		</File>
 		<File
-			RelativePath=".\match.c"
+			RelativePath=".\iterator.c"
 			>
 		</File>
 		<File
@@ -248,6 +316,10 @@
 		</File>
 		<File
 			RelativePath=".\messages.c"
+			>
+		</File>
+		<File
+			RelativePath=".\messages.h"
 			>
 		</File>
 		<File
@@ -267,27 +339,43 @@
 			>
 		</File>
 		<File
-			RelativePath=".\rbuffer.c"
-			>
-		</File>
-		<File
-			RelativePath=".\reply.c"
-			>
-		</File>
-		<File
-			RelativePath=".\riterator.c"
-			>
-		</File>
-		<File
 			RelativePath=".\server-bus.c"
 			>
 		</File>
 		<File
-			RelativePath=".\server-dispatch.c"
+			RelativePath=".\server-bus.h"
+			>
+		</File>
+		<File
+			RelativePath=".\server-match.c"
+			>
+		</File>
+		<File
+			RelativePath=".\server-match.h"
 			>
 		</File>
 		<File
 			RelativePath=".\server-parse.c"
+			>
+		</File>
+		<File
+			RelativePath=".\server-parse.h"
+			>
+		</File>
+		<File
+			RelativePath=".\server-remote.c"
+			>
+		</File>
+		<File
+			RelativePath=".\server-remote.h"
+			>
+		</File>
+		<File
+			RelativePath=".\server-service.c"
+			>
+		</File>
+		<File
+			RelativePath=".\server-service.h"
 			>
 		</File>
 		<File
@@ -319,11 +407,11 @@
 			>
 		</File>
 		<File
-			RelativePath="..\deps\msvc\stdint.h"
+			RelativePath=".\tracker.c"
 			>
 		</File>
 		<File
-			RelativePath="..\dmem\string.c"
+			RelativePath=".\tracker.h"
 			>
 		</File>
 	</Files>

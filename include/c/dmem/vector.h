@@ -101,7 +101,7 @@
         v->size -= num;                                                     \
         dv_shred_##name(v);                                                 \
     }                                                                       \
-    INLINE void dv_remove_##name(dv_##name##_t* v,                          \
+    INLINE void dv_erase_##name(dv_##name##_t* v,                           \
                                  size_t index,                              \
                                  size_t num)                                \
     {                                                                       \
@@ -113,7 +113,8 @@
             memmove(b, e, numafter * sizeof(type));                         \
         v->size -= num;                                                     \
         dv_shred_##name(v);                                                 \
-    }
+    }                                                                       \
+
 
 #define d_Vector(name)                      dv_##name##_t
 #define dv_init(name, pvec)                 dv_init_##name(pvec)
@@ -124,7 +125,28 @@
 #define dv_push(name, pvec, num)            dv_push_##name(pvec, num)
 #define dv_pop(name, pvec, num)             dv_pop_##name(pvec, num)
 #define dv_insert(name, pvec, index, num)   dv_insert_##name(pvec, index, num)
-#define dv_remove(name, pvec, index, num)   dv_remove_##name(pvec, index, num)
+#define dv_erase(name, pvec, index, num)    dv_erase_##name(pvec, index, num)
+
+#define dv_remove(name, pvec, value)                                        \
+    do {                                                                    \
+        for (size_t i = 0; i < dv_size(pvec);) {                            \
+            if (dv_a(pvec, i) == value) {                                   \
+                dv_erase(name, pvec, i, 1);                                 \
+            } else {                                                        \
+                i++;                                                        \
+            }                                                               \
+        }                                                                   \
+    } while (0)
+
+#define dv_find(pvec, result, test)                                         \
+    do {                                                                    \
+        for (size_t i = 0; i < dv_size(pvec); i++) {                        \
+            if (test) {                                                     \
+                *result = &dv_a(pvec, i);                                   \
+                break;                                                      \
+            }                                                               \
+        }                                                                   \
+    } while (0)
 
 #define dv_size(pvec)       ((pvec)->size)
 #define dv_a(pvec, index)   ((pvec)->data[index])

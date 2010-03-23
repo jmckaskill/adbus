@@ -25,55 +25,18 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
 
+ADBUSI_DATA adbus_LogCallback sLogFunction;
 
+ADBUSI_FUNC int adbusI_logmsg(const char* header, const adbus_Message* msg);
+ADBUSI_FUNC int adbusI_logbind(const char* header, const adbus_Bind* bind);
+ADBUSI_FUNC int adbusI_logmatch(const char* header, const adbus_Match* match);
+ADBUSI_FUNC int adbusI_logreply(const char* header, const adbus_Reply* reply);
+ADBUSI_FUNC int adbusI_log(const char* format, ...);
 
-DVECTOR_INIT(char, char);
-
-struct adbus_Connection
-{
-    /** \privatesection */
-    volatile long               ref;
-
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
-
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
-
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
-
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
-
-    adbus_State*                state;
-    adbus_Proxy*                bus;
-
-    adbus_Interface*            introspectable;
-    adbus_Interface*            properties;
-
-    d_Vector(char)              parseBuffer;
-    adbus_MsgFactory*           returnMessage;
-};
-
-
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
-
-
-
+#define ADBUSI_LOG_MSG(header, msg)     (sLogFunction && adbusI_logmsg(header, msg))
+#define ADBUSI_LOG_BIND(header, bind)   (sLogFunction && adbusI_logbind(header, bind))
+#define ADBUSI_LOG_MATCH(header, match) (sLogFunction && adbusI_logmatch(header, match))
+#define ADBUSI_LOG_REPLY(header, reply) (sLogFunction && adbusI_logreply(header, reply))
+#define ADBUSI_LOG                      sLogFunction && adbusI_log
