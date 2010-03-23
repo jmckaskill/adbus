@@ -104,8 +104,8 @@ static int Send(lua_State* L)
 
     size_t size;
     const char* data = luaL_checklstring(L, 2, &size);
-    adbus_ssize_t sent = send(*s, data, (int) size, 0);
-    if (sent != (adbus_ssize_t) size) {
+    int sent = (int) send(*s, data, (int) size, 0);
+    if (sent != (int) size) {
         Close(L);
         return luaL_error(L, "Send error");
     }

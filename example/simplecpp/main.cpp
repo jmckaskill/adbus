@@ -33,8 +33,8 @@
 #   include <sys/socket.h>
 #endif
 
-static adbus_ssize_t Send(void* d, adbus_Message* m)
-{ return send(*(adbus_Socket*) d, m->data, m->size, 0); }
+static int Send(void* d, adbus_Message* m)
+{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
 
 
 class Quitter : public adbus::State
@@ -85,7 +85,7 @@ int main()
 
     while(!q.m_Quit) {
         char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
-        adbus_ssize_t recvd = recv(s, dest, RECV_SIZE, 0);
+        int recvd = recv(s, dest, RECV_SIZE, 0);
         adbus_buf_recvd(buf, RECV_SIZE, recvd);
         if (recvd < 0)
             abort();

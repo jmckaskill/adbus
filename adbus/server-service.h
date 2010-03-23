@@ -34,13 +34,13 @@ struct adbusI_ServiceOwner
     adbus_Bool              reserved;
 };
 
-DVECTOR_INIT(ServiceOwner, adbusI_ServiceOwner);
+DVECTOR_INIT(ServiceOwner, adbusI_ServiceOwner)
 
-DHASH_MAP_INIT_STR(ServiceQueue, adbusI_ServiceQueue*);
+DHASH_MAP_INIT_STR(ServiceQueue, adbusI_ServiceQueue*)
 
 struct adbusI_ServiceQueue
 {
-    // The owner is the head [0] of the queue
+    /* The owner is the head [0] of the queue */
     d_Vector(ServiceOwner)  v;
     char*                   name;
 };

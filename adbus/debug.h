@@ -35,8 +35,8 @@ ADBUSI_FUNC int adbusI_logmatch(const char* header, const adbus_Match* match);
 ADBUSI_FUNC int adbusI_logreply(const char* header, const adbus_Reply* reply);
 ADBUSI_FUNC int adbusI_log(const char* format, ...);
 
-#define ADBUSI_LOG_MSG(header, msg)     (sLogFunction && adbusI_logmsg(header, msg))
-#define ADBUSI_LOG_BIND(header, bind)   (sLogFunction && adbusI_logbind(header, bind))
-#define ADBUSI_LOG_MATCH(header, match) (sLogFunction && adbusI_logmatch(header, match))
-#define ADBUSI_LOG_REPLY(header, reply) (sLogFunction && adbusI_logreply(header, reply))
-#define ADBUSI_LOG                      sLogFunction && adbusI_log
+#define ADBUSI_LOG_MSG(header, msg)     if (!sLogFunction) {} else adbusI_logmsg(header, msg)
+#define ADBUSI_LOG_BIND(header, bind)   if (!sLogFunction) {} else adbusI_logbind(header, bind)
+#define ADBUSI_LOG_MATCH(header, match) if (!sLogFunction) {} else adbusI_logmatch(header, match)
+#define ADBUSI_LOG_REPLY(header, reply) if (!sLogFunction) {} else adbusI_logreply(header, reply)
+#define ADBUSI_LOG                      if (!sLogFunction) {} else adbusI_log

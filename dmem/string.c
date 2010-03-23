@@ -79,7 +79,7 @@ int ds_insert_vf(d_String* s, size_t index, const char* format, va_list ap)
     } else {
         size_t beg = index + nchars;
         size_t end = index + 128;
-        dv_remove(dstring, s, beg, end - beg);
+        dv_erase(dstring, s, beg, end - beg);
     }
 
     dv_a(s, index + nchars) = after;

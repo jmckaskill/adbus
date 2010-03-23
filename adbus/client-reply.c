@@ -23,10 +23,9 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
+#include "client-reply.h"
 #include "connection.h"
-#include "misc.h"
-#include "stdio.h"
+
 /** \struct adbus_Reply
  *  \brief Data structure to register for return and error messages from a
  *  method call.
@@ -167,7 +166,7 @@
  */
 
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Initialise an adbus_Reply structure.
  *  \relates adbus_Reply
@@ -175,10 +174,11 @@
 void adbus_reply_init(adbus_Reply* r)
 {
     memset(r, 0, sizeof(adbus_Reply));
+    r->serial = -1;
     r->remoteSize = -1;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Registers a reply with the connection.
  *  \relates adbus_Connection
@@ -190,55 +190,24 @@ adbus_ConnReply* adbus_conn_addreply(
         adbus_Connection*       c,
         const adbus_Reply*      reg)
 {
-    if (ADBUS_TRACE_REPLY) {
-        adbusI_logreply("add reply", reg);
-    }
-
-    dh_strsz_t name = {
-        reg->remote,
-        (reg->remoteSize >= 0 ? (size_t) reg->remoteSize : strlen(reg->remote)),
-    };
-
-    assert(reg->callback);
-
-    if (name.sz == 0)
-        return NULL;
-
-    // Lookup the service
-
-    struct ServiceLookup* service = adbusI_lookupService(c, name.str, name.sz);
-    if (service && service->unique.str) {
-        name = service->unique;
-    }
-
-    // Lookup the remote
-
-    struct Remote* remote = NULL;
-    int added = 0;
-    dh_Iter ii = dh_put(Remote, &c->remotes, name, &added);
-    if (added) {
-        remote              = NEW(struct Remote);
-        remote->connection  = c;
-        remote->name.str    = adbusI_strndup(name.str, name.sz);
-        remote->name.sz     = name.sz;
-
-        dh_key(&c->remotes, ii) = remote->name;
-        dh_val(&c->remotes, ii) = remote;
-
-    } else {
-        remote = dh_val(&c->remotes, ii);
-    }
-
-    // Lookup the reply
-
+    int added;
+    dh_Iter ii;
+    adbusI_TrackedRemote* remote;
+    adbus_ConnReply* reply;
     uint32_t serial = (uint32_t) reg->serial;
-    dh_Iter jj = dh_put(Reply, &remote->replies, serial, &added);
-    if (!added) {
-        assert(0);
-        return NULL;
-    }
 
-    adbus_ConnReply* reply  = NEW(adbus_ConnReply);
+    ADBUSI_LOG_REPLY("Add reply", reg);
+
+    assert(reg->serial >= 0);
+    assert(reg->remote);
+
+    remote = adbusI_getTrackedRemote(c, reg->remote, reg->remoteSize);
+    ii = dh_put(Reply, &c->replies.lookup, serial, &added);
+
+    assert(!added && remote);
+
+    reply                   = NEW(adbus_ConnReply);
+    reply->set              = &c->replies;
     reply->remote           = remote;
     reply->serial           = serial;
     reply->callback         = reg->callback;
@@ -254,32 +223,31 @@ adbus_ConnReply* adbus_conn_addreply(
     reply->relproxy         = reg->relproxy;
     reply->relpuser         = reg->relpuser;
 
-    dh_key(&remote->replies, jj) = serial;
-    dh_val(&remote->replies, jj) = reply;
+    dh_key(&c->replies.lookup, ii) = serial;
+    dh_val(&c->replies.lookup, ii) = reply;
 
-    dil_insert_after(Reply, &c->replies, reply, &reply->fl);
+    dil_insert_after(Reply, &c->replies.list, reply, &reply->hl);
 
     return reply;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-void adbusI_freeReply(adbus_ConnReply* r)
+static void FreeReply(adbus_ConnReply* r)
 {
-    // Disconnect from remote
-    if (r->remote) {
-        d_Hash(Reply)* h = &r->remote->replies;
+    /* Disconnect from hash table */
+    if (r->set) {
+        d_Hash(Reply)* h = &r->set->lookup;
         dh_Iter ii = dh_get(Reply, h, r->serial);
         if (ii != dh_end(h)) {
             dh_del(Reply, h, ii);
         }
-
-        // See if we need to free the remote
-        if (dh_size(h) == 0) {
-            adbusI_freeRemote(r->remote);
-        }
     }
 
+    /* Disconnect from list */
+    dil_remove(Reply, r, &r->hl);
+
+    /* Call release callbacks */
     if (r->release[0]) {
         if (r->relproxy) {
             r->relproxy(r->relpuser, r->release[0], r->ruser[0]);
@@ -296,41 +264,24 @@ void adbusI_freeReply(adbus_ConnReply* r)
         }
     }
 
-    dil_remove(Reply, r, &r->fl);
+    /* Free data */
+    adbusI_derefTrackedRemote(r->remote);
     free(r);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-void adbusI_freeRemote(struct Remote* r)
+void adbusI_freeReplies(adbus_Connection* c)
 {
-    // Disconnect from connection
-    if (r->connection) {
-        d_Hash(Remote)* rh = &r->connection->remotes;
-        dh_Iter ri = dh_get(Remote, rh, r->name);
-        if (ri != dh_end(rh)) {
-            dh_del(Remote, rh, ri);
-        }
+    adbus_ConnReply* r;
+    dh_clear(Reply, &c->replies.lookup);
+    DIL_FOREACH (Reply, r, &c->replies.list, hl) {
+        r->set = NULL;
+        FreeReply(r);
     }
-    
-    // Disconnect from replies - These are freed either by the caller or
-    // in adbus_conn_free as they might need to run the release callbacks
-    d_Hash(Reply)* h = &r->replies;
-    if (dh_size(h) > 0) {
-        for (dh_Iter ri = dh_begin(h); ri != dh_end(h); ri++) {
-            if (dh_exist(h, ri)) {
-                adbus_ConnReply* reply = dh_val(h, ri);
-                reply->remote = NULL;
-            }
-        }
-    }
-
-    dh_free(Reply, &r->replies);
-    free((char*) r->name.str);
-    free(r);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Unregisters a reply from the connection.
  *  \relates adbus_Connection
@@ -349,14 +300,18 @@ void adbus_conn_removereply(
         adbus_ConnReply*        reply)
 {
     UNUSED(c);
-    adbusI_freeReply(reply);
+    FreeReply(reply);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-int adbusI_dispatchReply(adbus_CbData* d)
+int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
 {
-    adbus_Connection* c = d->connection;
+    int ret;
+    dh_Iter ii;
+    uint32_t serial;
+    adbus_ConnReply *reply, *reply2;
+    adbus_MsgCallback cb = NULL;
 
     if (    (   d->msg->type != ADBUS_MSG_RETURN
             &&  d->msg->type != ADBUS_MSG_ERROR)
@@ -366,39 +321,27 @@ int adbusI_dispatchReply(adbus_CbData* d)
         return 0;
     }
 
-    dh_strsz_t sender = {d->msg->sender, d->msg->senderSize};
+    /* Lookup the reply */
 
-    // Lookup the remote
-
-    dh_Iter ii = dh_get(Remote, &c->remotes, sender);
-    if (ii == dh_end(&c->remotes))
+    serial = *d->msg->replySerial;
+    ii = dh_get(Reply, &c->replies.lookup, serial);
+    if (ii == dh_end(&c->replies.lookup))
         return 0;
 
-    struct Remote* remote = dh_val(&c->remotes, ii);
+    reply = dh_val(&c->replies.lookup, ii);
 
-    // Lookup the reply
+    /* Remove the reply from the lookup hash table. FreeReply does this if
+     * reply->set is still set, but we do it now, since we know ii and the
+     * callback may invalidate ii.
+     */
+    dh_del(Reply, &c->replies.lookup, ii);
+    reply->set = NULL;
 
-    uint32_t serial = *d->msg->replySerial;
-    dh_Iter jj = dh_get(Reply, &remote->replies, serial);
-    if (jj == dh_end(&remote->replies))
-        return 0;
+    /* Set the list iterator so we can detect if the callback removes the
+     * reply
+     */
+    dil_setiter(&c->replies.list, reply);
 
-    adbus_ConnReply* reply = dh_val(&remote->replies, jj);
-    dil_setiter(&c->replies, reply);
-
-    // This is all done by adbusI_freeReply, but we do it here first
-    // since we have already looked up ii and jj
-    assert(reply->remote == remote);
-    reply->remote = NULL;
-    dh_del(Reply, &remote->replies, jj);
-    if (dh_size(&remote->replies) == 0) {
-        remote->connection = NULL;
-        dh_del(Remote, &c->remotes, ii);
-        adbusI_freeRemote(remote);
-    }
-
-
-    adbus_MsgCallback cb = NULL;
     if (d->msg->type == ADBUS_MSG_RETURN && reply->callback) {
         d->user1 = reply->cuser;
         cb = reply->callback;
@@ -407,20 +350,22 @@ int adbusI_dispatchReply(adbus_CbData* d)
         cb = reply->error;
     }
 
-    int ret;
-    if (reply->proxy) {
-        ret = reply->proxy(reply->puser, cb, d);
-    } else {
-        ret = adbus_dispatch(cb, d);
+    if (cb) {
+        if (reply->proxy) {
+            ret = reply->proxy(reply->puser, cb, d);
+        } else {
+            ret = adbus_dispatch(cb, d);
+        }
     }
 
-    // Re-get the reply out to see if we need to remove it (the callback may
-    // have already done this)
-    adbus_ConnReply* reply2 = dil_getiter(&c->replies);
-    dil_setiter(&c->replies, NULL);
+    /* Re-get the reply out to see if we need to remove it (the callback may
+     * have already done this)
+     */
+    reply2 = dil_getiter(&c->replies.list);
+    dil_setiter(&c->replies.list, NULL);
 
     if (reply == reply2) {
-        adbusI_freeReply(reply);
+        FreeReply(reply);
     }
 
     return ret;

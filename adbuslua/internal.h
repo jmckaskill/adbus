@@ -99,6 +99,6 @@ IFUNC int adbusluaI_method(adbus_CbData* d);
 IFUNC int adbusluaI_getproperty(adbus_CbData* d);
 IFUNC int adbusluaI_setproperty(adbus_CbData* d);
 IFUNC void adbusluaI_connect(void* u);
-IFUNC adbus_ssize_t adbusluaI_send(void* u, adbus_Message* msg);
+IFUNC int adbusluaI_send(void* u, adbus_Message* msg);
 
 

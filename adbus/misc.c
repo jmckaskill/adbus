@@ -304,13 +304,13 @@ void adbusI_relativePath(
     // Remove repeating slashes
     for (size_t i = 1; i < ds_size(out); ++i) {
         if (ds_a(out, i) == '/' && ds_a(out, i-1) == '/') {
-            ds_remove(out, i, 1);
+            ds_erase(out, i, 1);
         }
     }
 
     // Remove trailing /
     if (ds_size(out) > 1 && ds_a(out, ds_size(out) - 1) == '/')
-        ds_remove_end(out, 1);
+        ds_erase_end(out, 1);
 }
 
 // ----------------------------------------------------------------------------
@@ -403,6 +403,85 @@ void adbusI_matchString(d_String* s, const adbus_Match* m)
 
     // Remove the trailing ','
     if (ds_size(s) > 0)
-        ds_remove_end(s, 1);
+        ds_erase_end(s, 1);
+}
+
+/* -------------------------------------------------------------------------- */
+
+static adbus_Bool StringMatches(
+        const char* match,
+        size_t      matchsz,
+        const char* msg,
+        size_t      msgsz)
+{
+    if (!match)
+        return 1;
+
+    if (!msg)
+        return 0;
+
+    if (matchsz != msgsz)
+        return 0;
+
+    return memcmp(match, msg, msgsz) == 0;
+}
+
+
+static adbus_Bool ArgsMatch(
+        struct Match*   match,
+        adbus_Message*  msg)
+{
+    if (match->argumentsSize == 0)
+        return 1;
+
+    if (adbus_parseargs(msg))
+        return 0;
+
+    if (msg->argumentsSize < match->argumentsSize)
+        return 0;
+
+    for (size_t i = 0; i < match->argumentsSize; i++) {
+        adbus_Argument* matcharg = &match->arguments[i];
+        adbus_Argument* msgarg = &msg->arguments[i];
+
+        if (!matcharg->value)
+            continue;
+
+        if (msgarg->value == NULL)
+            return 0;
+
+        if (msgarg->size != matcharg->size)
+            return 0;
+
+        if (memcmp(msgarg->value, matcharg->value, matcharg->size) != 0)
+            return 0;
+
+    }
+    return 1;
+}
+
+adbus_Bool adbusI_matchesMessage(const adbus_Match* match, adbus_Message* msg)
+{
+    if (match->type == ADBUS_MSG_INVALID && match->type != msg->type) {
+        return 0;
+    } else if (match->replySerial >= 0 && (!msg->replySerial || (uint32_t) match->replySerial != *msg->replySerial)) {
+        return 0;
+    } else if (!StringMatches(match->path, match->pathSize, msg->path, msg->pathSize)) {
+        return 0;
+    } else if (!StringMatches(match->interface, match->interfaceSize, msg->interface, msg->interfaceSize)) {
+        return 0;
+    } else if (!StringMatches(match->member, match->memberSize, msg->member, msg->memberSize)) {
+        return 0;
+    } else if (!StringMatches(match->error, match->errorSize, msg->error, msg->errorSize)) {
+        return 0;
+    } else if (!StringMatches(match->destination, match->destinationSize, msg->destination, msg->destinationSize)) {
+        return 0;
+    } else if (!StringMatches(match->sender, match->senderSize, msg->sender, msg->senderSize)) {
+        return 0;
+    } else if (!ArgsMatches(match, msg))
+        return 0;
+    } else {
+        return 1;
+    }
 }
 

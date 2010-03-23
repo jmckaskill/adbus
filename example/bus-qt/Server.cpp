@@ -121,16 +121,16 @@ Remote::~Remote()
     delete m_Socket;
 }
 
-adbus_ssize_t Remote::SendMsg(void* d, adbus_Message* m)
+int Remote::SendMsg(void* d, adbus_Message* m)
 {
     Remote* c = (Remote*) d;
-    return (adbus_ssize_t) c->m_Socket->write(m->data, m->size);
+    return c->m_Socket->write(m->data, m->size);
 }
 
-adbus_ssize_t Remote::Send(void* d, const char* b, size_t sz)
+int Remote::Send(void* d, const char* b, size_t sz)
 {
     Remote* c = (Remote*) d;
-    return (adbus_ssize_t) c->m_Socket->write(b, sz);
+    return c->m_Socket->write(b, sz);
 }
 
 uint8_t Remote::Rand(void* d)

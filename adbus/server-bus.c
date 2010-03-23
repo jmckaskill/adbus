@@ -24,24 +24,25 @@
  */
 
 #include "server.h"
+#include "misc.h"
 
 /* -------------------------------------------------------------------------- */
 static int Hello(adbus_CbData* d)
 {
-    adbus_check_end(d);
-
     adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = s->lastCaller;
+    adbus_Remote* r = adbus_serv_caller(s);
+
+    adbus_check_end(d);
 
     if (r->haveHello) {
         return adbus_error(d, "nz.co.foobar.adbus.AlreadyHaveHello", -1, NULL, -1);
     }
 
     r->haveHello = 1;
-    adbusI_serv_requestname(s, r, d->msg->sender, 0);
+    adbusI_requestService(&s->services, r, ds_cstr(&r->unique), 0);
 
     if (d->ret) {
-        adbus_msg_string(d->ret, d->msg->sender, -1);
+        adbus_msg_string(d->ret, ds_cstr(&r->unique), ds_size(&r->unique));
     }
 
     return 0;
@@ -50,18 +51,19 @@ static int Hello(adbus_CbData* d)
 /* -------------------------------------------------------------------------- */
 static int RequestName(adbus_CbData* d)
 {
+    int ret;
+    adbus_Server* s = (adbus_Server*) d->user2;
+    adbus_Remote* r = adbus_serv_caller(s);
+
     const char* name = adbus_check_string(d, NULL);
     uint32_t flags   = adbus_check_u32(d);
     adbus_check_end(d);
-
-    adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = adbusI_serv_remote(s, d->msg->sender);
 
     if (name[0] == ':' || !adbusI_isValidBusName(name, strlen(name))) {
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    int ret = adbusI_serv_requestname(s, r, name, flags);
+    ret = adbusI_requestService(&s->services, r, name, flags);
     if (d->ret) {
         adbus_msg_u32(d->ret, ret);
     }
@@ -72,17 +74,18 @@ static int RequestName(adbus_CbData* d)
 /* -------------------------------------------------------------------------- */
 static int ReleaseName(adbus_CbData* d)
 {
+    int ret;
+    adbus_Server* s = (adbus_Server*) d->user2;
+    adbus_Remote* r = adbus_serv_caller(s);
+
     const char* name = adbus_check_string(d, NULL);
     adbus_check_end(d);
-
-    adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = adbusI_serv_remote(s, d->msg->sender);
 
     if (name[0] == ':' || !adbusI_isValidBusName(name, strlen(name))) {
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    int ret = adbusI_serv_releasename(s, r, name);
+    ret = adbusI_releaseService(&s->services, r, name);
     if (d->ret) {
         adbus_msg_u32(d->ret, ret);
     }
@@ -93,19 +96,21 @@ static int ReleaseName(adbus_CbData* d)
 /* -------------------------------------------------------------------------- */
 static int ListNames(adbus_CbData* d)
 {
-    adbus_check_end(d);
-
     adbus_Server* s = (adbus_Server*) d->user2;
+
+    adbus_check_end(d);
 
     if (d->ret) {
         adbus_BufArray a;
-        adbus_msg_beginarray(d->ret, &a);
         dh_Iter ii;
-        for (ii = dh_begin(&s->services); ii != dh_end(&s->services); ii++) {
-            if (dh_exist(&s->services, ii)) {
-                struct Service* serv = dh_val(&s->services, ii);
+        d_Hash(ServiceQueue)* h = &s->services.queues;
+
+        adbus_msg_beginarray(d->ret, &a);
+        for (ii = dh_begin(h); ii != dh_end(h); ii++) {
+            if (dh_exist(h, ii)) {
+                adbusI_ServiceQueue* queue = dh_val(h, ii);
                 adbus_msg_arrayentry(d->ret, &a);
-                adbus_msg_string(d->ret, serv->name, -1);
+                adbus_msg_string(d->ret, queue->name, -1);
             }
         }
         adbus_msg_endarray(d->ret, &a);
@@ -117,11 +122,13 @@ static int ListNames(adbus_CbData* d)
 /* -------------------------------------------------------------------------- */
 static int NameHasOwner(adbus_CbData* d)
 {
+    adbus_Server* s = (adbus_Server*) d->user2;
+    adbus_Remote* r;
+
     const char* name = adbus_check_string(d, NULL);
     adbus_check_end(d);
 
-    adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = adbusI_serv_remote(s, name);
+    r = adbusI_lookupRemote(&s->services, name);
 
     if (d->ret) {
         adbus_msg_bool(d->ret, r != NULL);
@@ -133,11 +140,13 @@ static int NameHasOwner(adbus_CbData* d)
 /* -------------------------------------------------------------------------- */
 static int GetNameOwner(adbus_CbData* d)
 {
+    adbus_Server* s = (adbus_Server*) d->user2;
+    adbus_Remote* r;
+
     const char* name = adbus_check_string(d, NULL);
     adbus_check_end(d);
 
-    adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = adbusI_serv_remote(s, name);
+    r = adbusI_lookupRemote(&s->services, name);
 
     if (r == NULL) {
         return adbus_errorf(d, "org.freedesktop.DBus.Error.NameHasNoOwner", "TODO");
@@ -153,70 +162,59 @@ static int GetNameOwner(adbus_CbData* d)
 /* -------------------------------------------------------------------------- */
 static int AddMatch(adbus_CbData* d)
 {
+    adbus_Server* s = (adbus_Server*) d->user2;
+    adbus_Remote* r = adbus_serv_caller(s);
+
     size_t msize;
     const char* mstr = adbus_check_string(d, &msize);
     adbus_check_end(d);
 
-    struct Match* m = adbusI_serv_newmatch(mstr, msize);
-    if (m == NULL) {
+    if (adbusI_serv_addMatch(&r->matches, mstr, msize)) {
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = adbusI_serv_remote(s, d->msg->sender);
-
-    dl_insert_after(Match, &r->matches, m, &m->hl);
     return 0;
 }
 
 /* -------------------------------------------------------------------------- */
 static int RemoveMatch(adbus_CbData* d)
 {
+    adbus_Server* s = (adbus_Server*) d->user2;
+    adbus_Remote* r = adbus_serv_caller(s);
+
     size_t msize;
     const char* mstr = adbus_check_string(d, &msize);
     adbus_check_end(d);
 
-    adbus_Server* s = (adbus_Server*) d->user2;
-    adbus_Remote* r = adbusI_serv_remote(s, d->msg->sender);
-
-    struct Match* m;
-    DL_FOREACH(Match, m, &r->matches, hl) {
-        if (msize == m->size && memcmp(m->data, mstr, msize) == 0) {
-            dl_remove(Match, m, &m->hl);
-            adbusI_serv_freematch(m);
-            break;
-        }
-    }
-
-    if (m == NULL) {
-        adbus_errorf(d, "TODO", "TODO");
+    if (adbusI_serv_removeMatch(&r->matches, mstr, msize)) {
+        return adbus_errorf(d, "TODO", "TODO");
     }
 
     return 0;
 }
 
 /* -------------------------------------------------------------------------- */
-static adbus_ssize_t SendToBus(void* d, adbus_Message* m)
+static int SendToBus(void* d, adbus_Message* m)
 {
     adbus_Server* s = (adbus_Server*) d;
-    if (adbus_conn_dispatch(s->connection, m))
+    if (adbus_conn_dispatch(s->bus.connection, m))
         return -1;
 
-    return m->size;
+    return (int) m->size;
 }
 
-static adbus_ssize_t SendToServer(void* d, adbus_Message* m)
+static int SendToServer(void* d, adbus_Message* m)
 {
     adbus_Server* s = (adbus_Server*) d;
-    if (adbus_remote_dispatch(s->remote, m))
+    if (adbus_remote_dispatch(s->bus.remote, m))
         return -1;
 
-    return m->size;
+    return (int) m->size;
 }
 
 void adbusI_serv_initbus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server* server)
 {
-    // Setup the org.freedesktop.DBus interface
+    /* Setup the org.freedesktop.DBus interface */
     adbus_Member *m, *changedsig, *acquiredsig, *lostsig;
 
     bus->interface = i;
@@ -275,33 +273,39 @@ void adbusI_serv_initbus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server
     lostsig = m = adbus_iface_addsignal(i, "NameLost", -1);
     adbus_mbr_argsig(m, "s", -1);
 
-    // Setup the bus connection
-    adbus_ConnectionCallbacks cbs = {};
-    cbs.send_message = &SendToServer;
+    {
+        /* Setup the bus connection */
+        adbus_ConnectionCallbacks cbs;
+        ZERO(cbs);
+        cbs.send_message = &SendToServer;
+        bus->connection = adbus_conn_new(&cbs, bus);
+    }
 
     bus->server = server;
-    bus->connection = adbus_conn_new(&cbs, bus);
     bus->nameOwnerChanged = adbus_sig_new(changedsig);
     bus->nameAcquired = adbus_sig_new(acquiredsig);
     bus->nameLost = adbus_sig_new(lostsig);
+    bus->msg = adbus_msg_new();
 
-    // Bind to / and /org/freedesktop/DBus
-    adbus_Bind b;
-    adbus_bind_init(&b);
-    b.interface = i;
-    b.cuser2    = s;
+    {
+        /* Bind to / and /org/freedesktop/DBus */
+        adbus_Bind b;
+        adbus_bind_init(&b);
+        b.interface = i;
+        b.cuser2    = server;
 
-    b.path      = "/";
-    adbus_conn_bind(bus->connection, &b);
-    
-    b.path      = "/org/freedesktop/DBus";
-    adbus_conn_bind(bus->connection, &b);
+        b.path      = "/";
+        adbus_conn_bind(bus->connection, &b);
+        
+        b.path      = "/org/freedesktop/DBus";
+        adbus_conn_bind(bus->connection, &b);
+    }
 
     adbus_sig_bind(bus->nameOwnerChanged, bus->connection, "/org/freedesktop/DBus", -1);
     adbus_sig_bind(bus->nameAcquired, bus->connection, "/org/freedesktop/DBus", -1);
     adbus_sig_bind(bus->nameLost, bus->connection, "/org/freedesktop/DBus", -1);
 
-    // Hook up to the server
+    /* Hook up to the server */
     bus->remote = adbusI_serv_createRemote(bus->server, &SendToBus, bus, "org.freedesktop.DBus", 0);
 }
 
@@ -312,6 +316,7 @@ void adbusI_serv_freebus(adbusI_BusServer* bus)
     adbus_sig_free(bus->nameAcquired);
     adbus_sig_free(bus->nameLost);
     adbus_conn_free(bus->connection);
+    adbus_msg_free(bus->msg);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -350,5 +355,22 @@ void adbusI_serv_ownerChanged(
         adbus_sig_emit(bus->nameAcquired);
     }
 
+}
+
+/* -------------------------------------------------------------------------- */
+void adbusI_serv_invalidDestination(adbusI_BusServer* bus, const adbus_Message* msg)
+{
+    adbus_MsgFactory* m = bus->msg;
+    adbus_msg_reset(m);
+    adbus_msg_settype(m, ADBUS_MSG_ERROR);
+    adbus_msg_setflags(m, ADBUS_MSG_NO_REPLY);
+    adbus_msg_setserial(m, adbus_conn_serial(bus->connection));
+
+    adbus_msg_setdestination(m, msg->sender, msg->senderSize);
+    adbus_msg_setreply(m, msg->serial);
+    adbus_msg_seterror(m, "nz.co.foobar.adbus.InvalidDestination", -1);
+
+    adbus_msg_setsig(m, "s", 1);
+    adbus_msg_string_f(m, "Invalid destination %s", msg->destination);
 }
 

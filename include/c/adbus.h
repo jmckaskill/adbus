@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <setjmp.h>
+#include <stdarg.h>
 
 
 #ifdef __cplusplus
@@ -81,7 +82,7 @@ enum
     ADBUS_SERVICE_RELEASE_NOT_OWNER         = 3,
 
     ADBUS_SERVICE_START_SUCCESS             = 1,
-    ADBUS_SERVICE_START_ALREADY_RUNNING     = 2,
+    ADBUS_SERVICE_START_ALREADY_RUNNING     = 2
 };
 
 enum adbus_MessageType
@@ -90,7 +91,7 @@ enum adbus_MessageType
     ADBUS_MSG_METHOD                = 1,
     ADBUS_MSG_RETURN                = 2,
     ADBUS_MSG_ERROR                 = 3,
-    ADBUS_MSG_SIGNAL                = 4,
+    ADBUS_MSG_SIGNAL                = 4
 };
 
 
@@ -113,13 +114,13 @@ enum adbus_FieldType
     ADBUS_STRUCT_END        = ')',
     ADBUS_VARIANT_BEGIN     = 'v',
     ADBUS_DICTENTRY_BEGIN   = '{',
-    ADBUS_DICTENTRY_END     = '}',
+    ADBUS_DICTENTRY_END     = '}'
 };
 
 enum
 {
     ADBUS_MSG_NO_REPLY      = 1,
-    ADBUS_MSG_NO_AUTOSTART  = 2,
+    ADBUS_MSG_NO_AUTOSTART  = 2
 };
 
 enum adbus_BusType
@@ -134,7 +135,7 @@ enum adbus_BlockType
 {
     ADBUS_WAIT_FOR_CONNECTED,
     ADBUS_BLOCK,
-    ADBUS_UNBLOCK,
+    ADBUS_UNBLOCK
 };
 
 typedef struct adbus_Auth               adbus_Auth;
@@ -173,16 +174,14 @@ typedef uint32_t                        adbus_Bool;
 
 
 #ifdef _WIN32
-    typedef int         adbus_ssize_t;
     typedef uintptr_t   adbus_Socket;
 #   define ADBUS_SOCK_INVALID ~((adbus_Socket) 0)
 #else
-    typedef ssize_t     adbus_ssize_t;
     typedef int         adbus_Socket;
 #   define ADBUS_SOCK_INVALID -1
 #endif
 
-typedef adbus_ssize_t   (*adbus_SendCallback)(void*, const char*, size_t);
+typedef int             (*adbus_SendCallback)(void*, const char*, size_t);
 typedef uint8_t         (*adbus_RandCallback)(void*);
 typedef int             (*adbus_MsgCallback)(adbus_CbData* d);
 typedef void            (*adbus_Callback)(void*);
@@ -359,10 +358,10 @@ ADBUS_API int adbus_error_argument(
 
 
 
-typedef adbus_ssize_t   (*adbus_SendMsgCallback)(void*, adbus_Message*);
-typedef void            (*adbus_GetProxyCallback)(void*, adbus_ProxyCallback*, adbus_ProxyMsgCallback*, void**);
-typedef adbus_Bool      (*adbus_ShouldProxyCallback)(void*);
-typedef int             (*adbus_BlockCallback)(void*, adbus_BlockType, int timeoutms);
+typedef int         (*adbus_SendMsgCallback)(void*, adbus_Message*);
+typedef void        (*adbus_GetProxyCallback)(void*, adbus_ProxyCallback*, adbus_ProxyMsgCallback*, void**);
+typedef adbus_Bool  (*adbus_ShouldProxyCallback)(void*);
+typedef int         (*adbus_BlockCallback)(void*, adbus_BlockType, int timeoutms);
 
 struct adbus_ConnectionCallbacks
 {
@@ -438,16 +437,17 @@ ADBUS_API const char* adbus_conn_uniquename(
 
 struct adbus_Match
 {
-    // The type is checked if it is not ADBUS_MSG_INVALID (0)
+    /* The type is checked if it is not ADBUS_MSG_INVALID (0) */
     adbus_MessageType       type;
 
-    // Matches for signals should be added to the bus, but method returns
-    // are automatically routed to us by the daemon
+    /* Matches for signals should be added to the bus, but method returns
+     * are automatically routed to us by the daemon
+     */
     adbus_Bool              addMatchToBusDaemon;
 
     int64_t                 replySerial;
 
-    // The strings will all be copied out
+    /* The strings will all be copied out */
     const char*             sender;
     int                     senderSize;
     const char*             destination;
@@ -481,7 +481,7 @@ ADBUS_API void adbus_match_init(adbus_Match* match);
 
 struct adbus_Reply
 {
-    uint32_t                serial;
+    int64_t                 serial;
 
     const char*             remote;
     int                     remoteSize;
@@ -647,7 +647,7 @@ ADBUS_API void adbus_mbr_addrelease(
         adbus_Callback      release,
         void*               ruser);
 
-// Methods
+/* Methods */
 ADBUS_API void adbus_mbr_setmethod(
         adbus_Member*       member,
         adbus_MsgCallback   callback,
@@ -659,7 +659,7 @@ ADBUS_API int adbus_mbr_call(
         adbus_CbData*       data);
 
 
-// Properties
+/* Properties */
 
 ADBUS_API void adbus_mbr_setgetter(
         adbus_Member*       member,
@@ -761,7 +761,7 @@ ADBUS_API void adbus_buf_reset(adbus_Buffer* b);
 ADBUS_API void adbus_buf_remove(adbus_Buffer* b, size_t off, size_t num);
 ADBUS_API const char* adbus_buf_line(adbus_Buffer* b, size_t* sz);
 ADBUS_API char* adbus_buf_recvbuf(adbus_Buffer* b, size_t len);
-ADBUS_API void adbus_buf_recvd(adbus_Buffer* b, size_t len, adbus_ssize_t recvd);
+ADBUS_API void adbus_buf_recvd(adbus_Buffer* b, size_t len, int recvd);
 
 ADBUS_API void adbus_buf_append(adbus_Buffer* b, const char* data, size_t sz);
 ADBUS_API void adbus_buf_align(adbus_Buffer* b, int alignment);
@@ -783,6 +783,8 @@ ADBUS_API void adbus_buf_u32(adbus_Buffer* b, uint32_t v);
 ADBUS_API void adbus_buf_i64(adbus_Buffer* b, int64_t v);
 ADBUS_API void adbus_buf_u64(adbus_Buffer* b, uint64_t v);
 ADBUS_API void adbus_buf_double(adbus_Buffer* b, double v);
+ADBUS_API void adbus_buf_string_f(adbus_Buffer* b, const char* format, ...);
+ADBUS_API void adbus_buf_string_vf(adbus_Buffer* b, const char* format, va_list ap);
 ADBUS_API void adbus_buf_string(adbus_Buffer* b, const char* str, int size);
 ADBUS_API void adbus_buf_objectpath(adbus_Buffer* b, const char* str, int size);
 ADBUS_API void adbus_buf_signature(adbus_Buffer* b, const char* str, int size);
@@ -895,6 +897,9 @@ ADBUS_INLINE const adbus_Buffer* adbus_msg_argbuffer_c(const adbus_MsgFactory* m
 
 /** Appends a string to the argument data (see adbus_buf_string()) */
 #define adbus_msg_string(m,v,s)     adbus_buf_string(adbus_msg_argbuffer(m), v, s)
+#define adbus_msg_string_vf(m,v,s)  adbus_buf_string(adbus_msg_argbuffer(m), v, s)
+
+ADBUS_API void adbus_msg_string_f(adbus_MsgFactory* m, const char* format, ...);
 
 /** Appends an object path to the argument data (see adbus_buf_objectpath()) */
 #define adbus_msg_objectpath(m,v,s) adbus_buf_objectpath(adbus_msg_argbuffer(m), v, s)

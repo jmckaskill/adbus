@@ -24,6 +24,33 @@
  */
 
 #include "server-remote.h"
+#include "server.h"
+
+adbus_Remote* adbusI_serv_createRemote(
+        adbus_Server*           s,
+        adbus_SendMsgCallback   send,
+        void*                   user,
+        const char*             unique,
+        adbus_Bool              needhello)
+{
+    adbus_Remote* r = NEW(adbus_Remote);
+    r->server       = s;
+    r->send         = send;
+    r->user         = user;
+    r->haveHello    = !needhello;
+
+    adbusI_remote_initParser(&r->parser);
+
+    if (unique) {
+        ds_set(&r->unique, unique);
+    } else {
+        ds_set_f(&r->unique, ":1.%u", s->remotes.nextRemote++);
+    }
+
+    dl_insert_after(Remote, &s->remotes.async, r, &r->hl);
+
+    return r;
+}
 
 /** Adds a new remote to the server
  *  \relates adbus_Server
@@ -34,24 +61,9 @@
 adbus_Remote* adbus_serv_connect(
         adbus_Server*           s,
         adbus_SendMsgCallback   send,
-        void*                   data)
+        void*                   user)
 {
-    adbus_Remote* r = NEW(adbus_Remote);
-    r->server       = s;
-    r->send         = send;
-    r->data         = data;
-    r->msg          = adbus_buf_new();
-    r->dispatch     = adbus_buf_new();
-
-    if (s->busRemote == NULL) {
-        ds_set(&r->unique, "org.freedesktop.DBus");
-    } else {
-        ds_set_f(&r->unique, ":1.%u", s->nextRemote++);
-    }
-
-    dl_insert_after(Remote, &s->remotes, r, &r->hl);
-
-    return r;
+    return adbusI_serv_createRemote(s, send, user, NULL, 1);
 }
 
 /** Removes a remote from the server
@@ -59,41 +71,30 @@ adbus_Remote* adbus_serv_connect(
  */
 void adbus_remote_disconnect(adbus_Remote* r)
 {
-    if (r == NULL)
-        return;
+    if (r) {
+        adbus_Server* s = r->server;
 
-    adbus_Server* s = r->server;
+        dl_remove(Remote, r, &r->hl);
+        adbusI_serv_freeMatches(&r->matches);
+        adbusI_remote_freeParser(&r->parser);
 
-    dl_remove(Remote, r, &r->hl);
+        while (dv_size(&r->services) > 0) {
+            adbusI_releaseService(&s->services, r, dv_a(&r->services, 0)->name);
+        }
+        dv_free(ServiceQueue, &r->services);
 
-    // Free the matches
-    struct Match* m = r->matches.next;
-    while (m) {
-        struct Match* next = m->hl.next;
-        adbusI_serv_freematch(m);
-        m = next;
+        ds_free(&r->unique);
+        free(r);
     }
-    dl_clear(Match, &r->matches);
-
-    while (dv_size(&r->services) > 0) {
-        adbusI_serv_releasename(s, r, dv_a(&r->services, 0)->name);
-    }
-    dv_free(Service, &r->services);
-
-
-    adbus_buf_free(r->msg);
-    adbus_buf_free(r->dispatch);
-    ds_free(&r->unique);
-    free(r);
 }
 
-/* -------------------------------------------------------------------------- */
-adbus_Remote* adbusI_serv_remote(adbus_Server* s, const char* name)
+void adbus_remote_setsynchronous(adbus_Remote* r, adbus_Bool sync)
 {
-    dh_Iter ii = dh_get(Service, &s->services, name);
-    if (ii == dh_end(&s->services))
-        return NULL;
-
-    struct Service* serv = dh_val(&s->services, ii);
-    return dv_a(&serv->queue, 0).remote;
+    dl_remove(Remote, r, &r->hl);
+    if (sync) {
+        dl_insert_after(Remote, &r->server->remotes.sync, r, &r->hl);
+    } else {
+        dl_insert_after(Remote, &r->server->remotes.async, r, &r->hl);
+    }
 }
+

@@ -43,8 +43,8 @@ static int Quit(adbus_CbData* data)
     return 0;
 }
 
-static adbus_ssize_t Send(void* d, adbus_Message* m)
-{ return send(*(adbus_Socket*) d, m->data, m->size, 0); }
+static int Send(void* d, adbus_Message* m)
+{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
 
 #define RECV_SIZE 64 * 1024
 
@@ -74,7 +74,7 @@ int main(void)
 
     while(!quit) {
         char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
-        adbus_ssize_t recvd = recv(s, dest, RECV_SIZE, 0);
+        int recvd = recv(s, dest, RECV_SIZE, 0);
         adbus_buf_recvd(buf, RECV_SIZE, recvd);
         if (recvd < 0)
             abort();

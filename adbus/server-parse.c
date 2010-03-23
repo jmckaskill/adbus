@@ -23,55 +23,73 @@
  * ----------------------------------------------------------------------------
  */
 
-
-#define ADBUS_LIBRARY
 #include "server.h"
+#include "parse.h"
+#include "misc.h"
 
 /* -------------------------------------------------------------------------- */
-static void InitBuffer(adbus_Buffer* b)
+
+void adbusI_remote_initParser(adbusI_ServerParser* p)
 {
-    adbus_buf_reset(b);
-    adbus_Message m;
-    ZERO(&m);
-    adbus_buf_append(b, (const char*) &m, sizeof(adbus_Message));
-    adbus_buf_align(b, 8);
+    p->state = PARSE_DISPATCH;
+    p->buffer = adbus_buf_new();
 }
 
-static void UnpackBuffer(adbus_Buffer* b, adbus_Message** m, char** data, size_t* size)
+void adbusI_remote_freeParser(adbusI_ServerParser* p)
+{
+    adbus_buf_free(p->buffer);
+}
+
+/* -------------------------------------------------------------------------- */
+
+static void InitBuffer(adbusI_ServerParser* p)
+{
+    adbus_Message m;
+
+    ZERO(m);
+    adbus_buf_reset(p->buffer);
+    adbus_buf_append(p->buffer, (const char*) &m, sizeof(adbus_Message));
+    adbus_buf_align(p->buffer, 8);
+}
+
+static void UnpackBuffer(adbusI_ServerParser* p, adbus_Message** m, char** data, size_t* size)
 {
     size_t off  = ADBUS_ALIGN(sizeof(adbus_Message), 8);
-    char* bdata = (char*) adbus_buf_data(b);
+    char* bdata = (char*) adbus_buf_data(p->buffer);
     *m          = (adbus_Message*) bdata;
     *data       = bdata + off;
-    *size       = adbus_buf_size(b) - off;
+    *size       = adbus_buf_size(p->buffer) - off;
 }
 
 /* -------------------------------------------------------------------------- */
-static int DispatchMsg(adbus_Remote* r, adbus_Buffer* b)
+
+static int DispatchMsg(adbus_Remote* r, adbusI_ServerParser* p)
 {
+    int ret = 0;
     adbus_Message* m;
     char* data;
     size_t size;
-    UnpackBuffer(b, &m, &data, &size);
-    if (adbus_parse(m, data, size))
-        return -1;
+    UnpackBuffer(p, &m, &data, &size);
 
-    if (m->signature && !r->native && adbus_flip_data((char*) m->argdata, m->argsize, m->signature))
-        return -1;
+    p->msgSize       = 0;
+    p->headerSize    = 0;
 
-    if (ADBUS_TRACE_BUS) {
-        adbusI_logmsg("dispatch", m);
+    if (adbus_parse(m, data, size)) {
+        ret = -1;
+        goto end;
     }
 
-    r->msgSize       = 0;
-    r->headerSize    = 0;
-    r->parsedMsgSize = 0;
+    if (m->signature && !p->native && adbus_flip_data((char*) m->argdata, m->argsize, m->signature)) {
+        ret = -1;
+        goto end;
+    }
 
-    int ret = adbusI_serv_dispatch(r->server, r, m);
+    ADBUSI_LOG_MSG("Dispatch", m);
 
+    ret = adbusI_serv_dispatch(r->server, r, m);
+
+end:
     adbus_freeargs(m);
-    adbus_buf_reset(b);
-
     return ret;
 }
 
@@ -79,96 +97,87 @@ static int DispatchMsg(adbus_Remote* r, adbus_Buffer* b)
  * Iterate over the header fields, removing any sender fields, and then
  * append a correct sender field.
  */
-static int FixHeaders(adbus_Remote* r, adbus_Buffer* b)
+static int FixHeaders(adbus_Remote* r, adbusI_ServerParser* p)
 {
-    // Reserve enough so that the addition of the sender field does not cause
-    // a realloc
-    size_t reserve = adbus_buf_size(b)
-                   + 7    // adbus_buf_struct alignment
-                   + 1    // adbus_buf_u8
-                   + 3    // adbus_buf_variant of string (0x01 's' 0x00)
-                   + 3    // adbus_buf_string alignment
-                   + 4    // adbus_buf_string size
-                   + ds_size(&r->unique)
-                   + 1    // adbus_buf_string null
-                   + 7;   // adbus_buf_struct header end alignment
-    adbus_buf_reserve(b, reserve);
-
-    const char* begin = adbus_buf_data(b);
-
     adbus_Message* m;
     char* data;
     size_t size;
-    UnpackBuffer(b, &m, &data, &size);
-
-
     adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
-    r->native     = (h->endianness == adbusI_nativeEndianness());
+    adbus_Iterator i;
+    adbus_IterArray a;
+
+    UnpackBuffer(p, &m, &data, &size);
     h->endianness = adbusI_nativeEndianness();
 
-    if (!r->native && adbus_flip_data(data, size, "yyyyuua(yv)"))
+    /* Flip the header data */
+    if (!p->native && adbus_flip_data(data, size, "yyyyuua(yv)"))
         return -1;
 
-    // For our purposes here we consider a field to be everything from the
-    // beginning of the field through to the end of the 8 byte padding after
-    // the field data
-    adbus_Iterator i = {
-        data + sizeof(adbusI_Header),
-        4 + ADBUSI_ALIGN(h->headerFieldLength, 8),
-        "a(yv)"
-    };
-    assert(i.data + i.size == adbus_buf_data(b) + adbus_buf_size(b));
+    /* For our purposes here we consider a field to be everything from the
+     * beginning of the field through to the end of the 8 byte padding after
+     * the field data
+     */
+    i.data = data + sizeof(adbusI_Header);
+    i.size = p->headerSize - sizeof(adbusI_Header);
+    i.sig  = "a(yv)";
+    assert(i.data + i.size == adbus_buf_data(p->buffer) + adbus_buf_size(p->buffer));
 
-
-    adbus_IterArray a;
     if (adbus_iter_beginarray(&i, &a))
         return -1;
 
-    const char* arraybegin = i.data;
-
     while (adbus_iter_inarray(&i, &a)) {
-        adbus_IterVariant v;
-        char* fieldbegin = (char*) i.data;
+        const char *fieldbegin, *fieldend;
         const uint8_t* code;
+        if (adbus_iter_align(&i, 8))
+            return -1;
+
+        fieldbegin = i.data;
+
         if (adbus_iter_beginstruct(&i))
             return -1;
         if (adbus_iter_u8(&i, &code))
             return -1;
-        if (adbus_iter_beginvariant(&i, &v))
-            return -1;
         if (adbus_iter_value(&i))
-            return -1;
-        if (adbus_iter_endvariant(&i, &v))
             return -1;
         if (adbus_iter_endstruct(&i))
             return -1;
         if (adbus_iter_align(&i, 8))
             return -1;
 
-        if (*code == HEADER_SENDER) {
-            // Remove the sender field
-            size_t fieldsz = i.data - fieldbegin;
-            adbus_buf_remove(b, fieldbegin - begin, fieldsz);
+        fieldend = i.data;
+
+        if (*code == ADBUSI_HEADER_SENDER) {
+            /* Remove the sender field */
+            size_t fieldsz = fieldend - fieldbegin;
+            adbus_buf_remove(p->buffer, fieldbegin - adbus_buf_data(p->buffer), fieldsz);
             i.data  -= fieldsz;
             a.size  -= fieldsz;
         }
     }
 
-    adbus_BufVariant v;
-    adbus_buf_setsig(b, "(yv)", 4);
-    adbus_buf_beginstruct(b);
-    adbus_buf_u8(b, HEADER_SENDER);
-    adbus_buf_beginvariant(b, &v, "s", 1);
-    adbus_buf_string(b, ds_cstr(&r->unique), ds_size(&r->unique));
-    adbus_buf_endvariant(b, &v);
-    adbus_buf_endstruct(b);
+    /* Append sender field */
+    {
+        adbus_Buffer* b = p->buffer;
+        adbus_BufVariant v;
+        adbus_buf_setsig(b, "(yv)", 4);
+        adbus_buf_beginstruct(b);
+        adbus_buf_u8(b, ADBUSI_HEADER_SENDER);
+        adbus_buf_beginvariant(b, &v, "s", 1);
+        adbus_buf_string(b, ds_cstr(&r->unique), ds_size(&r->unique));
+        adbus_buf_endvariant(b, &v);
+        adbus_buf_endstruct(b);
+    }
 
-    h->headerFieldLength = adbus_buf_data(b) + adbus_buf_size(b) - arraybegin;
-    adbus_buf_align(b, 8);
+    h->headerFieldLength = adbus_buf_data(p->buffer) 
+                         + adbus_buf_size(p->buffer) 
+                         - data 
+                         - sizeof(adbusI_ExtendedHeader);
 
-    r->parsedMsgSize = r->msgSize - r->headerSize
-                     + ADBUS_ALIGN(h->headerFieldLength, 8)
-                     + sizeof(adbusI_ExtendedHeader);
+    adbus_buf_align(p->buffer, 8);
+
+    p->msgSize = p->msgSize - p->headerSize
+               + ADBUS_ALIGN(h->headerFieldLength, 8)
+               + sizeof(adbusI_ExtendedHeader);
 
     return 0;
 }
@@ -183,19 +192,23 @@ static int FixHeaders(adbus_Remote* r, adbus_Buffer* b)
  */
 int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m)
 {
-    assert(r->msgSize == r->parsedMsgSize && r->msgSize == r->headerSize && r->msgSize == 0);
+    adbusI_ServerParser* p = &r->parser;
 
-    adbus_Buffer* b = r->dispatch;
-    InitBuffer(b);
+    assert(p->state == PARSE_DISPATCH);
 
-    adbus_buf_append(b, m->data, m->size - m->argsize);
+    p->native = 1;
+    p->headerSize = m->size - m->argsize;
+    p->msgSize = m->size;
 
-    if (FixHeaders(r, b))
+    InitBuffer(p);
+    adbus_buf_append(p->buffer, m->data, m->size - m->argsize);
+
+    if (FixHeaders(r, p))
         return -1;
 
-    adbus_buf_append(b, m->argdata, m->argsize);
+    adbus_buf_append(p->buffer, m->argdata, m->argsize);
 
-    return DispatchMsg(r, b);
+    return DispatchMsg(r, p);
 }
 
 
@@ -205,9 +218,10 @@ int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m)
 
 
 /* -------------------------------------------------------------------------- */
-// Manually unpack even for native endianness since value not be 4 byte
-// aligned
-static const int RECV_SIZE = 4 * 1024;
+
+/* Manually unpack even for native endianness since value might not be 4 byte
+ * aligned
+ */
 static uint32_t Get32(char endianness, uint32_t* value)
 {
     uint8_t* p = (uint8_t*) value;
@@ -224,12 +238,14 @@ static uint32_t Get32(char endianness, uint32_t* value)
     }
 }
 
-static int Move(adbus_Buffer* dest, const char** data, size_t* size, size_t need)
+static int Require(adbus_Buffer* dest, const char** data, size_t* size, size_t have, size_t need)
 {
-    if (*size >= need) {
+    size_t copy = need - have;
+    assert(need >= have);
+    if (*size >= copy) {
         adbus_buf_append(dest, *data, need);
-        *data += need;
-        *size -= need;
+        *data += copy;
+        *size -= copy;
         return 0;
     } else {
         adbus_buf_append(dest, *data, *size);
@@ -247,68 +263,76 @@ static int Move(adbus_Buffer* dest, const char** data, size_t* size, size_t need
  */
 int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
 {
+    adbusI_ServerParser* p = &r->parser;
+    adbus_Buffer* buffer = p->buffer;
+
     const char* data = adbus_buf_data(b);
     size_t size = adbus_buf_size(b);
 
-    switch (r->parseState) {
+    switch (p->state) {
         while (1) {
-            case BEGIN:
+            case PARSE_DISPATCH:
+            case PARSE_BEGIN:
                 {
-                    r->parseState = BEGIN;
+                    size_t hsize;
+                    adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
+
+                    /* Copy header */
+
+                    p->state = PARSE_BEGIN;
                     if (size < sizeof(adbusI_ExtendedHeader))
                         goto end;
 
-                    // Copy header
-                    adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
+                    hsize           = sizeof(adbusI_ExtendedHeader)
+                                    + Get32(h->endianness, &h->headerFieldLength);
 
-                    size_t hsize    = sizeof(adbusI_ExtendedHeader)
-                        + Get32(h->endianness, &h->headerFieldLength);
-                    r->headerSize   = ADBUSI_ALIGN(hsize, 8);
-                    r->msgSize      = r->headerSize + Get32(h->endianness, &h->length);
+                    p->native       = (h->endianness == adbusI_nativeEndianness());
+                    p->headerSize   = ADBUS_ALIGN(hsize, 8);
+                    p->msgSize      = p->headerSize + Get32(h->endianness, &h->length);
 
-                    InitBuffer(r->msg);
+                    InitBuffer(p);
 
-                    // fall through
+                    /* fall through */
                 }
 
-            case HEADER:
+            case PARSE_HEADER:
                 {
-                    // Copy header fields
-                    r->parseState = HEADER;
                     adbus_Message* m;
                     char* mdata;
                     size_t msize;
-                    UnpackBuffer(r->msg, &m, &mdata, &msize);
 
-                    assert(r->headerSize > msize);
-                    size_t need = r->headerSize - msize;
-                    if (Move(r->msg, &data, &size, need))
+                    /* Copy header fields */
+                    p->state = PARSE_HEADER;
+
+                    UnpackBuffer(p, &m, &mdata, &msize);
+
+                    if (Require(buffer, &data, &size, msize, p->headerSize))
                         goto end;
 
-                    if (FixHeaders(r, r->msg))
+                    if (FixHeaders(r, p))
                         return -1;
 
-                    // fall through
+                    /* fall through */
                 }
 
-            case DATA:
+            case PARSE_DATA:
                 {
-                    // Copy data
-                    r->parseState = DATA;
                     adbus_Message* m;
                     char* mdata;
                     size_t msize;
-                    UnpackBuffer(r->msg, &m, &mdata, &msize);
 
-                    assert(r->parsedMsgSize >= msize);
-                    size_t need = r->parsedMsgSize - msize;
-                    if (need > 0 && Move(r->msg, &data, &size, need))
+                    /* Copy data */
+                    p->state = PARSE_DATA;
+
+                    UnpackBuffer(p, &m, &mdata, &msize);
+
+                    if (Require(buffer, &data, &size, msize, p->msgSize))
                         goto end;
 
-                    if (DispatchMsg(r, r->msg))
+                    if (DispatchMsg(r, p))
                         return -1;
 
-                    // loop around
+                    /* loop around */
                 }
         }
     }

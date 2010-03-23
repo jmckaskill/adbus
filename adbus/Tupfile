@@ -1,5 +1,9 @@
 include_rules
 
 CFLAGS += -fvisibility=hidden
-: foreach *.c |> !c99 |> %B.o
+CFLAGS += -ansi -pedantic
+
+srcs = server*.c client-match.c client-reply.c client-bind.c client-bus.c tracker.c
+
+: foreach $(srcs) |> !cc |> %B.o
 

@@ -6,10 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-
-#ifndef INLINE
-#   define INLINE static inline
-#endif
+#include "common.h"
 
 #ifdef NDEBUG
 #   define DV_MEMSET(p,x,s)
@@ -23,17 +20,18 @@
         size_t  alloc;                                                      \
         type*   data;                                                       \
     } dv_##name##_t;                                                        \
-    INLINE void dv_init_##name(dv_##name##_t* v)                            \
+    typedef type dv_##name##_value_t;                                       \
+    DMEM_INLINE void dv_init_##name(dv_##name##_t* v)                       \
     {                                                                       \
         memset(v, 0, sizeof(dv_##name##_t));                                \
     }                                                                       \
-    INLINE void dv_free_##name(dv_##name##_t* v)                            \
+    DMEM_INLINE void dv_free_##name(dv_##name##_t* v)                       \
     {                                                                       \
         if (v) {                                                            \
             free(v->data);                                                  \
         }                                                                   \
     }                                                                       \
-    INLINE void dv_shred_##name(dv_##name##_t* v)                           \
+    DMEM_INLINE void dv_shred_##name(dv_##name##_t* v)                      \
     {                                                                       \
         type* end = v->data + v->size;                                      \
         type* allocend = v->data + v->alloc;                                \
@@ -41,19 +39,19 @@
         (void) allocend;                                                    \
         DV_MEMSET(end, '?', allocend - end);                                \
     }                                                                       \
-    INLINE void dv_clear_##name(dv_##name##_t* v)                           \
+    DMEM_INLINE void dv_clear_##name(dv_##name##_t* v)                      \
     {                                                                       \
         v->size = 0;                                                        \
         dv_shred_##name(v);                                                 \
     }                                                                       \
-    INLINE type* dv_release_##name(dv_##name##_t* v)                        \
+    DMEM_INLINE type* dv_release_##name(dv_##name##_t* v)                   \
     {                                                                       \
         type* ret = v->data;                                                \
         v->size = v->alloc = 0;                                             \
         v->data = NULL;                                                     \
         return ret;                                                         \
     }                                                                       \
-    INLINE void dv_reserve_##name(dv_##name##_t* v, size_t sz)              \
+    DMEM_INLINE void dv_reserve_##name(dv_##name##_t* v, size_t sz)         \
     {                                                                       \
         if (v->alloc >= sz)                                                 \
             return;                                                         \
@@ -64,12 +62,12 @@
         v->data = (type*) realloc(v->data, sizeof(type) * v->alloc);        \
         dv_shred_##name(v);                                                 \
     }                                                                       \
-    INLINE void dv_resize_##name(dv_##name##_t* v, size_t sz)               \
+    DMEM_INLINE void dv_resize_##name(dv_##name##_t* v, size_t sz)          \
     {                                                                       \
         dv_reserve_##name(v, sz);                                           \
         v->size = sz;                                                       \
     }                                                                       \
-    INLINE type* dv_push_##name(dv_##name##_t* v, size_t num)               \
+    DMEM_INLINE type* dv_push_##name(dv_##name##_t* v, size_t num)          \
     {                                                                       \
         type* b;                                                            \
         size_t old = v->size;                                               \
@@ -78,7 +76,7 @@
         DV_MEMSET(b, '?', num * sizeof(type));                              \
         return b;                                                           \
     }                                                                       \
-    INLINE type* dv_insert_##name(dv_##name##_t* v,                         \
+    DMEM_INLINE type* dv_insert_##name(dv_##name##_t* v,                    \
                                   size_t index,                             \
                                   size_t num)                               \
     {                                                                       \
@@ -95,13 +93,13 @@
         DV_MEMSET(b, '?', num * sizeof(type));                              \
         return b;                                                           \
     }                                                                       \
-    INLINE void dv_pop_##name(dv_##name##_t* v, size_t num)                 \
+    DMEM_INLINE void dv_pop_##name(dv_##name##_t* v, size_t num)            \
     {                                                                       \
         assert(num <= v->size);                                             \
         v->size -= num;                                                     \
         dv_shred_##name(v);                                                 \
     }                                                                       \
-    INLINE void dv_erase_##name(dv_##name##_t* v,                           \
+    DMEM_INLINE void dv_erase_##name(dv_##name##_t* v,                      \
                                  size_t index,                              \
                                  size_t num)                                \
     {                                                                       \
@@ -127,22 +125,28 @@
 #define dv_insert(name, pvec, index, num)   dv_insert_##name(pvec, index, num)
 #define dv_erase(name, pvec, index, num)    dv_erase_##name(pvec, index, num)
 
-#define dv_remove(name, pvec, value)                                        \
+#define dv_remove(name, pvec, test)                                         \
     do {                                                                    \
-        for (size_t i = 0; i < dv_size(pvec);) {                            \
-            if (dv_a(pvec, i) == value) {                                   \
-                dv_erase(name, pvec, i, 1);                                 \
+        size_t _index;                                                      \
+        dv_##name##_value_t* ENTRY;                                         \
+        for (_index = 0; _index < dv_size(pvec);) {                         \
+            ENTRY = &dv_a(pvec, _index);                                    \
+            if (test) {                                                     \
+                dv_erase(name, pvec, _index, 1);                            \
             } else {                                                        \
-                i++;                                                        \
+                _index++;                                                   \
             }                                                               \
         }                                                                   \
     } while (0)
 
-#define dv_find(pvec, result, test)                                         \
+#define dv_find(name, pvec, result, test)                                   \
     do {                                                                    \
-        for (size_t i = 0; i < dv_size(pvec); i++) {                        \
+        size_t _index;                                                      \
+        dv_##name##_value_t* ENTRY;                                         \
+        for (_index = 0; _index < dv_size(pvec); _index++) {                \
+            ENTRY = &dv_a(pvec, _index);                                    \
             if (test) {                                                     \
-                *result = &dv_a(pvec, i);                                   \
+                *result = &dv_a(pvec, _index);                              \
                 break;                                                      \
             }                                                               \
         }                                                                   \

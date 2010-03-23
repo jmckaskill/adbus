@@ -23,9 +23,10 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
+#include "client-bind.h"
 #include "connection.h"
 #include "interface.h"
+#include "messages.h"
 
 /** \struct adbus_Bind
  *  \brief Data structure used to bind interfaces to a particular path.
@@ -141,7 +142,7 @@
 
 
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Initialises an adbus_Bind structure.
  *  \relates adbus_Bind
@@ -152,19 +153,19 @@ void adbus_bind_init(adbus_Bind* b)
     b->pathSize = -1;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static adbus_ConnBind* DoBind(struct ObjectPath* path, const adbus_Bind* bind)
+adbus_ConnBind* adbusI_createBind(adbusI_ObjectTree* t, adbusI_ObjectNode* n, const adbus_Bind* bind)
 {
+    adbus_ConnBind* b;
+
     int added;
-    dh_Iter bi = dh_put(Bind, &path->interfaces, bind->interface->name, &added);
+    dh_Iter bi = dh_put(Bind, &n->binds, bind->interface->name, &added);
     if (!added)
         return NULL;
 
-    adbus_iface_ref(bind->interface);
-
-    adbus_ConnBind* b   = NEW(adbus_ConnBind);
-    b->path             = path;
+    b                   = NEW(adbus_ConnBind);
+    b->node             = n;
     b->interface        = bind->interface;
     b->cuser2           = bind->cuser2;
     b->proxy            = bind->proxy;
@@ -176,201 +177,246 @@ static adbus_ConnBind* DoBind(struct ObjectPath* path, const adbus_Bind* bind)
     b->relproxy         = bind->relproxy;
     b->relpuser         = bind->relpuser;
 
-    dh_val(&path->interfaces, bi) = b;
-    dh_key(&path->interfaces, bi) = b->interface->name;
+    adbusI_refObjectNode(b->node);
+    adbus_iface_ref(b->interface);
 
-    dil_insert_after(Bind, &path->connection->binds, b, &b->fl);
+    dil_insert_after(Bind, &t->list, b, &b->hl);
+
+    dh_val(&n->binds, bi) = b;
+    dh_key(&n->binds, bi) = b->interface->name;
 
     return b;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-void adbusI_freeObjectPath(struct ObjectPath* o)
+static void FreeBind(adbus_ConnBind* b)
 {
-    // Disconnect from connection
-    if (o->connection) {
-        d_Hash(ObjectPath)* h = &o->connection->paths;
-        dh_Iter oi = dh_get(ObjectPath, h, o->path);
-        if (oi != dh_end(h)) {
-            dh_del(ObjectPath, h, oi);
+    /* Disconnect from node and tree */
+    if (b->node) {
+        d_Hash(Bind)* h = &b->node->binds;
+        dh_Iter bi = dh_get(Bind, h, b->interface->name);
+        if (bi != dh_end(h)) {
+            dh_del(Bind, h, bi);
+        }
+    }
+    dil_remove(Bind, b, &b->hl);
+
+    /* Call release callbacks */
+    if (b->release[0]) {
+        if (b->relproxy) {
+            b->relproxy(b->relpuser, b->release[0], b->ruser[0]);
+        } else  {
+            b->release[0](b->ruser[0]);
         }
     }
 
-    // Disconnect from binds
-    d_Hash(Bind)* h = &o->interfaces;
-    if (dh_size(h) > 0) {
-        for (dh_Iter bi = dh_begin(h); bi != dh_end(h); bi++) {
-            if (dh_exist(h, bi)) {
-                dh_val(h, bi)->path = NULL;
-            }
+    if (b->release[1]) {
+        if (b->relproxy) {
+            b->relproxy(b->relpuser, b->release[1], b->ruser[1]);
+        } else  {
+            b->release[1](b->ruser[1]);
         }
     }
 
-    dh_free(Bind, &o->interfaces);
-    dv_free(ObjectPath, &o->children);
-    free((char*) o->path.str);
-    free(o);
+    /* Free data */
+    adbusI_derefObjectNode(b->node);
+    adbus_iface_deref(b->interface);
+    free(b);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static void CheckRemoveObject(struct ObjectPath* o)
-{
-    // We have 2 built in interfaces (introspectable and properties)
-    // If these are the only two left and we have no children then we need
-    // to prune this object
-    if (dh_size(&o->interfaces) > 2 || dv_size(&o->children) > 0)
-        return;
-
-    // Remove the built in interfaces.
-    d_Hash(Bind)* h = &o->interfaces;
-    for (dh_Iter ii = dh_begin(h); ii != dh_end(h); ii++) {
-        if (dh_exist(h, ii)) {
-            adbus_ConnBind* b = dh_val(h, ii);
-            b->path = NULL;
-            adbusI_freeBind(b);
-            dh_del(Bind, h, ii);
-        }
-    }
-
-    // Remove it from its parent
-    struct ObjectPath* parent = o->parent;
-    if (parent) {
-        for (size_t i = 0; i < dv_size(&parent->children); ++i) {
-            if (dv_a(&parent->children, i) == o) {
-                dv_remove(ObjectPath, &parent->children, i, 1);
-                break;
-            }
-        }
-        CheckRemoveObject(o->parent);
-    }
-
-    // Free the object
-    adbusI_freeObjectPath(o);
-}
-
-// ----------------------------------------------------------------------------
-
-void adbusI_freeBind(adbus_ConnBind* bind)
-{
-    struct ObjectPath* o = bind->path;
-    if (o) {
-        dh_Iter bi = dh_get(Bind, &o->interfaces, bind->interface->name);
-        if (bi != dh_end(&o->interfaces)) {
-            dh_del(Bind, &o->interfaces, bi);
-        }
-        CheckRemoveObject(o);
-    }
-
-    if (bind->release[0]) {
-        if (bind->relproxy) {
-            bind->relproxy(bind->relpuser, bind->release[0], bind->ruser[0]);
-        } else {
-            bind->release[0](bind->ruser[0]);
-        }
-    }
-
-    if (bind->release[1]) {
-        if (bind->relproxy) {
-            bind->relproxy(bind->relpuser, bind->release[1], bind->ruser[1]);
-        } else {
-            bind->release[1](bind->ruser[1]);
-        }
-    }
-
-    adbus_iface_deref(bind->interface);
-    dil_remove(Bind, bind, &bind->fl);
-    free(bind);
-}
-
-// ----------------------------------------------------------------------------
-
-static struct ObjectPath* GetObject(
-        adbus_Connection*       c,
-        dh_strsz_t              path)
+adbusI_ObjectNode* adbusI_getObjectNode(adbus_Connection* c, dh_strsz_t path)
 {
     int added;
-    assert(adbusI_isValidObjectPath(path.str, path.sz));
-    dh_Iter ki = dh_put(ObjectPath, &c->paths, path, &added);
-    if (!added) {
-        return dh_val(&c->paths, ki);
+    dh_Iter ii;
+   
+    ii = dh_put(ObjectNode, &c->binds.lookup, path, &added);
+
+    if (added) {
+        dh_strsz_t parent;
+
+        adbusI_ObjectNode* node = NEW(adbusI_ObjectNode);
+
+        node->tree = &c->binds;
+
+        node->path.str = adbusI_strndup(path.str, path.sz);
+        node->path.sz  = path.sz;
+
+        /* Setup node in the hashtable now as once we create the parent below,
+         * ii becomes invalid.
+         */
+        dh_val(&c->binds.lookup, ii) = node;
+        dh_key(&c->binds.lookup, ii) = node->path;
+
+        {
+            adbus_Bind b;
+            adbus_bind_init(&b);
+            b.cuser2 = node;
+
+            b.interface = c->introspectable;
+            node->introspectable = adbusI_createBind(&c->binds, node, &b);
+
+            b.interface = c->properties;
+            node->properties = adbusI_createBind(&c->binds, node, &b);
+        }
+
+        node->ref = 0;
+
+        adbusI_parentPath(path, &parent);
+        if (parent.str) {
+            node->parent = adbusI_getObjectNode(c, parent);
+            adbusI_refObjectNode(node->parent);
+        }
+
+        return node;
+
+    } else {
+        return dh_val(&c->binds.lookup, ii);
     }
-
-    struct ObjectPath* o = NEW(struct ObjectPath);
-    o->connection        = c;
-    o->path.str          = adbusI_strndup(path.str, path.sz);
-    o->path.sz           = path.sz;
-
-    dh_key(&c->paths, ki) = o->path;
-    dh_val(&c->paths, ki) = o;
-
-    // Bind the builtin interfaces
-
-    adbus_Bind b;
-    adbus_bind_init(&b);
-    b.cuser2     = o;
-    b.interface  = c->introspectable;
-    DoBind(o, &b);
-
-    adbus_bind_init(&b);
-    b.cuser2    = o;
-    b.interface = c->properties;
-    DoBind(o, &b);
-
-    // Setup the parent-child links
-    dh_strsz_t parent;
-    adbusI_parentPath(path, &parent);
-    if (parent.str) {
-        o->parent = GetObject(c, parent);
-
-        struct ObjectPath** pchild = dv_push(ObjectPath, &o->parent->children, 1);
-        *pchild = o;
-    }
-
-    return o;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
+
+void adbusI_refObjectNode(adbusI_ObjectNode* n)
+{ n->ref++; }
+
+/* -------------------------------------------------------------------------- */
+
+static void FreeObjectNode(adbusI_ObjectNode* n)
+{
+    assert(dh_size(&n->binds) == 0);
+    assert(dl_isempty(&n->children));
+
+    /* Disconnect from object tree */
+    if (n->tree) {
+        d_Hash(ObjectNode)* h = &n->tree->lookup;
+        dh_Iter ii = dh_get(ObjectNode, h, n->path);
+        if (ii != dh_end(h)) {
+            dh_del(ObjectNode, h, ii);
+        }
+    }
+
+    /* Disconnect from parent */
+    if (n->parent) {
+        dl_remove(ObjectNode, n, &n->hl);
+        adbusI_derefObjectNode(n->parent);
+        n->parent = NULL;
+    }
+
+    /* Free data */
+    dh_free(Bind, &n->binds);
+    free((char*) n->path.str);
+    free(n);
+}
+
+void adbusI_derefObjectNode(adbusI_ObjectNode* n)
+{
+    if (--n->ref == 0) {
+        assert(dh_size(&n->binds) == 2);
+
+        /* Remove builtin interfaces */
+        dh_clear(Bind, &n->binds);
+        n->introspectable->node = NULL;
+        n->properties->node = NULL;
+
+        FreeBind(n->introspectable);
+        FreeBind(n->properties);
+
+        FreeObjectNode(n);
+    }
+}
+
+
+/* -------------------------------------------------------------------------- */
 
 adbus_ConnBind* adbus_conn_bind(
         adbus_Connection*       c,
         const adbus_Bind*       b)
 {
-    if (ADBUS_TRACE_BIND) {
-        adbusI_logbind("bind", b);
-    }
+    d_String pstr;
+    dh_strsz_t path;
+    adbusI_ObjectNode* node;
+    adbus_ConnBind* ret;
 
-    size_t psz = (b->pathSize >= 0) ? (size_t) b->pathSize : strlen(b->path);
-    dh_strsz_t path = {b->path, psz};
-    return DoBind(GetObject(c, path), b);
+    ADBUSI_LOG_BIND("Bind", b);
+
+    ZERO(pstr);
+    adbusI_sanitisePath(&pstr, b->path, b->pathSize);
+    path.str = ds_cstr(&pstr);
+    path.sz = ds_size(&pstr);
+
+    node = adbusI_getObjectNode(c, path);
+    ret = adbusI_createBind(&c->binds, node, b);
+
+    ds_free(&pstr);
+
+    return ret;
 }
 
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 void adbus_conn_unbind(
         adbus_Connection*   c,
         adbus_ConnBind*     b)
 {
     UNUSED(c);
-    adbusI_freeBind(b);
+    FreeBind(b);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
+
+void adbusI_freeObjectTree(adbusI_ObjectTree* t)
+{
+    dh_Iter ni;
+    adbus_ConnBind* b;
+
+    /* Free the object nodes */
+    for (ni = dh_begin(&t->lookup); ni != dh_end(&t->lookup); ni++) {
+        if (dh_exist(&t->lookup, ni)) {
+            adbusI_ObjectNode* n = dh_val(&t->lookup, ni);
+
+            /* Detach all object node links and free just the node */
+            n->tree = NULL;
+            dl_clear(ObjectNode, &n->children);
+            n->parent = NULL;
+            FreeObjectNode(n);
+        }
+    }
+    dh_clear(ObjectNode, &t->lookup);
+
+    /* Detach the binds from the object nodes.  We do this for all binds
+     * first, as the FreeBind calls release callbacks which may try and unbind
+     * other binds. 
+     */
+    DIL_FOREACH (Bind, b, &t->list, hl) {
+        b->node = NULL;
+    }
+
+    /* Free the binds */
+    DIL_FOREACH (Bind, b, &t->list, hl) {
+        FreeBind(b);
+    }
+
+    assert(dh_size(&t->lookup) == 0);
+    assert(dil_isempty(&t->list));
+
+    dh_free(ObjectNode, &t->lookup);
+}
+
+/* -------------------------------------------------------------------------- */
 
 int adbusI_dispatchBind(adbus_CbData* d)
 {
-    // should have been checked by parser
-    assert(d->msg->path);
-    assert(d->msg->member);
-
     adbus_Member* member;
     adbus_ConnBind* bind;
 
     if (d->msg->interface) {
-        // If we know the interface, then we try and find the method on that
-        // interface
+        /* If we know the interface, then we try and find the method on that
+         * interface.
+         */
         adbus_Interface* interface = adbus_conn_interface(
                 d->connection,
                 d->msg->path,
@@ -389,8 +435,9 @@ int adbusI_dispatchBind(adbus_CbData* d)
                 (int) d->msg->memberSize);
 
     } else {
-        // We don't know the interface, try and find the first method on any
-        // interface with the member name
+        /* We don't know the interface, try and find the first method on any
+         * interface with the member name.
+         */
         member = adbus_conn_method(
                 d->connection,
                 d->msg->path,
@@ -401,13 +448,14 @@ int adbusI_dispatchBind(adbus_CbData* d)
 
     }
 
-    if (!member)
+    if (!member) {
         return adbusI_methodError(d);
+    }
 
     return adbus_mbr_call(member, bind, d);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 adbus_Interface* adbus_conn_interface(
         adbus_Connection*   c,
@@ -415,35 +463,40 @@ adbus_Interface* adbus_conn_interface(
         int                 pathSize,
         const char*         interface,
         int                 interfaceSize,
-        adbus_ConnBind**    bind)
+        adbus_ConnBind**    pbind)
 {
-    if (pathSize < 0)
-        pathSize = strlen(path);
-    if (interfaceSize < 0)
-        interfaceSize = strlen(interface);
+    dh_strsz_t pstr;
+    dh_strsz_t istr;
+    dh_Iter ni, bi;
+    adbusI_ObjectNode* node;
+    adbus_ConnBind* bind;
 
-    dh_strsz_t pstr = {path, pathSize};
-    dh_strsz_t istr = {interface, interfaceSize};
+    pstr.str = path;
+    pstr.sz  = (pathSize >= 0) ? pathSize : strlen(path);
 
-    dh_Iter oi = dh_get(ObjectPath, &c->paths, pstr);
-    if (oi == dh_end(&c->paths))
+    istr.str = interface;
+    istr.sz  = (interfaceSize >= 0) ? interfaceSize : strlen(interface);
+
+    ni = dh_get(ObjectNode, &c->binds.lookup, pstr);
+    if (ni == dh_end(&c->binds.lookup))
         return NULL;
 
-    struct ObjectPath* o = dh_val(&c->paths, oi);
+    node = dh_val(&c->binds.lookup, ni);
 
-    dh_Iter bi = dh_get(Bind, &o->interfaces, istr);
-    if (bi == dh_end(&o->interfaces))
+    bi = dh_get(Bind, &node->binds, istr);
+    if (bi == dh_end(&node->binds))
         return NULL;
 
-    adbus_ConnBind* b = dh_val(&o->interfaces, bi);
+    bind = dh_val(&node->binds, bi);
 
-    if (bind)
-        *bind = b;
+    if (pbind) {
+        *pbind = bind;
+    }
 
-    return b->interface;
+    return bind->interface;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 adbus_Member* adbus_conn_method(
         adbus_Connection*   c,
@@ -451,31 +504,41 @@ adbus_Member* adbus_conn_method(
         int                 pathSize,
         const char*         method,
         int                 methodSize,
-        adbus_ConnBind**    bind)
+        adbus_ConnBind**    pbind)
 {
-    if (pathSize < 0)
-        pathSize = strlen(path);
-    if (methodSize < 0)
-        methodSize = strlen(method);
+    dh_strsz_t pstr;
+    dh_strsz_t mstr;
+    dh_Iter ni, bi;
+    adbusI_ObjectNode* node;
+    d_Hash(Bind)* binds;
 
-    dh_strsz_t pstr = {path, pathSize};
+    pstr.str = path;
+    pstr.sz  = (pathSize >= 0) ? pathSize : strlen(path);
 
-    dh_Iter oi = dh_get(ObjectPath, &c->paths, pstr);
-    if (oi == dh_end(&c->paths))
+    mstr.str = method;
+    mstr.sz  = (methodSize >= 0) ? methodSize : strlen(method);
+
+    ni = dh_get(ObjectNode, &c->binds.lookup, pstr);
+    if (ni == dh_end(&c->binds.lookup))
         return NULL;
 
-    struct ObjectPath* o = dh_val(&c->paths, oi);
-    d_Hash(Bind)* h = &o->interfaces;
+    node = dh_val(&c->binds.lookup, ni);
+    binds = &node->binds;
 
-    for (dh_Iter bi = dh_begin(h); bi != dh_end(h); ++bi) {
-        if (dh_exist(h, bi)) {
-            adbus_ConnBind* b = dh_val(h, bi);
-            adbus_Member* m = adbus_iface_method(b->interface, method, methodSize);
-            if (m) {
-                if (bind)
-                    *bind = b;
-                return m;
+    for (bi = dh_begin(binds); bi != dh_end(binds); ++bi) {
+        if (dh_exist(binds, bi)) {
+
+            adbus_ConnBind* bind = dh_val(binds, bi);
+            adbus_Member* mbr = adbus_iface_method(bind->interface, mstr.str, mstr.sz);
+
+            if (mbr) {
+                if (pbind) {
+                    *pbind = bind;
+                }
+
+                return mbr;
             }
+
         }
     }
 

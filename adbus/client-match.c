@@ -23,10 +23,8 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
+#include "client-match.h"
 #include "connection.h"
-
-#include <string.h>
 
 /** \struct adbus_Match
  *  \brief Data structure used to register general matches.
@@ -189,20 +187,21 @@
  */
 
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Initialise an argument array
  *  \relates adbus_Argument
  */
 void adbus_arg_init(adbus_Argument* args, size_t num)
 {
+    size_t i;
     memset(args, 0, sizeof(adbus_Argument) * num);
-    for (size_t i = 0; i < num; ++i) {
+    for (i = 0; i < num; ++i) {
         args[i].size = -1;
     }
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Initialise a match
  *  \relates adbus_Match
@@ -219,137 +218,92 @@ void adbus_match_init(adbus_Match* pmatch)
     pmatch->errorSize       = -1;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static void CloneString(const char* from, int fsize, const char** to, int* tsize)
+static void CloneString(const char** str, int* sz)
 {
-    if (from) {
-        if (fsize < 0)
-            fsize = strlen(from);
-        *to = adbusI_strndup(from, fsize);
-        *tsize = fsize;
+    if (*str) {
+        if (*sz < 0)
+            *sz = strlen(*str);
+        *str = adbusI_strndup(*str, *sz);
     }
 }
 
 static void CloneMatch(const adbus_Match* from, adbus_Match* to)
 {
-    to->type                = from->type;
-    to->addMatchToBusDaemon = from->addMatchToBusDaemon;
-    to->replySerial         = from->replySerial;
-    to->callback            = from->callback;
-    to->cuser               = from->cuser;
-    to->proxy               = from->proxy;
-    to->puser               = from->puser;
-    to->release[0]          = from->release[0];
-    to->ruser[0]            = from->ruser[0];
-    to->release[1]          = from->release[1];
-    to->ruser[1]            = from->ruser[1];
-    to->relproxy            = from->relproxy;
-    to->relpuser            = from->relpuser;
+    *to = *from;
 
-    CloneString(from->destination, from->destinationSize, &to->destination, &to->destinationSize);
-    CloneString(from->interface, from->interfaceSize, &to->interface, &to->interfaceSize);
-    CloneString(from->member, from->memberSize, &to->member, &to->memberSize);
-    CloneString(from->error, from->errorSize, &to->error, &to->errorSize);
+    CloneString(&to->interface, &to->interfaceSize);
+    CloneString(&to->member, &to->memberSize);
+    CloneString(&to->error, &to->errorSize);
 
-    if (from->path) {
-        d_String sanitised;
-        ZERO(&sanitised);
-        adbusI_relativePath(&sanitised, from->path, from->pathSize, NULL, 0);
-        to->pathSize = ds_size(&sanitised);
-        to->path     = ds_release(&sanitised);
+    if (to->path) {
+        d_String path;
+        ZERO(path);
+        adbusI_sanitisePath(&path, to->path, to->pathSize);
+        to->pathSize = ds_size(&path);
+        to->path     = ds_release(&path);
     }
 
-    if (from->arguments && from->argumentsSize > 0) {
-        to->arguments = NEW_ARRAY(adbus_Argument, from->argumentsSize);
-        to->argumentsSize = from->argumentsSize;
-        for (size_t i = 0; i < from->argumentsSize; ++i) {
-            CloneString(from->arguments[i].value,
-                        from->arguments[i].size,
-                        &to->arguments[i].value,
-                        &to->arguments[i].size);
+    if (to->arguments && to->argumentsSize > 0) {
+        size_t i;
+        to->arguments = NEW_ARRAY(adbus_Argument, to->argumentsSize);
+        memcpy(to->arguments, from->arguments, to->argumentsSize * sizeof(adbus_Argument));
+        for (i = 0; i < from->argumentsSize; ++i) {
+            CloneString(&to->arguments[i].value, &to->arguments[i].size);
         }
     }
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 adbus_ConnMatch* adbus_conn_addmatch(
         adbus_Connection*       c,
         const adbus_Match*      reg)
 {
-    assert(reg->callback);
+    adbus_ConnMatch* m = NEW(adbus_ConnMatch);
+    CloneMatch(reg, &m->m);
 
-    if (ADBUS_TRACE_MATCH) {
-        adbusI_logmatch("add match", reg);
+    assert(reg->callback);
+    ADBUSI_LOG_MATCH("Add match", reg);
+
+    if (m->m.sender) {
+        m->sender = adbusI_getTrackedRemote(c, reg->sender, reg->senderSize);
+        m->m.sender = NULL;
+        m->m.senderSize = 0;
     }
 
-    adbus_ConnMatch* m = NEW(adbus_ConnMatch);
-    memset(m, 0, sizeof(adbus_ConnMatch));
-    CloneMatch(reg, &m->m);
-    m->service = adbusI_lookupService(c, reg->sender, reg->senderSize);
-
-    if (!m->service) {
-        CloneString(reg->sender, reg->senderSize, &m->m.sender, &m->m.senderSize);
+    if (m->m.destination) {
+        m->destination = adbusI_getTrackedRemote(c, reg->destination, reg->destinationSize);
+        m->m.destination = NULL;
+        m->m.destinationSize = 0;
     }
 
     if (m->m.addMatchToBusDaemon) {
-        adbus_Proxy* proxy = c->bus;
-
         adbus_Call f;
-        adbus_call_method(proxy, &f, "AddMatch", -1);
+
+        adbusI_matchString(&m->matchString, &m->m);
+
+        adbus_call_method(c->bus, &f, "AddMatch", -1);
 
         adbus_msg_setsig(f.msg, "s", 1);
+        adbus_msg_string(f.msg, ds_cstr(&m->matchString), ds_size(&m->matchString));
+        adbus_msg_end(f.msg);
 
-        d_String s;
-        ZERO(&s);
-        adbusI_matchString(&s, &m->m);
-        adbus_msg_string(f.msg, ds_cstr(&s), ds_size(&s));
-        ds_free(&s);
-
-        adbus_call_send(proxy, &f);
+        adbus_call_send(c->bus, &f);
     }
 
-    dil_insert_after(Match, &c->matches, m, &m->hl);
+    dil_insert_after(ConnMatch, &c->matches.list, m, &m->hl);
 
     return m;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-void adbus_conn_removematch(
-        adbus_Connection*     c,
-        adbus_ConnMatch*      m)
+static void FreeMatch(adbus_ConnMatch* m)
 {
-    if (ADBUS_TRACE_MATCH) {
-        adbusI_logmatch("rm match", &m->m);
-    }
-
-    if (m->m.addMatchToBusDaemon) {
-        adbus_Proxy* proxy = m->proxy ? m->proxy : c->bus;
-
-        adbus_Call f;
-        adbus_call_method(proxy, &f, "RemoveMatch", -1);
-
-        adbus_msg_setsig(f.msg, "s", 1);
-
-        d_String s;
-        ZERO(&s);
-        adbusI_matchString(&s, &m->m);
-        adbus_msg_string(f.msg, ds_cstr(&s), ds_size(&s));
-        ds_free(&s);
-
-        adbus_call_send(proxy, &f);
-    }
-
-    adbusI_freeMatch(m);
-}
-
-// ----------------------------------------------------------------------------
-
-void adbusI_freeMatch(adbus_ConnMatch* m)
-{
-    dil_remove(Match, m, &m->hl);
+    size_t i;
+    dil_remove(ConnMatch, m, &m->hl);
 
     if (m->m.release[0]) {
         if (m->m.relproxy) {
@@ -367,104 +321,81 @@ void adbusI_freeMatch(adbus_ConnMatch* m)
         }
     }
 
-    adbus_state_free(m->state);
-    adbus_proxy_free(m->proxy);
-    free((char*) m->m.sender);
-    free((char*) m->m.destination);
+    adbusI_derefTrackedRemote(m->sender);
+    adbusI_derefTrackedRemote(m->destination);
+    ds_free(&m->matchString);
     free((char*) m->m.interface);
     free((char*) m->m.member);
     free((char*) m->m.error);
     free((char*) m->m.path);
-    for (size_t i = 0; i < m->m.argumentsSize; i++) {
+    for (i = 0; i < m->m.argumentsSize; i++) {
         free((char*) m->m.arguments[i].value);
     }
     free(m->m.arguments);
     free(m);
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static adbus_Bool Matches(
-        const char*     matchstr,
-        size_t          matchsz,
-        const char*     msgstr,
-        size_t          msgsz)
+void adbus_conn_removematch(
+        adbus_Connection*     c,
+        adbus_ConnMatch*      m)
 {
-    // Should this field be ignored
-    if (!matchstr)
-        return 1;
+    ADBUSI_LOG_MATCH("Remove match", &m->m);
 
-    // Does the message have this field
-    if (!msgstr)
-        return 0;
+    if (m->m.addMatchToBusDaemon) {
+        adbus_Call f;
+        adbus_call_method(c->bus, &f, "RemoveMatch", -1);
 
-    if (matchsz != msgsz)
-        return 0;
+        adbus_msg_setsig(f.msg, "s", 1);
+        adbus_msg_string(f.msg, ds_cstr(&m->matchString), ds_size(&m->matchString));
+        adbus_msg_end(f.msg);
 
-    return memcmp(matchstr, msgstr, matchsz) == 0;
-}
-
-static adbus_Bool ArgsMatch(
-        adbus_Match*    match,
-        adbus_Message*  msg)
-{
-    if (msg->argumentsSize < match->argumentsSize)
-        return 0;
-
-    for (size_t i = 0; i < match->argumentsSize; i++) {
-        adbus_Argument* matcharg = &match->arguments[i];
-        adbus_Argument* msgarg = &msg->arguments[i];
-
-        if (!matcharg->value)
-            continue;
-
-        if (msgarg->value == NULL)
-            return 0;
-
-        if (msgarg->size != matcharg->size)
-            return 0;
-
-        if (memcmp(msgarg->value, matcharg->value, matcharg->size) != 0)
-            return 0;
-
+        adbus_call_send(c->bus, &f);
     }
-    return 1;
+
+    FreeMatch(m);
 }
 
-int adbusI_dispatchMatch(adbus_CbData* d)
+/* -------------------------------------------------------------------------- */
+
+void adbusI_freeMatches(adbus_Connection* c)
 {
-    adbus_Connection* c = d->connection;
     adbus_ConnMatch* m;
-    DIL_FOREACH(Match, m, &c->matches, hl) {
+    DIL_FOREACH (ConnMatch, m, &c->matches.list, hl) {
+        FreeMatch(m);
+    }
+}
 
-        if (m->m.type != ADBUS_MSG_INVALID && d->msg->type != m->m.type) {
+/* -------------------------------------------------------------------------- */
+
+static adbus_Bool TrackedMatches(adbusI_TrackedRemote* r, const char* msg, size_t msgsz)
+{
+    if (r == NULL)
+        return 1;
+    if (r->unique.str == NULL)
+        return 0;
+    if (msg == NULL)
+        return 0;
+    if (r->unique.sz != msgsz)
+        return 0;
+    
+    return memcmp(msg, r->unique.str, msgsz) == 0;
+}
+
+int adbusI_dispatchMatch(adbus_Connection* c, adbus_CbData* d)
+{
+    adbus_ConnMatch* m;
+    DIL_FOREACH (ConnMatch, m, &c->matches.list, hl) {
+
+        if (!adbusI_matchesMessage(&m->m, d->msg))
             continue;
-        }
 
-        if (    m->m.replySerial >= 0
-            && (    !d->msg->replySerial 
-                ||  *d->msg->replySerial != m->m.replySerial))
-        {
+        if (!TrackedMatches(m->sender, d->msg->sender, d->msg->senderSize))
             continue;
-        }
 
-        if (    (m->service && !Matches(m->service->unique.str, m->service->unique.sz, d->msg->sender, d->msg->senderSize))
-            ||  !Matches(m->m.sender, m->m.senderSize, d->msg->sender, d->msg->senderSize)
-            ||  !Matches(m->m.destination, m->m.destinationSize, d->msg->destination, d->msg->destinationSize)
-            ||  !Matches(m->m.interface, m->m.interfaceSize, d->msg->interface, d->msg->interfaceSize)
-            ||  !Matches(m->m.path, m->m.pathSize, d->msg->path, d->msg->pathSize)
-            ||  !Matches(m->m.member, m->m.memberSize, d->msg->member, d->msg->memberSize)
-            ||  !Matches(m->m.error, m->m.errorSize, d->msg->error, d->msg->errorSize))
-        {
+        if (!TrackedMatches(m->destination, d->msg->destination, d->msg->destinationSize))
             continue;
-        }
-
-        if (m->m.arguments) {
-            if (adbus_parseargs(d->msg))
-                return -1;
-            if (!ArgsMatch(&m->m, d->msg))
-                continue;
-        }
 
         d->user1 = m->m.cuser;
 

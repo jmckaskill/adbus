@@ -26,19 +26,24 @@
 #pragma once
 
 #include "internal.h"
+#include "server-bus.h"
+#include "server-remote.h"
+#include "server-service.h"
 
 struct adbus_Server
 {
     adbusI_RemoteSet        remotes;
     adbusI_ServiceQueueSet  services;
     adbusI_BusServer        bus;
-    adbus_Remote*           lastCaller;
+    adbus_Remote*           caller;
 };
 
 ADBUS_API adbus_Server* adbus_serv_new(adbus_Interface* bus);
 ADBUS_API void adbus_serv_free(adbus_Server* s);
+ADBUS_API adbus_Remote* adbus_serv_caller(adbus_Server* s);
 
-// Message must have gone through the server parse functions to ensure it has
-// the correct sender field before calling this.
+/* Message must have gone through the server parse functions to ensure it has
+ * the correct sender field before calling this.
+ */
 ADBUSI_FUNC int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m);
 

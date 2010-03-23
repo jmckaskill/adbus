@@ -90,7 +90,6 @@ int main() {
 #   pragma warning(disable:4127) // conditional expression is constant
 #endif
 
-
 typedef uint32_t khint_t;
 typedef khint_t dh_Iter;
 
@@ -123,7 +122,7 @@ static const double __ac_HASH_UPPER = 0.77;
         khkey_t *keys;                                                  \
         khval_t *vals;                                                  \
     } dh_##name##_t;                                                    \
-    INLINE void dh_free_##name(dh_##name##_t *h)                        \
+    DMEM_INLINE void dh_free_##name(dh_##name##_t *h)                   \
     {                                                                   \
         if (h) {                                                        \
             free(h->keys);                                              \
@@ -131,14 +130,14 @@ static const double __ac_HASH_UPPER = 0.77;
             free(h->vals);                                              \
         }                                                               \
     }                                                                   \
-    INLINE void dh_clear_##name(dh_##name##_t *h)                       \
+    DMEM_INLINE void dh_clear_##name(dh_##name##_t *h)                  \
     {                                                                   \
         if (h && h->flags) { \
             memset(h->flags, 0xaa, ((h->n_buckets>>4) + 1) * sizeof(uint32_t)); \
             h->size = h->n_occupied = 0;                                \
         }                                                               \
     }                                                                   \
-    INLINE khint_t dh_get_##name(dh_##name##_t *h, khkey_t key)         \
+    DMEM_INLINE khint_t dh_get_##name(dh_##name##_t *h, khkey_t key)    \
     {                                                                   \
         if (h->n_buckets) {                                             \
             khint_t inc, k, i, last;                                    \
@@ -149,10 +148,10 @@ static const double __ac_HASH_UPPER = 0.77;
                 else i += inc;                                          \
                 if (i == last) return h->n_buckets;                     \
             }                                                           \
-            return __ac_iseither(h->flags, i)? h->n_buckets : i;            \
+            return __ac_iseither(h->flags, i)? h->n_buckets : i;        \
         } else return 0;                                                \
     }                                                                   \
-    INLINE void dh_resize_##name(dh_##name##_t *h, khint_t new_n_buckets) \
+    DMEM_INLINE void dh_resize_##name(dh_##name##_t *h, khint_t new_n_buckets) \
     {                                                                   \
         uint32_t *new_flags = 0;                                        \
         khint_t j = 1;                                                  \
@@ -212,7 +211,7 @@ static const double __ac_HASH_UPPER = 0.77;
             h->upper_bound = (khint_t)(h->n_buckets * __ac_HASH_UPPER + 0.5); \
         }                                                               \
     }                                                                   \
-    INLINE khint_t dh_put_##name(dh_##name##_t *h, khkey_t key, int *added) \
+    DMEM_INLINE khint_t dh_put_##name(dh_##name##_t *h, khkey_t key, int *added) \
     {                                                                   \
         khint_t x;                                                      \
         if (h->n_occupied >= h->upper_bound) {                          \
@@ -250,7 +249,7 @@ static const double __ac_HASH_UPPER = 0.77;
         } else *added = 0;                                              \
         return x;                                                       \
     }                                                                   \
-    INLINE void dh_del_##name(dh_##name##_t *h, khint_t x)       \
+    DMEM_INLINE void dh_del_##name(dh_##name##_t *h, khint_t x)         \
     {                                                                   \
         if (x != h->n_buckets && !__ac_iseither(h->flags, x)) {         \
             __ac_set_isdel_true(h->flags, x);                           \
@@ -264,7 +263,7 @@ static const double __ac_HASH_UPPER = 0.77;
 #define dh_uint32_hash_equal(a, b) (a == b)
 #define dh_uint64_hash_func(key) (uint32_t)((key)>>33^(key)^(key)<<11)
 #define dh_uint64_hash_equal(a, b) (a == b)
-INLINE khint_t __ac_X31_hash_string(const char *s)
+DMEM_INLINE khint_t __ac_X31_hash_string(const char *s)
 {
     khint_t h = *s;
     if (h) for (++s ; *s; ++s) h = (h << 5) - h + *s;
@@ -279,13 +278,16 @@ typedef struct dh_strsz_t
     size_t      sz;
 } dh_strsz_t;
 
-INLINE khint_t __ac_X31_hash_stringsz(dh_strsz_t s)
+DMEM_INLINE khint_t __ac_X31_hash_stringsz(dh_strsz_t s)
 {
+    size_t i;
+    khint_t h;
+
     if (s.sz == 0)
         return 0;
 
-    khint_t h = *s.str;
-    for (size_t i = 1; i < s.sz; i++)
+    h = *s.str;
+    for (i = 1; i < s.sz; i++)
         h = (h << 5) - h + s.str[i];
     return h;
 }

@@ -23,26 +23,27 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
+#include "client-bus.h"
 #include "connection.h"
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-static int adbusI_ConnectCallback(adbus_CbData* d)
+static int ConnectCallback(adbus_CbData* d)
 {
+    adbus_Connection* c = d->connection;
+
     size_t uniqueSize;
     const char* unique = adbus_check_string(d, &uniqueSize);
 
-    adbusI_log("connected %*s", uniqueSize, unique);
+    ADBUSI_LOG("Connected %*s", uniqueSize, unique);
 
-    adbus_Connection* c = d->connection;
-    assert(!c->uniqueService);
-    c->uniqueService = adbusI_strdup(unique);
-    c->connected = 1;
+    assert(!c->connect.unique);
+    adbusI_InterlockedExchangePointer((void* volatile*) &c->connect.unique, adbusI_strdup(unique));
 
-    if (c->connectCallback) {
-        c->connectCallback(c->connectData);
+    if (c->connect.cb) {
+        c->connect.cb(c->connect.user);
     }
+
     return 0;
 }
 
@@ -51,36 +52,37 @@ void adbus_conn_connect(
         adbus_Callback          callback,
         void*                   user)
 {
-    adbusI_log("connecting");
+    ADBUSI_LOG("Connecting");
 
-    assert(!c->connected && !c->connectCallback);
+    assert(!c->connect.unique && !c->connect.cb);
 
-    c->connectCallback  = callback;
-    c->connectData      = user;
+    c->connect.cb   = callback;
+    c->connect.user = user;
 
-    adbus_Call f;
-    adbus_call_method(c->bus, &f, "Hello", -1);
-    f.callback  = &adbusI_ConnectCallback;
+    {
+        adbus_Call f;
+        adbus_call_method(c->bus, &f, "Hello", -1);
+        f.callback  = &ConnectCallback;
 
-    adbus_call_send(c->bus, &f);
+        adbus_call_send(c->bus, &f);
+    }
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 adbus_Bool adbus_conn_isconnected(const adbus_Connection* c)
-{
-    return c->connected;
-}
+{ return c->connect.unique != NULL; }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 const char*  adbus_conn_uniquename(
         const adbus_Connection* c,
         size_t* size)
 {
+    const char* unique = c->connect.unique;
     if (size)
-        *size = c->connected ? strlen(c->uniqueService) : 0;
-    return c->connected ? c->uniqueService : NULL;
+        *size = unique ? strlen(unique) : 0;
+    return unique;
 }
 
 

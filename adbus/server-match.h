@@ -27,19 +27,23 @@
 
 #include "internal.h"
 
+DLIST_INIT(ServerMatch, adbusI_ServerMatch)
+
 struct adbusI_ServerMatch
 {
-    d_List(Match)           hl;
+    d_List(ServerMatch)     hl;
     adbus_Match             m;
+    size_t                  size;
+    char                    data[1];
 };
 
 struct adbusI_ServerMatchList
 {
-    d_IList(Match)          list;
+    d_List(ServerMatch)     list;
 };
 
 ADBUSI_FUNC int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);
 ADBUSI_FUNC int adbusI_serv_removeMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);
 ADBUSI_FUNC void adbusI_serv_freeMatches(adbusI_ServerMatchList* list);
-ADBUSI_FUNC adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list);
+ADBUSI_FUNC adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, adbus_Message* msg);
 

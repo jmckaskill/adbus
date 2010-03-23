@@ -291,28 +291,28 @@ ADBUS_INLINE int adbus_iter_alignfield(adbus_Iterator* i, char field)
 {
     switch (field)
     {
-        case 'y': // u8
-        case 'g': // signature
-        case 'v': // variant
+        case 'y': /* u8 */
+        case 'g': /* signature */
+        case 'v': /* variant */
             return 0;
 
-        case 'n': // i16
-        case 'q': // u16
+        case 'n': /* i16 */
+        case 'q': /* u16 */
             return adbus_iter_align(i,2);
 
-        case 'b': // bool
-        case 'i': // i32
-        case 'u': // u32
-        case 's': // string
-        case 'o': // object path
-        case 'a': // array
+        case 'b': /* bool */
+        case 'i': /* i32 */
+        case 'u': /* u32 */
+        case 's': /* string */
+        case 'o': /* object path */
+        case 'a': /* array */
             return adbus_iter_align(i,4);
 
-        case 'x': // i64
-        case 't': // u64
-        case 'd': // double
-        case '(': // struct
-        case '{': // dict entry
+        case 'x': /* i64 */
+        case 't': /* u64 */
+        case 'd': /* double */
+        case '(': /* struct */
+        case '{': /* dict entry */
             return adbus_iter_align(i,8);
 
         default:
@@ -502,6 +502,7 @@ ADBUS_API const char* adbus_nextarg(const char* sig);
  */
 ADBUS_INLINE int adbus_iter_beginarray(adbus_Iterator* i, adbus_IterArray* a)
 {
+    const char* sigend;
     const uint32_t* len;
     if (adbusI_iter_sig(i, 'a') || adbusI_iter_get32(i, &len))
         return -1;
@@ -512,7 +513,7 @@ ADBUS_INLINE int adbus_iter_beginarray(adbus_Iterator* i, adbus_IterArray* a)
     if (adbus_iter_alignfield(i, *i->sig))
         return -1;
 
-    const char* sigend = adbus_nextarg(i->sig);
+    sigend = adbus_nextarg(i->sig);
     if (sigend == NULL)
         return -1;
 

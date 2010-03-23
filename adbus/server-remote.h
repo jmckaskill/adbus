@@ -26,8 +26,11 @@
 #pragma once
 
 #include "internal.h"
+#include "server-match.h"
+#include "server-parse.h"
 
-DVECTOR_INIT(ServiceQueue, adbusI_ServiceQueue*);
+DVECTOR_INIT(ServiceQueue, adbusI_ServiceQueue*)
+DLIST_INIT(Remote, adbus_Remote)
 
 struct adbus_Remote
 {
@@ -37,25 +40,43 @@ struct adbus_Remote
     d_String                unique;
 
     adbus_SendMsgCallback   send;
-    void*                   data;
+    void*                   user;
 
     adbusI_ServerMatchList  matches;
+    adbusI_ServerParser     parser;
 
-    // The first message on connecting a new remote needs to be a method call
-    // to "Hello" on the bus, if not we kick the connection
+    /* The first message on connecting a new remote needs to be a method call
+     * to "Hello" on the bus, if not we kick the connection
+     */
     adbus_Bool              haveHello;
 
-    // Only use from the service queue code
+    /* Only use from the service queue code */
     d_Vector(ServiceQueue)  services;
 };
 
 struct adbusI_RemoteSet
 {
-    d_Hash(Remote)          lookup;
+    d_List(Remote)          async;
+    d_List(Remote)          sync;
     unsigned int            nextRemote;
 };
 
-ADBUSI_FUNC adbus_Remote* adbusI_serv_remote(adbusI_RemoteSet* s, const char* name, size_t sz);
-ADBUSI_FUNC adbus_Remote* adbusI_serv_createRemote(adbus_Server* s, adbus_SendMsgCallback send, void* data, const char* unique, adbus_Bool needhello);
-ADBUS_API adbus_Remote* adbus_serv_connect(adbus_Server* s,adbus_SendMsgCallback send, void* data);
-ADBUS_API void adbus_remote_disconnect(adbus_Remote* r);
+ADBUSI_FUNC adbus_Remote* adbusI_serv_createRemote(
+        adbus_Server*           s,
+        adbus_SendMsgCallback   send,
+        void*                   data,
+        const char*             unique, /* or NULL if you want a default name */
+        adbus_Bool              needhello);
+
+ADBUS_API void adbus_remote_disconnect(
+        adbus_Remote*           r);
+
+ADBUS_API void adbus_remote_setsynchronous(
+        adbus_Remote*           r,
+        adbus_Bool              sync);
+
+ADBUS_API adbus_Remote* adbus_serv_connect(
+        adbus_Server*           s,
+        adbus_SendMsgCallback   send,
+        void*                   user);
+

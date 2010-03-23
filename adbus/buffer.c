@@ -320,7 +320,7 @@ void adbus_buf_reserve(adbus_Buffer* b, size_t sz)
  *  \relates adbus_Buffer
  */
 void adbus_buf_remove(adbus_Buffer* b, size_t off, size_t num)
-{ dv_remove(char, &b->b, off, num); }
+{ dv_erase(char, &b->b, off, num); }
 
 /** Appends a chunk of data to the buffer
  *  \relates adbus_Buffer
@@ -591,6 +591,21 @@ void adbus_buf_string(adbus_Buffer* b, const char* str, int size)
     char* dest = dv_push(char, &b->b, size + 1);
     memcpy(dest, str, size);
     dest[size] = '\0';
+}
+
+void adbus_buf_string_vf(adbus_Buffer* b, const char* format, va_list ap)
+{
+    d_String str = {};
+    ds_set_vf(format, ap);
+    adbus_buf_string(b, ds_cstr(&str), ds_size(&str));
+    ds_free(&str);
+}
+
+void adbus_buf_string_f(adbus_Buffer* b, const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    adbus_buf_string_vf(b, format, ap);
 }
 
 /** Serialises an object path (dbus sig "o").

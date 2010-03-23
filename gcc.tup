@@ -8,9 +8,10 @@ CFLAGS += -fPIC
 CFLAGS += -Wall
 CFLAGS += -Werror
 CFLAGS += -fno-strict-aliasing
+CFLAGS += -Wno-unused-function
 
-CFLAGS += -I$(TUP_CWD)/include/c
-CFLAGS += -I$(TUP_CWD)/deps/lua/src
+CFLAGS += -I`pwd`/$(TUP_CWD)/include/c
+CFLAGS += -I`pwd`/$(TUP_CWD)/deps/lua/src
 
 CFLAGS += -DLUA_USE_LINUX
 CFLAGS += -DADBUS_SHARED_LIBRARY

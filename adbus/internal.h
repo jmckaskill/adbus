@@ -25,5 +25,46 @@
 
 #pragma once
 
+#ifndef __STDC_LIMIT_MACROS
+#   define __STDC_LIMIT_MACROS
+#endif
+
+#ifndef __STDC_CONSTANT_MACROS
+#   define __STDC_CONSTANT_MACROS
+#endif
+
+#include <adbus.h>
+#include "dmem/hash.h"
+#include "dmem/list.h"
+#include "dmem/string.h"
+#include "dmem/vector.h"
+
+#if defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && defined(__ELF__)
+#   define ADBUSI_FUNC __attribute__((visibility("hidden"))) extern
+#   define ADBUSI_DATA __attribute__((visibility("hidden"))) extern
+#else
+#   define ADBUSI_FUNC
+#   define ADBUSI_DATA extern
+#endif
+
 typedef struct adbusI_TrackedRemote adbusI_TrackedRemote;
 typedef struct adbusI_RemoteTracker adbusI_RemoteTracker;
+typedef struct adbusI_BusServer adbusI_BusServer;
+typedef struct adbusI_ServerParser adbusI_ServerParser;
+typedef struct adbusI_RemoteSet adbusI_RemoteSet;
+typedef struct adbusI_ServiceOwner adbusI_ServiceOwner;
+typedef struct adbusI_ServiceQueue adbusI_ServiceQueue;
+typedef struct adbusI_ServiceQueueSet adbusI_ServiceQueueSet;
+typedef struct adbusI_ServerMatch adbusI_ServerMatch;
+typedef struct adbusI_ServerMatchList adbusI_ServerMatchList;
+typedef struct adbusI_Header adbusI_Header;
+typedef struct adbusI_ExtendedHeader adbusI_ExtendedHeader;
+typedef struct adbusI_ConnMatchList adbusI_ConnMatchList;
+typedef struct adbusI_ReplySet adbusI_ReplySet;
+typedef struct adbusI_ObjectTree adbusI_ObjectTree;
+typedef struct adbusI_ObjectNode adbusI_ObjectNode;
+typedef struct adbusI_ConnBusData adbusI_ConnBusData;
+
+#include "debug.h"
+#include "misc.h"
+

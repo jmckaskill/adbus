@@ -104,10 +104,10 @@ namespace adbus {
         void disconnect();
 
     private:
-        static adbus_ssize_t  SendMsg(void* d, adbus_Message* m);
-        static adbus_ssize_t  Send(void* d, const char* b, size_t sz);
-        static uint8_t        Rand(void* d);
-        static void           ConnectedToBus(void* u);
+        static int      SendMsg(void* d, adbus_Message* m);
+        static int      Send(void* d, const char* b, size_t sz);
+        static uint8_t  Rand(void* d);
+        static void     ConnectedToBus(void* u);
         
         bool              m_ConnectToBus;
         adbus_Connection* m_Connection;

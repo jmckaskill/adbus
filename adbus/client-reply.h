@@ -27,7 +27,7 @@
 
 #include "internal.h"
 
-DILIST_INIT(Reply, adbus_ConnReply);
+DILIST_INIT(Reply, adbus_ConnReply)
 
 struct adbus_ConnReply
 {
@@ -54,7 +54,7 @@ struct adbus_ConnReply
     void*                       relpuser;
 };
 
-DHASH_MAP_INIT_UINT32(Reply, adbus_ConnReply*);
+DHASH_MAP_INIT_UINT32(Reply, adbus_ConnReply*)
 
 struct adbusI_ReplySet
 {
@@ -62,5 +62,15 @@ struct adbusI_ReplySet
     d_Hash(Reply)               lookup;
 };
 
-ADBUSI_FUNC void adbusI_freeReply(adbus_ConnReply* reply);
-ADBUSI_FUNC int adbusI_dispatchReply(adbusI_ReplySet* r, adbus_CbData* d);
+ADBUSI_FUNC void adbusI_freeReplies(adbus_Connection* c);
+ADBUSI_FUNC int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d);
+
+ADBUS_API void adbus_reply_init(adbus_Reply* reply);
+
+ADBUS_API adbus_ConnReply* adbus_conn_addreply(
+        adbus_Connection*       connection,
+        const adbus_Reply*      reply);
+
+ADBUS_API void adbus_conn_removereply(
+        adbus_Connection*       connection,
+        adbus_ConnReply*        reply);

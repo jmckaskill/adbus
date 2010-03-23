@@ -30,17 +30,19 @@
 #include "dmem/vector.h"
 #include <adbus.h>
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
-DHASH_MAP_INIT_STR(StringPair, char*);
-DVECTOR_INIT(String, char*);
+DHASH_MAP_INIT_STR(StringPair, char*)
+DVECTOR_INIT(String, char*)
 
-typedef enum adbusI_MemberType
+enum adbusI_MemberType
 {
     ADBUSI_METHOD,
     ADBUSI_SIGNAL,
-    ADBUSI_PROPERTY,
-} adbusI_MemberType;
+    ADBUSI_PROPERTY
+};
+
+typedef enum adbusI_MemberType adbusI_MemberType;
 
 struct adbus_Member
 {
@@ -73,7 +75,7 @@ struct adbus_Member
 
 DHASH_MAP_INIT_STRSZ(MemberPtr, adbus_Member*)
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 struct adbus_Interface
 {
@@ -83,7 +85,7 @@ struct adbus_Interface
     d_Hash(MemberPtr)       members;
 };
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 ADBUSI_FUNC int adbusI_introspect(adbus_CbData* details);
 ADBUSI_FUNC int adbusI_getProperty(adbus_CbData* details);

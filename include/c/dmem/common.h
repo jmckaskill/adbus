@@ -4,9 +4,9 @@
 #define DMEM_COMMON_H
 
 #if defined __cplusplus || __STDC_VERSION__ + 0 >= 199901L
-#   define INLINE static inline
+#   define DMEM_INLINE static inline
 #else
-#   define INLINE static
+#   define DMEM_INLINE static
 #endif
 
 #endif

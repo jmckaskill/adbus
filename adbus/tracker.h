@@ -27,31 +27,32 @@
 
 #include "internal.h"
 
+/* Warning we don't bother cleaning up tracked remotes that have to go to the
+ * bus (ie for service name), until the connection is freed.
+ */
+
 struct adbusI_TrackedRemote
 {
-    adbusI_RemoteTracker*   tracker;
     int                     ref;
     dh_strsz_t              service;
     dh_strsz_t              unique;
 };
 
-ADBUSI_FUNC void adbusI_refTrackedRemote(adbusI_TrackedRemote* r);
 ADBUSI_FUNC void adbusI_derefTrackedRemote(adbusI_TrackedRemote* r);
 
-DHASH_MAP_INIT_STRSZ(Tracked, adbusI_TrackedRemote*);
+DHASH_MAP_INIT_STRSZ(Tracked, adbusI_TrackedRemote*)
 
 struct adbusI_RemoteTracker
 {
-    adbus_Connection*       connection;
-    d_Hash(Tracked)         remotes;
+    d_Hash(Tracked)         lookup;
 };
 
 
-// Tracked remote comes pre-refed
+/* Tracked remote comes pre-refed */
 ADBUSI_FUNC adbusI_TrackedRemote* adbusI_getTrackedRemote(
-        adbusI_RemoteTracker* t,
-        const char*           service,
-        int                   size);
+        adbus_Connection*   c,
+        const char*         service,
+        int                 size);
 
-ADBUSI_FUNC void adbusI_initRemoteTracker(adbusI_RemoteTracker* t, adbus_Connection* c);
-ADBUSI_FUNC void adbusI_freeRemoteTracker(adbusI_RemoteTracker* t);
+ADBUSI_FUNC void adbusI_freeRemoteTracker(adbus_Connection* c);
+

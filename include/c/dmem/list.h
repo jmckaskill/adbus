@@ -24,21 +24,21 @@
         type* next;                                                     \
         type* prev;                                                     \
     } dl_##name##_t;                                                    \
-    INLINE void dl_init_##name(dl_##name##_t* head)                     \
+    DMEM_INLINE void dl_init_##name(dl_##name##_t* head)                \
     {                                                                   \
         head->next = head->prev = NULL;                                 \
     }                                                                   \
-    INLINE type* dl_type_##name(dl_##name##_t* h, ptrdiff_t off)        \
+    DMEM_INLINE type* dl_type_##name(dl_##name##_t* h, ptrdiff_t off)   \
     {                                                                   \
         char* ctype = ((char*) h) - off;                                \
         return (type*) ctype;                                           \
     }                                                                   \
-    INLINE dl_##name##_t* dl_handle_##name(type* v, ptrdiff_t off)      \
+    DMEM_INLINE dl_##name##_t* dl_handle_##name(type* v, ptrdiff_t off) \
     {                                                                   \
         char* chandle = ((char*) v) + off;                              \
         return (dl_##name##_t*) chandle;                                \
     }                                                                   \
-    INLINE void dl_remove_##name(type* v, dl_##name##_t* h)             \
+    DMEM_INLINE void dl_remove_##name(type* v, dl_##name##_t* h)        \
     {                                                                   \
         ptrdiff_t off = ((char*) h) - ((char*) v);                      \
         if (h->next)                                                    \
@@ -48,7 +48,7 @@
         h->next = NULL;                                                 \
         h->prev = NULL;                                                 \
     }                                                                   \
-    INLINE void dl_insert_before_##name(                                \
+    DMEM_INLINE void dl_insert_before_##name(                           \
             dl_##name##_t*  head,                                       \
             type*           v,                                          \
             dl_##name##_t*  h)                                          \
@@ -60,7 +60,7 @@
         if (h->prev)                                                    \
             dl_handle_##name(h->prev, off)->next = v;                   \
     }                                                                   \
-    INLINE void dl_insert_after_##name(                                 \
+    DMEM_INLINE void dl_insert_after_##name(                            \
             dl_##name##_t*  head,                                       \
             type*           v,                                          \
             dl_##name##_t*  h)                                          \
@@ -116,25 +116,25 @@
         type* prev;                                                     \
         type* iter;                                                     \
     } dil_##name##_t;                                                   \
-    INLINE void dil_init_##name(dil_##name##_t* head)                   \
+    DMEM_INLINE void dil_init_##name(dil_##name##_t* head)              \
     {                                                                   \
         head->next = head->prev = head->iter = NULL;                    \
     }                                                                   \
-    INLINE type* dil_type_##name(dil_##name##_t* h, ptrdiff_t off)      \
+    DMEM_INLINE type* dil_type_##name(dil_##name##_t* h, ptrdiff_t off) \
     {                                                                   \
         char* ctype = ((char*) h) - off;                                \
         return (type*) ctype;                                           \
     }                                                                   \
-    INLINE dil_##name##_t* dil_handle_##name(type* v, ptrdiff_t off)    \
+    DMEM_INLINE dil_##name##_t* dil_handle_##name(type* v, ptrdiff_t off) \
     {                                                                   \
         char* chandle = ((char*) v) + off;                              \
         return (dil_##name##_t*) chandle;                               \
     }                                                                   \
-    INLINE void dil_clear_##name(dil_##name##_t* head)                  \
+    DMEM_INLINE void dil_clear_##name(dil_##name##_t* head)             \
     {                                                                   \
         head->next = head->prev = head->iter = NULL;                    \
     }                                                                   \
-    INLINE void dil_remove_##name(type* v, dil_##name##_t* h)           \
+    DMEM_INLINE void dil_remove_##name(type* v, dil_##name##_t* h)      \
     {                                                                   \
         ptrdiff_t off = ((char*) h) - ((char*) v);                      \
         type** iter = (type**) h->iter;                                 \
@@ -148,7 +148,7 @@
         h->prev = NULL;                                                 \
         h->iter = NULL;                                                 \
     }                                                                   \
-    INLINE void dil_insert_before_##name(                               \
+    DMEM_INLINE void dil_insert_before_##name(                          \
             dil_##name##_t*  head,                                      \
             type*           v,                                          \
             dil_##name##_t*  h)                                         \
@@ -161,7 +161,7 @@
         if (h->prev)                                                    \
             dil_handle_##name(h->prev, off)->next = v;                  \
     }                                                                   \
-    INLINE void dil_insert_after_##name(                                \
+    DMEM_INLINE void dil_insert_after_##name(                           \
             dil_##name##_t*  head,                                      \
             type*           v,                                          \
             dil_##name##_t*  h)                                         \

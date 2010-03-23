@@ -23,9 +23,9 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
-
 #include "server-service.h"
+#include "server-remote.h"
+#include "server-bus.h"
 
 /* -------------------------------------------------------------------------- */
 
@@ -50,80 +50,85 @@ int adbusI_requestService(
         const char*     name,
         uint32_t        flags)
 {
+    adbusI_ServiceQueue* queue;
+    adbusI_ServiceOwner* owner;
+    adbus_Remote* previous;
+
     int added;
     dh_Iter ii = dh_put(ServiceQueue, &s->queues, name, &added);
 
     if (added) {
-        adbusI_ServiceQueue** pqueue = &dh_val(&s->queues, ii);
-        *pqueue = NEW(adbusI_ServiceQueue);
-        (*pqueue)->name = adbusI_strdup(name);
-        dh_key(&s->services, ii) = (*pqueue)->name;
+        queue = NEW(adbusI_ServiceQueue);
+        queue->name = adbusI_strdup(name);
+        dh_key(&s->queues, ii) = queue->name;
+        dh_val(&s->queues, ii) = queue;
+    } else {
+        queue = dh_val(&s->queues, ii);
     }
 
-    adbusI_ServiceQueue* queue = dh_val(&s->queues, ii);
 
     if (dv_size(&queue->v) == 0) {
-        // Empty queue - we immediately become the owner
+        /* Empty queue - we immediately become the owner */
 
         adbusI_ServiceQueue** remote_queue = dv_push(ServiceQueue, &r->services, 1);
         *remote_queue = queue;
 
-        adbusI_ServiceOwner* o = dv_push(ServiceOwner, &queue->v, 1);
-        o->remote = r;
-        o->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
+        owner = dv_push(ServiceOwner, &queue->v, 1);
+        owner->remote = r;
+        owner->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
         adbusI_serv_ownerChanged(s->busServer, name, NULL, r);
         return ADBUS_SERVICE_SUCCESS;
 
-    } else if (dv_a(&serv->queue, 0).remote == r) {
-        // We are already the owner - update flags
+    } else if (dv_a(&queue->v, 0).remote == r) {
+        /* We are already the owner - update flags */
 
-        adbusI_ServiceOwner* o = &dv_a(&queue->v, 0);
-        o->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
+        owner = &dv_a(&queue->v, 0);
+        owner->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
         return ADBUS_SERVICE_REQUEST_ALREADY_OWNER;
 
     } else if (flags & ADBUS_SERVICE_REPLACE_EXISTING && dv_a(&queue->v, 0).allowReplacement) {
-        // We are replacing the existing owner
+        /* We are replacing the existing owner */
 
-        adbusI_ServiceOwner* o = &dv_a(&serv->queue, 0);
-        adbus_Remote* previous = o->remote;
+        owner = &dv_a(&queue->v, 0);
+        previous = owner->remote;
 
-        // Remove ourself, if we are already in the queue
-        dv_remove(ServiceOwner, &queue->v, r);
+        /* Remove ourself, if we are already in the queue */
+        dv_remove(ServiceOwner, &queue->v, ENTRY->remote == r);
 
-        // Remove this service from the previous owner
-        dv_remove(ServiceQueue, &previous->services, s);
+        /* Remove this service from the previous owner */
+        dv_remove(ServiceQueue, &previous->services, *ENTRY == queue);
 
-        // Replace the existing owner
-        o->remote = r;
-        o->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
-        adbusI_serv_ownerChanged(s, name, previous, r);
+        /* Replace the existing owner */
+        owner->remote = r;
+        owner->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
+        adbusI_serv_ownerChanged(s->busServer, name, previous, r);
         return ADBUS_SERVICE_SUCCESS;
 
     } else if (!(flags & ADBUS_SERVICE_DO_NOT_QUEUE)) {
-        // We are being added to the queue, or updating an existing queue entry
+        /* We are being added to the queue, or updating an existing queue entry */
 
-        // If we are already in the queue then we just update the entry,
-        // otherwise we add a new entry
-        adbusI_ServiceOwner* o = NULL;
-        dv_find(&queue->v, &o, dv_a(&queue->v, i).remote == r);
+        /* If we are already in the queue then we just update the entry,
+         * otherwise we add a new entry 
+         */
+        dv_find(ServiceOwner, &queue->v, &owner, ENTRY->remote == r);
 
-        if (o == NULL) {
+        if (owner == NULL) {
             adbusI_ServiceQueue** pqueue = dv_push(ServiceQueue, &r->services, 1);
-            *pqueue = serv;
+            *pqueue = queue;
 
-            o = dv_push(ServiceOwner, &queue->v, 1);
+            owner = dv_push(ServiceOwner, &queue->v, 1);
         }
 
-        o->remote = r;
-        o->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
+        owner->remote = r;
+        owner->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
         return ADBUS_SERVICE_REQUEST_IN_QUEUE;
 
     } else {
-        // We don't want to queue and there is already an owner
+        /* We don't want to queue and there is already an owner */
 
-        // If we already in the queue then we need to be removed
-        dv_remove(ServiceOwner, &queue->v, r);
-        dv_remove(ServiceQueue, &r->services, s);
+        /* If we already in the queue then we need to be removed */
+        dv_remove(ServiceOwner, &queue->v, ENTRY->remote == r);
+        dv_remove(ServiceQueue, &r->services, *ENTRY == queue);
         return ADBUS_SERVICE_REQUEST_FAILED;
 
     }
@@ -137,37 +142,42 @@ int adbusI_releaseService(
         adbus_Remote*           r,
         const char*             name)
 {
+    adbusI_ServiceOwner* owner;
+    adbusI_ServiceQueue* queue;
+
     dh_Iter ii = dh_get(ServiceQueue, &s->queues, name);
     if (ii == dh_end(&s->queues))
         return ADBUS_SERVICE_RELEASE_INVALID_NAME;
 
-    adbusI_ServiceQueue* queue = dh_val(&s->queues, ii);
-    adbus_Remote* owner = dv_a(&queue->v, 0);
+    queue = dh_val(&s->queues, ii);
+    owner = &dv_a(&queue->v, 0);
 
-    // Remove the queue from the remote
-    dv_remove(ServiceQueue, &r->services, queue);
+    /* Remove the queue from the remote */
+    dv_remove(ServiceQueue, &r->services, *ENTRY == queue);
 
-    // Remove the remote from the queue
-    size_t queuesz = dv_size(&queue->v);
-    dv_remove(ServiceQueue, &queue->v, r);
+    /* Remove the remote from the queue */
+    {
+        size_t queuesz = dv_size(&queue->v);
+        dv_remove(ServiceOwner, &queue->v, ENTRY->remote == r);
 
-    if (dv_size(&queue->v) == queuesz)
-        return ADBUS_SERVICE_RELEASE_NOT_OWNER;
+        if (dv_size(&queue->v) == queuesz)
+            return ADBUS_SERVICE_RELEASE_NOT_OWNER;
+    }
 
-    if (owner == r) {
+    if (owner->remote == r) {
 
         if (dv_size(&queue->v) > 0) {
-            // Switch to the new owner
-            owner = dv_a(&queue->v, 0);
+            /* Switch to the new owner */
+            adbusI_serv_ownerChanged(s->busServer, name, r, dv_a(&queue->v, 0).remote);
         } else {
-            // No new owner, remove the queue
+            /* No new owner, remove the queue */
+            dh_del(ServiceQueue, &s->queues, ii);
+            adbusI_serv_ownerChanged(s->busServer, name, r, NULL);
             dv_free(ServiceOwner, &queue->v);
             free(queue->name);
-            dh_del(ServiceQueue, &s->queues, ii);
-            owner = NULL;
+            free(queue);
         }
 
-        adbusI_serv_ownerChanged(s->busServer, name, r, owner);
         return ADBUS_SERVICE_SUCCESS;
 
     } else {
@@ -179,6 +189,12 @@ int adbusI_releaseService(
 
 adbus_Remote* adbusI_lookupRemote(adbusI_ServiceQueueSet* s, const char* name)
 {
+    adbusI_ServiceQueue* queue;
     dh_Iter ii = dh_get(ServiceQueue, &s->queues, name);
-    return (ii != dh_end(&s->queues)) ? dh_val(&s->queues, ii).remote : NULL;
+    if (ii == dh_end(&s->queues))
+        return NULL;
+
+    queue = dh_val(&s->queues, ii);
+    return dv_a(&queue->v, 0).remote;
 }
+

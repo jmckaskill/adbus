@@ -27,12 +27,12 @@
 
 #include "internal.h"
 
-DILIST_INIT(Bind, adbus_ConnBind);
-DHASH_MAP_INIT_STRSZ(Bind, adbus_ConnBind*);
+DILIST_INIT(Bind, adbus_ConnBind)
+DHASH_MAP_INIT_STRSZ(Bind, adbus_ConnBind*)
 
 struct adbus_ConnBind
 {
-    d_IList(Bind)           fl;
+    d_IList(Bind)           hl;
     adbusI_ObjectNode*      node;
     adbus_Interface*        interface;
     void*                   cuser2;
@@ -44,35 +44,61 @@ struct adbus_ConnBind
     void*                   relpuser;
 };
 
-ADBUSI_FUNC adbus_ConnBind* adbusI_createBind(adbusI_ObjectTree* t, adbusI_ObjectNode* n, adbus_Bind* b);
-ADBUSI_FUNC void adbusI_removeBind(adbus_ConnBind* b);
-ADBUSI_FUNC void adbusI_freeBind(adbusI_ObjectNode* n);
-
-
-DILIST_INIT(ObjectNode, adbusI_ObjectNode*);
-DHASH_MAP_INIT_STRSZ(ObjectNode, adbusI_ObjectNode*);
+DLIST_INIT(ObjectNode, adbusI_ObjectNode)
+DHASH_MAP_INIT_STRSZ(ObjectNode, adbusI_ObjectNode*)
 
 struct adbusI_ObjectNode
 {
+    d_List(ObjectNode)      hl;
     int                     ref;
     dh_strsz_t              path;
     d_Hash(Bind)            binds;
-    d_IList(ObjectNode)     children;
+    d_List(ObjectNode)      children;
     adbusI_ObjectNode*      parent;
+    adbusI_ObjectTree*      tree;
+    adbus_ConnBind*         introspectable;
+    adbus_ConnBind*         properties;
 };
-
-ADBUSI_FUNC void adbusI_refObjectNode(adbusI_ObjectNode* n);
-ADBUSI_FUNC void adbusI_derefObjectNode(adbusI_ObjectNode* n);
-ADBUSI_FUNC void adbusI_removeObjectNode(adbusI_ObjectTree* p, adbusI_ObjectNode* n);
-ADBUSI_FUNC void adbusI_freeObjectNode(adbusI_ObjectNode* n);
 
 struct adbusI_ObjectTree
 {
     d_Hash(ObjectNode)      lookup;
-    d_IList(Bind)           binds;
+    d_IList(Bind)           list;
 };
 
-// Object node comes pre-refed
-ADBUSI_FUNC adbusI_ObjectNode* adbusI_getObjectNode(adbusI_ObjectTree* t, const char* path, size_t sz);
-ADBUSI_FUNC void adbusI_removeObjectNodes(adbusI_ObjectTree* p, adbusI_ObjectNode* n);
-ADBUSI_FUNC void adbusI_freeObjectTree(adbusI_ObjectTree* p);
+ADBUSI_FUNC adbus_ConnBind* adbusI_createBind(adbusI_ObjectTree* t, adbusI_ObjectNode* n, const adbus_Bind* b);
+ADBUSI_FUNC void adbusI_freeBind(adbus_ConnBind* b);
+
+ADBUSI_FUNC void adbusI_refObjectNode(adbusI_ObjectNode* n);
+ADBUSI_FUNC void adbusI_derefObjectNode(adbusI_ObjectNode* n);
+
+/* Object node does _not_ come pre-refed */
+ADBUSI_FUNC adbusI_ObjectNode* adbusI_getObjectNode(adbus_Connection* c, dh_strsz_t path);
+ADBUSI_FUNC void adbusI_freeObjectTree(adbusI_ObjectTree* t);
+
+ADBUS_API void adbus_bind_init(adbus_Bind* bind);
+
+ADBUS_API adbus_ConnBind* adbus_conn_bind(
+        adbus_Connection*   connection,
+        const adbus_Bind*   bind);
+
+ADBUS_API void adbus_conn_unbind(
+        adbus_Connection*   connection,
+        adbus_ConnBind*     bind);
+
+ADBUS_API adbus_Interface* adbus_conn_interface(
+        adbus_Connection*       connection,
+        const char*             path,
+        int                     pathSize,
+        const char*             interface,
+        int                     interfaceSize,
+        adbus_ConnBind**        bind);
+
+ADBUS_API adbus_Member* adbus_conn_method(
+        adbus_Connection*       connection,
+        const char*             path,
+        int                     pathSize,
+        const char*             method,
+        int                     methodSize,
+        adbus_ConnBind**        bind);
+

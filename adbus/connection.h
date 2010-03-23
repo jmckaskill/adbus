@@ -25,39 +25,19 @@
 
 #pragma once
 
-#include "misc.h"
-#include "dmem/hash.h"
-#include "dmem/vector.h"
-#include "dmem/string.h"
-#include "dmem/list.h"
-#include <setjmp.h>
-#include <stdint.h>
+#include "internal.h"
+#include "client-bind.h"
+#include "client-bus.h"
+#include "client-match.h"
+#include "client-reply.h"
+#include "tracker.h"
 
-
-
-DVECTOR_INIT(char, char);
 
 struct adbus_Connection
 {
     /** \privatesection */
     volatile long               ref;
-
-    d_Hash(ObjectPath)          paths;
-    d_Hash(Remote)              remotes;
-
-    // We keep free lists for all registrable services so that they can be
-    // released in adbus_conn_free.
-
-    d_IList(Bind)               binds;
-
-    d_Hash(ServiceLookup)       services;
-
-    uint32_t                    nextSerial;
-    adbus_Bool                  connected;
-    char*                       uniqueService;
-
-    adbus_Callback              connectCallback;
-    void*                       connectData;
+    volatile long               nextSerial;
 
     adbus_ConnectionCallbacks   callbacks;
     void*                       user;
@@ -68,12 +48,17 @@ struct adbus_Connection
     adbus_Interface*            introspectable;
     adbus_Interface*            properties;
 
-    d_Vector(char)              parseBuffer;
+    adbus_Buffer*               parseBuffer;
     adbus_MsgFactory*           returnMessage;
+
+    adbusI_ConnBusData          connect;
+    adbusI_ObjectTree           binds;
+    adbusI_ConnMatchList        matches;
+    adbusI_ReplySet             replies;
+    adbusI_RemoteTracker        tracker;
 };
 
 
-ADBUSI_FUNC int adbusI_dispatchBind(adbus_CbData* d);
 
 
 

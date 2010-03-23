@@ -69,10 +69,7 @@
 adbus_Server* adbus_serv_new(adbus_Interface* bus)
 {
     adbus_Server* s = NEW(adbus_Server);
-    s->busInterface = bus;
-    adbus_iface_ref(bus);
-
-    adbusI_serv_initbus(s);
+    adbusI_serv_initBus(&s->bus, bus, s);
 
     return s;
 }
@@ -82,29 +79,63 @@ adbus_Server* adbus_serv_new(adbus_Interface* bus)
  */
 void adbus_serv_free(adbus_Server* s)
 {
-    if (s == NULL)
-        return;
-
-    adbus_Remote* r = s->remotes.next;
-    while (r) {
-        adbus_Remote* next = r->hl.next;
-        adbus_remote_disconnect(r);
-        r = next;
+    if (s) {
+        adbusI_serv_freeBus(&s->bus);
+        adbusI_freeServiceQueue(&s->services);
+        assert(dl_isempty(&s->remotes.async));
+        assert(dl_isempty(&s->remotes.sync));
+        free(s);
     }
-    dl_clear(Remote, &s->remotes);
+}
 
-    for (dh_Iter ii = dh_begin(&s->services); ii != dh_end(&s->services); ++ii) {
-        if (dh_exist(&s->services, ii)) {
-            adbusI_serv_freeservice(dh_val(&s->services, ii));
+/* -------------------------------------------------------------------------- */
+
+adbus_Remote* adbus_serv_caller(adbus_Server* s)
+{ return s->caller; }
+
+/* -------------------------------------------------------------------------- */
+
+int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
+{
+    adbus_Remote* r;
+    adbus_Remote* direct = NULL;
+
+    if (m->destination) {
+        direct = adbusI_lookupRemote(&s->services, m->destination);
+    } else if (m->type == ADBUS_MSG_METHOD) {
+        direct = s->bus.remote;
+    }
+
+    /* Call async remotes first since sync remotes can call back into this
+     * function and otherwise the async remotes get a weird message ordering.
+     */
+
+    DL_FOREACH(Remote, r, &s->remotes.async, hl) {
+        s->caller = from;
+        if (    (r == direct || adbusI_serv_matches(&r->matches, m))
+             && r->send(r->user, m) != (int) m->size) 
+        {
+            return -1;
         }
     }
-    dh_clear(Service, &s->services);
 
-    dh_free(Service, &s->services);
-    adbusI_serv_freebus(s);
-    adbus_iface_deref(s->busInterface);
-    free(s);
+    DL_FOREACH(Remote, r, &s->remotes.sync, hl) {
+        s->caller = from;
+        if (    (r == direct || adbusI_serv_matches(&r->matches, m))
+             && r->send(r->user, m) != (int) m->size) 
+        {
+            return -1;
+        }
+    }
+
+    if (m->destination && m->type == ADBUS_MSG_METHOD && !direct) {
+        adbusI_serv_invalidDestination(&s->bus, m);
+    }
+
+    return 0;
 }
+
+
 
 
 

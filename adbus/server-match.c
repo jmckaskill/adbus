@@ -23,115 +23,175 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
 #include "server.h"
 
+DVECTOR_INIT(Argument, adbus_Argument)
+
 /* -------------------------------------------------------------------------- */
-static adbus_Bool StringMatches(
-        const char* match,
-        size_t      matchsz,
-        const char* msg,
-        size_t      msgsz)
+
+static int IsArgKey(const char* beg, const char* end, int* num)
 {
-    if (!match)
+    if (end - beg < 3 || strncmp(beg, "arg", 3) != 0)
+    {
+        return 0;
+    }
+    /* arg0 - arg9 */
+    else if (   end - beg == 4
+            &&  '0' <= beg[3] && beg[3] <= '9')
+    {
+        *num = (beg[3] - '0');
         return 1;
-
-    if (!msg)
-        return 0;
-
-    if (matchsz != msgsz)
-        return 0;
-
-    return memcmp(match, msg, msgsz) == 0;
-}
-
-
-static adbus_Bool ArgsMatch(
-        struct Match*   match,
-        adbus_Message*  msg)
-{
-    if (msg->argumentsSize < match->argumentsSize)
-        return 0;
-
-    for (size_t i = 0; i < match->argumentsSize; i++) {
-        adbus_Argument* matcharg = &match->arguments[i];
-        adbus_Argument* msgarg = &msg->arguments[i];
-
-        if (!matcharg->value)
-            continue;
-
-        if (msgarg->value == NULL)
-            return 0;
-
-        if (msgarg->size != matcharg->size)
-            return 0;
-
-        if (memcmp(msgarg->value, matcharg->value, matcharg->size) != 0)
-            return 0;
-
     }
-    return 1;
+    /* arg10 - arg63 */
+    else if (   end - beg == 5
+            &&  '0' <= beg[3] && beg[3] <= '9'
+            &&  '0' <= beg[4] && beg[4] <= '9')
+    {
+        *num = (beg[3] - '0') * 10
+             + (beg[4] - '0');
+        return *num <= 63;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
-static int RemoteDispatchMatch(adbus_Remote* r, adbus_Message* msg)
+int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len)
 {
-    struct Match* match;
-    DL_FOREACH(Match, match, &r->matches, hl) {
-        if (match->type == ADBUS_MSG_INVALID && match->type != msg->type) {
-            continue;
-        } else if (match->checkReply && (!msg->replySerial || match->reply != *msg->replySerial)) {
-            continue;
-        } else if (!StringMatches(match->path, match->pathSize, msg->path, msg->pathSize)) {
-            continue;
-        } else if (!StringMatches(match->interface, match->interfaceSize, msg->interface, msg->interfaceSize)) {
-            continue;
-        } else if (!StringMatches(match->member, match->memberSize, msg->member, msg->memberSize)) {
-            continue;
-        } else if (!StringMatches(match->error, match->errorSize, msg->error, msg->errorSize)) {
-            continue;
-        } else if (!StringMatches(match->destination, match->destinationSize, msg->destination, msg->destinationSize)) {
-            continue;
-        } else if (!StringMatches(match->sender, match->senderSize, msg->sender, msg->senderSize)) {
-            continue;
-        } else if (match->argumentsSize > 0) {
-            if (adbus_parseargs(msg))
-                return -1;
-            if (!ArgsMatch(match, msg))
-                continue;
+    adbusI_ServerMatch* m = (adbusI_ServerMatch*) calloc(1, sizeof(adbusI_ServerMatch) + len);
+    d_Vector(Argument) args;
+    const char *line, *end;
+
+    ZERO(args);
+    memcpy(m->data, mstr, len);
+    m->size = len;
+
+    line = m->data;
+    end  = m->data + len;
+    while (*line && line < end) {
+        const char *keyb, *keye, *valb, *vale;
+        int argnum;
+
+        /* Look for a key/value pair "<key>='<value>',"
+         * Comma is optional for the last key/value pair
+         */
+        keyb = line;
+        keye = (const char*) memchr(keyb, '=', end - keyb);
+        /* keye needs to be followed by ' */
+        if (!keye || keye + 1 >= end || keye[1] != '\'')
+            goto error;
+
+        valb = keye+2;
+        vale = (const char*) memchr(valb, '\'', end - valb);
+        /* vale is either the last character or followed by a , */
+        if (!vale || (vale + 1 != end && vale[1] != ',' ))
+            goto error;
+
+        line = vale + 2;
+
+#define MATCH(BEG, END, STR)                        \
+        (   END - BEG == sizeof(STR) - 1            \
+         && memcmp(BEG, STR, END - BEG) == 0)
+
+        if (MATCH(keyb, keye, "type")) {
+            if (MATCH(valb, vale, "signal")) {
+                m->m.type = ADBUS_MSG_SIGNAL;
+            } else if (MATCH(valb, vale, "method_call")) {
+                m->m.type = ADBUS_MSG_METHOD;
+            } else if (MATCH(valb, vale, "method_return")) {
+                m->m.type = ADBUS_MSG_RETURN;
+            } else if (MATCH(valb, vale, "error")) {
+                m->m.type = ADBUS_MSG_ERROR;
+            } else {
+                goto error;
+            }
+
+        } else if (MATCH(keyb, keye, "sender")) {
+            m->m.sender           = valb;
+            m->m.senderSize       = vale - valb;
+
+        } else if (MATCH(keyb, keye, "interface")) {
+            m->m.interface        = valb;
+            m->m.interfaceSize    = vale - valb;
+
+        } else if (MATCH(keyb, keye, "member")) {
+            m->m.member           = valb;
+            m->m.memberSize       = vale - valb;
+
+        } else if (MATCH(keyb, keye, "path")) {
+            m->m.path             = valb;
+            m->m.pathSize         = vale - valb;
+
+        } else if (MATCH(keyb, keye, "destination")) {
+            m->m.destination      = valb;
+            m->m.destinationSize  = vale - valb;
+
+        } else if (IsArgKey(keyb, keye, &argnum)) {
+            adbus_Argument* a;
+            int toadd = argnum + 1 - (int) dv_size(&args);
+            if (toadd > 0) {
+                adbus_Argument* a = dv_push(Argument, &args, toadd);
+                adbus_arg_init(a, toadd);
+            }
+
+            a = &dv_a(&args, argnum);
+            a->value = valb;
+            a->size  = (int) (vale - valb);
         }
 
-        return r->send(r->data, msg) != (adbus_ssize_t) msg->size;
     }
+
+    m->m.argumentsSize = dv_size(&args);
+    m->m.arguments     = dv_release(Argument, &args);
+
+    dl_insert_after(ServerMatch, &list->list, m, &m->hl);
     return 0;
+
+error:
+    dv_free(Argument, &args);
+    free(m);
+    return -1;
 }
 
 /* -------------------------------------------------------------------------- */
-int adbusI_serv_dispatch(adbus_Server* s, adbus_Message* m)
+
+int adbusI_serv_removeMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len)
 {
-    adbus_Remote* direct = NULL;
-    if (m->destination) {
-        dh_Iter ii = dh_get(Service, &s->services, m->destination);
-        if (ii != dh_end(&s->services)) {
-            struct Service* serv = dh_val(&s->services, ii);
-            if (dv_size(&serv->queue) > 0) {
-                direct = dv_a(&serv->queue, 0).remote;
-            }
-        }
-    } else if (m->type == ADBUS_MSG_METHOD) {
-        direct = s->busRemote;
-    }
-
-    adbus_Remote* r;
-    DL_FOREACH(Remote, r, &s->remotes, hl) {
-        if (r != direct && RemoteDispatchMatch(r, m)) {
-            return -1;
+    adbusI_ServerMatch* m;
+    DL_FOREACH (ServerMatch, m, &list->list, hl) {
+        if (len == m->size && memcmp(mstr, m->data, len) == 0) {
+            dl_remove(ServerMatch, m, &m->hl);
+            free(m->m.arguments);
+            free(m);
+            return 0;
         }
     }
-
-    if (direct && direct->send(direct->data, m) != (adbus_ssize_t) m->size)
-        return -1;
-
-    return 0;
+    return -1;
 }
 
+/* -------------------------------------------------------------------------- */
+
+void adbusI_serv_freeMatches(adbusI_ServerMatchList* list)
+{
+    adbusI_ServerMatch* m;
+    DL_FOREACH (ServerMatch, m, &list->list, hl) {
+        free(m->m.arguments);
+        free(m);
+    }
+    dl_clear(ServerMatch, &list->list);
+}
+
+/* -------------------------------------------------------------------------- */
+
+adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, adbus_Message* msg)
+{
+    adbusI_ServerMatch* match;
+    DL_FOREACH (ServerMatch, match, &list->list, hl) {
+        if (adbusI_matchesMessage(&match->m, msg)) {
+            return 1;
+        }
+    }
+    return 0;
+}
 

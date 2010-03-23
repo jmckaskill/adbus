@@ -448,7 +448,7 @@ static int ThrowError(lua_State* L, int errlist)
     return lua_error(L);
 }
 
-adbus_ssize_t adbusluaI_send(void* user, adbus_Message* msg)
+int adbusluaI_send(void* user, adbus_Message* msg)
 {
     struct Connection* c = (struct Connection*) user;
 
@@ -475,7 +475,7 @@ adbus_ssize_t adbusluaI_send(void* user, adbus_Message* msg)
     }
 
     lua_settop(L, top);
-    return (adbus_ssize_t) msg->size;
+    return (int) msg->size;
 }
 
 void adbusluaI_connect(void* user)

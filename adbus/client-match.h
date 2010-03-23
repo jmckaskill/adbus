@@ -32,21 +32,32 @@
  * list.
  */
 
-DILIST_INIT(Match, adbus_ConnMatch);
+DILIST_INIT(ConnMatch, adbus_ConnMatch)
 
 struct adbus_ConnMatch
 {
-    d_IList(Match)          hl;
+    d_IList(ConnMatch)      hl;
     adbus_Match             m;
-    adbus_State*            state;
-    adbus_Proxy*            proxy;
+    d_String                matchString;
     adbusI_TrackedRemote*   sender;
+    adbusI_TrackedRemote*   destination;
 };
 
 struct adbusI_ConnMatchList
 {
-    d_IList(Match)          matches;
+    d_IList(ConnMatch)      list;
 };
 
-ADBUSI_FUNC void adbusI_freeMatch(adbus_ConnMatch* m);
-ADBUSI_FUNC int adbusI_dispatchMatch(adbusI_MatchSet* s, adbus_CbData* d);
+ADBUS_API void adbus_arg_init(adbus_Argument* args, size_t num);
+ADBUS_API void adbus_match_init(adbus_Match* match);
+
+ADBUSI_FUNC void adbusI_freeMatches(adbus_Connection* m);
+ADBUSI_FUNC int adbusI_dispatchMatch(adbus_Connection* c, adbus_CbData* d);
+
+ADBUS_API adbus_ConnMatch* adbus_conn_addmatch(
+        adbus_Connection*       connection,
+        const adbus_Match*      match);
+
+ADBUS_API void adbus_conn_removematch(
+        adbus_Connection*       connection,
+        adbus_ConnMatch*        match);
