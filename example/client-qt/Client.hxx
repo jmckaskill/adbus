@@ -91,10 +91,11 @@ namespace adbus {
         bool connectToServer(adbus_BusType type, bool connectToBus = true);
         bool connectToServer(const char* envstr, bool connectToBus = true);
 
-        adbus_Connection* connection() {return m_Connection;}
-        operator adbus_Connection*() {return m_Connection;}
+        adbus_Connection* connection() {return m_C.connection;}
+        operator adbus_Connection*() {return m_C.connection;}
 
     signals:
+        void authenticated();
         void connected(QString name = QString());
         void disconnected();
 
@@ -107,13 +108,11 @@ namespace adbus {
         static int      SendMsg(void* d, adbus_Message* m);
         static int      Send(void* d, const char* b, size_t sz);
         static uint8_t  Rand(void* d);
-        static void     ConnectedToBus(void* u);
+        static void     Connected(void* u);
+        static void     Authenticated(void* u);
         
-        bool              m_ConnectToBus;
-        adbus_Connection* m_Connection;
-        adbus_Auth*       m_Auth;
-        adbus_Buffer*     m_Buffer;
-        QIODevice*        m_Socket;
+        adbus_AuthConnection    m_C;
+        QIODevice*              m_Socket;
     };
 
 }

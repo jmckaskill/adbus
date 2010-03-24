@@ -23,6 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
+#define _BSD_SOURCE
 #include "dmem/string.h"
 
 #include <adbus.h>
@@ -37,30 +38,45 @@
 
 static int replies = 0;
 
-static adbus_ssize_t Send(void* d, adbus_Message* m)
-{ return send(*(adbus_Socket*) d, m->data, m->size, 0); }
+static int Send(void* d, adbus_Message* m)
+{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
 
 static int Reply(adbus_CbData* d)
 {
-    const char* rep = adbus_check_string(d, NULL);
+    adbus_check_string(d, NULL);
     adbus_check_end(d);
 
     replies--;
     return 0;
 }
 
-#define RECV_SIZE 64 * 1024
-#define REPEAT 1000000
+static int Error(adbus_CbData* d)
+{
+    fprintf(stderr, "Error %s %s\n", d->msg->sender, d->msg->error);
+    exit(-1);
+    return 0;
+}
+
+#define RECV_SIZE 1024 * 32
+#define REPEAT 1000
 int main()
 {
+    adbus_Connection* connection;
+    adbus_Buffer* buffer;
+    adbus_ConnectionCallbacks cbs;
+    adbus_Socket sock;
+    adbus_State* state;
+    adbus_Proxy* proxy;
+    uint64_t ns;
+    int i;
 
 #ifdef _WIN32
+    LARGE_INTEGER start, end, freq;
     WSADATA wsadata;
     int err = WSAStartup(MAKEWORD(2, 2), &wsadata);
     if (err)
         abort();
 
-    LARGE_INTEGER start, end, freq;
     QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&start);
 #else
@@ -68,57 +84,59 @@ int main()
     gettimeofday(&start, NULL);
 #endif
 
-    adbus_Buffer* buf = adbus_buf_new();
-    adbus_Socket sock = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (sock == ADBUS_SOCK_INVALID || adbus_sock_cauth(sock, buf))
+    buffer = adbus_buf_new();
+    sock = adbus_sock_connect(ADBUS_SESSION_BUS);
+    if (sock == ADBUS_SOCK_INVALID || adbus_sock_cauth(sock, buffer))
         abort();
 
-    adbus_Connection* c = adbus_conn_new();
-    adbus_conn_setsender(c, &Send, &sock);
+    memset(&cbs, 0, sizeof(cbs));
+    cbs.send_message = &Send;
 
-    adbus_conn_connect(c, NULL, NULL);
+    connection = adbus_conn_new(&cbs, &sock);
+    adbus_conn_setbuffer(connection, buffer);
+    adbus_conn_connect(connection, NULL, NULL);
 
-    adbus_State* s = adbus_state_new();
-    adbus_Proxy* p = adbus_proxy_new(s);
-    adbus_proxy_init(p, c, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
+    state = adbus_state_new();
+    proxy = adbus_proxy_new(state);
+    adbus_proxy_init(proxy, connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
 
-    for (int i = 0; i < REPEAT; ++i) {
-        replies++;
-
+    for (i = 0; i < REPEAT; ++i) {
         adbus_Call f;
-        adbus_call_method(p, &f, "Ping", -1);
+        adbus_call_method(proxy, &f, "Ping", -1);
         f.callback = &Reply;
+        f.error = &Error;
 
         adbus_msg_setsig(f.msg, "s", -1);
         adbus_msg_string(f.msg, "str", -1);
 
-        adbus_call_send(p, &f);
+        replies++;
+        adbus_call_send(proxy, &f);
     }
 
     while(replies > 0) {
-        char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
-        adbus_ssize_t recvd = recv(sock, dest, RECV_SIZE, 0);
-        adbus_buf_recvd(buf, RECV_SIZE, recvd);
-        if (recvd <= 0)
+        char* dest = adbus_buf_recvbuf(buffer, RECV_SIZE);
+        int recvd = recv(sock, dest, RECV_SIZE, 0);
+        adbus_buf_recvd(buffer, RECV_SIZE, recvd);
+
+        if (recvd < 0)
             abort();
 
-        if (adbus_conn_parse(c, buf))
+        if (adbus_conn_parse(connection))
             abort();
     }
 
-    adbus_proxy_free(p);
-    adbus_state_free(s);
-    adbus_conn_free(c);
-    adbus_buf_free(buf);
+    adbus_proxy_free(proxy);
+    adbus_state_free(state);
+    adbus_conn_free(connection);
+    adbus_buf_free(buffer);
 
 #ifdef _WIN32
     QueryPerformanceCounter(&end);
-    uint64_t ns = ((end.QuadPart - start.QuadPart) * 1000000000 / REPEAT) / freq.QuadPart;
+    ns = ((end.QuadPart - start.QuadPart) * 1000000000 / REPEAT) / freq.QuadPart;
 #else
     gettimeofday(&end, NULL);
     timersub(&end, &start, &diff);
-    uint64_t us = (uint64_t) diff.tv_sec * 1000000 + diff.tv_usec;
-    uint64_t ns = us * 1000 / REPEAT;
+    ns = (diff.tv_sec * 1000000 + diff.tv_usec) * 1000 / REPEAT;
 #endif
     fprintf(stderr, "Time %d ns\n", (int) ns);
 

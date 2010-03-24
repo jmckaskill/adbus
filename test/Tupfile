@@ -2,5 +2,7 @@ include_rules
 
 : foreach *.c |> !cpp |> %B.o
 : iterator.o ../adbus.so |> !ldpp |> iterator
-: ../lua iterator |> ../lua iterator.lua |> data.txt output.txt
+: ../lua |> !cp |> lua
+: ../lua5.1.so |> !cp |> lua5.1.so
+: lua lua5.1.so iterator |> lua iterator.lua |> data.txt output.txt
 

@@ -26,26 +26,20 @@
 #include "server-service.h"
 #include "server-remote.h"
 #include "server-bus.h"
+#include "server.h"
 
 /* -------------------------------------------------------------------------- */
 
-void adbusI_initServiceQueue(adbusI_ServiceQueueSet* s, adbusI_BusServer* bus)
+void adbusI_freeServiceQueue(adbus_Server* s)
 {
-    s->busServer = bus;
-}
-
-/* -------------------------------------------------------------------------- */
-
-void adbusI_freeServiceQueue(adbusI_ServiceQueueSet* s)
-{
-    assert(dh_size(&s->queues) == 0);
-    dh_free(ServiceQueue, &s->queues);
+    assert(dh_size(&s->services.queues) == 0);
+    dh_free(ServiceQueue, &s->services.queues);
 }
 
 /* -------------------------------------------------------------------------- */
 
 int adbusI_requestService(
-        adbusI_ServiceQueueSet*   s,
+        adbus_Server*   s,
         adbus_Remote*   r,
         const char*     name,
         uint32_t        flags)
@@ -55,15 +49,15 @@ int adbusI_requestService(
     adbus_Remote* previous;
 
     int added;
-    dh_Iter ii = dh_put(ServiceQueue, &s->queues, name, &added);
+    dh_Iter ii = dh_put(ServiceQueue, &s->services.queues, name, &added);
 
     if (added) {
         queue = NEW(adbusI_ServiceQueue);
         queue->name = adbusI_strdup(name);
-        dh_key(&s->queues, ii) = queue->name;
-        dh_val(&s->queues, ii) = queue;
+        dh_key(&s->services.queues, ii) = queue->name;
+        dh_val(&s->services.queues, ii) = queue;
     } else {
-        queue = dh_val(&s->queues, ii);
+        queue = dh_val(&s->services.queues, ii);
     }
 
 
@@ -76,7 +70,7 @@ int adbusI_requestService(
         owner = dv_push(ServiceOwner, &queue->v, 1);
         owner->remote = r;
         owner->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
-        adbusI_serv_ownerChanged(s->busServer, name, NULL, r);
+        adbusI_serv_ownerChanged(s, name, NULL, r);
         return ADBUS_SERVICE_SUCCESS;
 
     } else if (dv_a(&queue->v, 0).remote == r) {
@@ -101,7 +95,7 @@ int adbusI_requestService(
         /* Replace the existing owner */
         owner->remote = r;
         owner->allowReplacement = flags & ADBUS_SERVICE_ALLOW_REPLACEMENT;
-        adbusI_serv_ownerChanged(s->busServer, name, previous, r);
+        adbusI_serv_ownerChanged(s, name, previous, r);
         return ADBUS_SERVICE_SUCCESS;
 
     } else if (!(flags & ADBUS_SERVICE_DO_NOT_QUEUE)) {
@@ -138,18 +132,18 @@ int adbusI_requestService(
 /* -------------------------------------------------------------------------- */
 
 int adbusI_releaseService(
-        adbusI_ServiceQueueSet* s,
+        adbus_Server*           s,
         adbus_Remote*           r,
         const char*             name)
 {
     adbusI_ServiceOwner* owner;
     adbusI_ServiceQueue* queue;
 
-    dh_Iter ii = dh_get(ServiceQueue, &s->queues, name);
-    if (ii == dh_end(&s->queues))
+    dh_Iter ii = dh_get(ServiceQueue, &s->services.queues, name);
+    if (ii == dh_end(&s->services.queues))
         return ADBUS_SERVICE_RELEASE_INVALID_NAME;
 
-    queue = dh_val(&s->queues, ii);
+    queue = dh_val(&s->services.queues, ii);
     owner = &dv_a(&queue->v, 0);
 
     /* Remove the queue from the remote */
@@ -168,11 +162,11 @@ int adbusI_releaseService(
 
         if (dv_size(&queue->v) > 0) {
             /* Switch to the new owner */
-            adbusI_serv_ownerChanged(s->busServer, name, r, dv_a(&queue->v, 0).remote);
+            adbusI_serv_ownerChanged(s, name, r, dv_a(&queue->v, 0).remote);
         } else {
             /* No new owner, remove the queue */
-            dh_del(ServiceQueue, &s->queues, ii);
-            adbusI_serv_ownerChanged(s->busServer, name, r, NULL);
+            dh_del(ServiceQueue, &s->services.queues, ii);
+            adbusI_serv_ownerChanged(s, name, r, NULL);
             dv_free(ServiceOwner, &queue->v);
             free(queue->name);
             free(queue);
@@ -187,14 +181,14 @@ int adbusI_releaseService(
 
 /* -------------------------------------------------------------------------- */
 
-adbus_Remote* adbusI_lookupRemote(adbusI_ServiceQueueSet* s, const char* name)
+adbus_Remote* adbusI_lookupRemote(adbus_Server* s, const char* name)
 {
     adbusI_ServiceQueue* queue;
-    dh_Iter ii = dh_get(ServiceQueue, &s->queues, name);
-    if (ii == dh_end(&s->queues))
+    dh_Iter ii = dh_get(ServiceQueue, &s->services.queues, name);
+    if (ii == dh_end(&s->services.queues))
         return NULL;
 
-    queue = dh_val(&s->queues, ii);
+    queue = dh_val(&s->services.queues, ii);
     return dv_a(&queue->v, 0).remote;
 }
 

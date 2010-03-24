@@ -25,13 +25,21 @@
 
 #include "Server.hxx"
 #include <QtCore/QCoreApplication>
+#include <stdio.h>
+
+static void Log(const char* str, size_t sz)
+{ fwrite(str, 1, sz, stderr); }
 
 int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
 
-    TcpServer* s = new TcpServer;
-    if (!s->listen(QHostAddress::LocalHost, 12345))
+    adbus_set_logger(&Log);
+
+    //TcpServer* s = new TcpServer;
+    //if (!s->listen(QHostAddress::LocalHost, 12345))
+    LocalServer* s = new LocalServer;
+    if (!s->listen("/tmp/test"))
         qFatal("Could not listen on socket");
 
     return app.exec();

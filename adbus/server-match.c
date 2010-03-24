@@ -145,7 +145,7 @@ int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t 
     m->m.argumentsSize = dv_size(&args);
     m->m.arguments     = dv_release(Argument, &args);
 
-    dl_insert_after(ServerMatch, &list->list, m, &m->hl);
+    dil_insert_after(ServerMatch, &list->list, m, &m->hl);
     return 0;
 
 error:
@@ -159,9 +159,9 @@ error:
 int adbusI_serv_removeMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len)
 {
     adbusI_ServerMatch* m;
-    DL_FOREACH (ServerMatch, m, &list->list, hl) {
+    DIL_FOREACH (ServerMatch, m, &list->list, hl) {
         if (len == m->size && memcmp(mstr, m->data, len) == 0) {
-            dl_remove(ServerMatch, m, &m->hl);
+            dil_remove(ServerMatch, m, &m->hl);
             free(m->m.arguments);
             free(m);
             return 0;
@@ -175,11 +175,11 @@ int adbusI_serv_removeMatch(adbusI_ServerMatchList* list, const char* mstr, size
 void adbusI_serv_freeMatches(adbusI_ServerMatchList* list)
 {
     adbusI_ServerMatch* m;
-    DL_FOREACH (ServerMatch, m, &list->list, hl) {
+    DIL_FOREACH (ServerMatch, m, &list->list, hl) {
+        dil_remove(ServerMatch, m, &m->hl);
         free(m->m.arguments);
         free(m);
     }
-    dl_clear(ServerMatch, &list->list);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -187,7 +187,7 @@ void adbusI_serv_freeMatches(adbusI_ServerMatchList* list)
 adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, adbus_Message* msg)
 {
     adbusI_ServerMatch* match;
-    DL_FOREACH (ServerMatch, match, &list->list, hl) {
+    DIL_FOREACH (ServerMatch, match, &list->list, hl) {
         if (adbusI_matchesMessage(&match->m, msg)) {
             return 1;
         }

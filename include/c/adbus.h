@@ -139,6 +139,7 @@ enum adbus_BlockType
 };
 
 typedef struct adbus_Auth               adbus_Auth;
+typedef struct adbus_AuthConnection     adbus_AuthConnection;
 typedef struct adbus_Argument           adbus_Argument;
 typedef struct adbus_Bind               adbus_Bind;
 typedef struct adbus_Buffer             adbus_Buffer;
@@ -328,6 +329,24 @@ ADBUS_API int adbus_auth_parse(adbus_Auth* a, adbus_Buffer* buf);
 ADBUS_API int adbus_auth_line(adbus_Auth* a, const char* line, size_t len);
 
 
+struct adbus_AuthConnection
+{
+    adbus_Buffer*       buffer;
+    adbus_Auth*         auth;
+    adbus_Connection*   connection;
+    adbus_Bool          authenticated;
+
+    adbus_Callback      authCallback;
+    void*               authUser;
+
+    adbus_Bool          connectToBus;
+    adbus_Callback      connectCallback;
+    void*               connectUser;
+};
+
+ADBUS_API int adbus_aconn_connect(adbus_AuthConnection* c);
+ADBUS_API int adbus_aconn_parse(adbus_AuthConnection* c);
+
 
 
 
@@ -418,9 +437,16 @@ ADBUS_API int adbus_conn_dispatch(
         adbus_Connection*       connection,
         adbus_Message*          message);
 
+/* returns 0 on continue, 1 on finish, -1 on error */
+ADBUS_API int adbus_conn_parsestep(
+        adbus_Connection*       connection);
+
 ADBUS_API int adbus_conn_parse(
+        adbus_Connection*       connection);
+
+ADBUS_API void adbus_conn_setbuffer(
         adbus_Connection*       connection,
-        adbus_Buffer*          buffer);
+        adbus_Buffer*           buffer);
 
 ADBUS_API void adbus_conn_connect(
         adbus_Connection*       connection,

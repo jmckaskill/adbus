@@ -27,11 +27,11 @@
 
 #include "internal.h"
 
-DLIST_INIT(ServerMatch, adbusI_ServerMatch)
+DILIST_INIT(ServerMatch, adbusI_ServerMatch)
 
 struct adbusI_ServerMatch
 {
-    d_List(ServerMatch)     hl;
+    d_IList(ServerMatch)    hl;
     adbus_Match             m;
     size_t                  size;
     char                    data[1];
@@ -39,7 +39,7 @@ struct adbusI_ServerMatch
 
 struct adbusI_ServerMatchList
 {
-    d_List(ServerMatch)     list;
+    d_IList(ServerMatch)    list;
 };
 
 ADBUSI_FUNC int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);

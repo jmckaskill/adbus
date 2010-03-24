@@ -47,14 +47,12 @@ struct adbusI_ServiceQueue
 
 struct adbusI_ServiceQueueSet
 {
-    adbusI_BusServer*       busServer;
     d_Hash(ServiceQueue)    queues;
 };
 
-ADBUSI_FUNC void adbusI_initServiceQueue(adbusI_ServiceQueueSet* s, adbusI_BusServer* bus);
-ADBUSI_FUNC void adbusI_freeServiceQueue(adbusI_ServiceQueueSet* s);
-ADBUSI_FUNC int adbusI_requestService(adbusI_ServiceQueueSet* s, adbus_Remote* r, const char* name, uint32_t flags);
-ADBUSI_FUNC int adbusI_releaseService(adbusI_ServiceQueueSet* s, adbus_Remote* r, const char* name);
-ADBUSI_FUNC adbus_Remote* adbusI_lookupRemote(adbusI_ServiceQueueSet* s, const char* name);
+ADBUSI_FUNC void adbusI_freeServiceQueue(adbus_Server* s);
+ADBUSI_FUNC int adbusI_requestService(adbus_Server* s, adbus_Remote* r, const char* name, uint32_t flags);
+ADBUSI_FUNC int adbusI_releaseService(adbus_Server* s, adbus_Remote* r, const char* name);
+ADBUSI_FUNC adbus_Remote* adbusI_lookupRemote(adbus_Server* s, const char* name);
 
 

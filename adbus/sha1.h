@@ -33,10 +33,10 @@ typedef struct adbusI_SHA1 adbusI_SHA1;
 
 struct adbusI_SHA1
 {
-		// fields
+    /* fields */
     uint32_t H0, H1, H2, H3, H4;
-		unsigned char bytes[64];
-		int unprocessedBytes;
+    unsigned char bytes[64];
+    int unprocessedBytes;
     uint32_t size;
 };
 

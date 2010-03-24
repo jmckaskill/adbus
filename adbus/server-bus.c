@@ -39,7 +39,7 @@ static int Hello(adbus_CbData* d)
     }
 
     r->haveHello = 1;
-    adbusI_requestService(&s->services, r, ds_cstr(&r->unique), 0);
+    adbusI_requestService(s, r, ds_cstr(&r->unique), 0);
 
     if (d->ret) {
         adbus_msg_string(d->ret, ds_cstr(&r->unique), ds_size(&r->unique));
@@ -63,7 +63,7 @@ static int RequestName(adbus_CbData* d)
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    ret = adbusI_requestService(&s->services, r, name, flags);
+    ret = adbusI_requestService(s, r, name, flags);
     if (d->ret) {
         adbus_msg_u32(d->ret, ret);
     }
@@ -85,7 +85,7 @@ static int ReleaseName(adbus_CbData* d)
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    ret = adbusI_releaseService(&s->services, r, name);
+    ret = adbusI_releaseService(s, r, name);
     if (d->ret) {
         adbus_msg_u32(d->ret, ret);
     }
@@ -128,7 +128,7 @@ static int NameHasOwner(adbus_CbData* d)
     const char* name = adbus_check_string(d, NULL);
     adbus_check_end(d);
 
-    r = adbusI_lookupRemote(&s->services, name);
+    r = adbusI_lookupRemote(s, name);
 
     if (d->ret) {
         adbus_msg_bool(d->ret, r != NULL);
@@ -146,7 +146,7 @@ static int GetNameOwner(adbus_CbData* d)
     const char* name = adbus_check_string(d, NULL);
     adbus_check_end(d);
 
-    r = adbusI_lookupRemote(&s->services, name);
+    r = adbusI_lookupRemote(s, name);
 
     if (r == NULL) {
         return adbus_errorf(d, "org.freedesktop.DBus.Error.NameHasNoOwner", "TODO");
@@ -212,12 +212,12 @@ static int SendToServer(void* d, adbus_Message* m)
     return (int) m->size;
 }
 
-void adbusI_serv_initBus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server* server)
+void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
 {
     /* Setup the org.freedesktop.DBus interface */
     adbus_Member *m, *changedsig, *acquiredsig, *lostsig;
 
-    bus->interface = i;
+    s->bus.interface = i;
 
     m = adbus_iface_addmethod(i, "Hello", -1);
     adbus_mbr_setmethod(m, &Hello, NULL);
@@ -278,50 +278,50 @@ void adbusI_serv_initBus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server
         adbus_ConnectionCallbacks cbs;
         ZERO(cbs);
         cbs.send_message = &SendToServer;
-        bus->connection = adbus_conn_new(&cbs, bus);
+        s->bus.connection = adbus_conn_new(&cbs, s);
     }
 
-    bus->server = server;
-    bus->nameOwnerChanged = adbus_sig_new(changedsig);
-    bus->nameAcquired = adbus_sig_new(acquiredsig);
-    bus->nameLost = adbus_sig_new(lostsig);
-    bus->msg = adbus_msg_new();
+    s->bus.nameOwnerChanged = adbus_sig_new(changedsig);
+    s->bus.nameAcquired = adbus_sig_new(acquiredsig);
+    s->bus.nameLost = adbus_sig_new(lostsig);
+    s->bus.msg = adbus_msg_new();
 
     {
         /* Bind to / and /org/freedesktop/DBus */
         adbus_Bind b;
         adbus_bind_init(&b);
         b.interface = i;
-        b.cuser2    = server;
+        b.cuser2    = s;
 
         b.path      = "/";
-        adbus_conn_bind(bus->connection, &b);
+        adbus_conn_bind(s->bus.connection, &b);
         
         b.path      = "/org/freedesktop/DBus";
-        adbus_conn_bind(bus->connection, &b);
+        adbus_conn_bind(s->bus.connection, &b);
     }
 
-    adbus_sig_bind(bus->nameOwnerChanged, bus->connection, "/org/freedesktop/DBus", -1);
-    adbus_sig_bind(bus->nameAcquired, bus->connection, "/org/freedesktop/DBus", -1);
-    adbus_sig_bind(bus->nameLost, bus->connection, "/org/freedesktop/DBus", -1);
+    adbus_sig_bind(s->bus.nameOwnerChanged, s->bus.connection, "/org/freedesktop/DBus", -1);
+    adbus_sig_bind(s->bus.nameAcquired, s->bus.connection, "/org/freedesktop/DBus", -1);
+    adbus_sig_bind(s->bus.nameLost, s->bus.connection, "/org/freedesktop/DBus", -1);
 
     /* Hook up to the server */
-    bus->remote = adbusI_serv_createRemote(bus->server, &SendToBus, bus, "org.freedesktop.DBus", 0);
+    s->bus.remote = adbusI_serv_createRemote(s, &SendToBus, s, "org.freedesktop.DBus", 0);
+    adbusI_requestService(s, s->bus.remote, "org.freedesktop.DBus", 0);
 }
 
 /* -------------------------------------------------------------------------- */
-void adbusI_serv_freeBus(adbusI_BusServer* bus)
+void adbusI_serv_freeBus(adbus_Server* s)
 {
-    adbus_sig_free(bus->nameOwnerChanged);
-    adbus_sig_free(bus->nameAcquired);
-    adbus_sig_free(bus->nameLost);
-    adbus_conn_free(bus->connection);
-    adbus_msg_free(bus->msg);
+    adbus_sig_free(s->bus.nameOwnerChanged);
+    adbus_sig_free(s->bus.nameAcquired);
+    adbus_sig_free(s->bus.nameLost);
+    adbus_conn_free(s->bus.connection);
+    adbus_msg_free(s->bus.msg);
 }
 
 /* -------------------------------------------------------------------------- */
 void adbusI_serv_ownerChanged(
-        adbusI_BusServer*   bus,
+        adbus_Server*       s,
         const char*         name,
         adbus_Remote*       oldowner,
         adbus_Remote*       newowner)
@@ -335,36 +335,36 @@ void adbusI_serv_ownerChanged(
     if (!oldowner && !newowner)
         return;
 
-    m = adbus_sig_msg(bus->nameOwnerChanged);
+    m = adbus_sig_msg(s->bus.nameOwnerChanged);
     adbus_msg_string(m, name, -1);
     adbus_msg_string(m, oldowner ? ds_cstr(&oldowner->unique) : "", -1);
     adbus_msg_string(m, newowner ? ds_cstr(&newowner->unique) : "", -1);
-    adbus_sig_emit(bus->nameOwnerChanged);
+    adbus_sig_emit(s->bus.nameOwnerChanged);
 
     if (oldowner) {
-        m = adbus_sig_msg(bus->nameLost);
+        m = adbus_sig_msg(s->bus.nameLost);
         adbus_msg_setdestination(m, ds_cstr(&oldowner->unique), -1);
         adbus_msg_string(m, name, -1);
-        adbus_sig_emit(bus->nameLost);
+        adbus_sig_emit(s->bus.nameLost);
     }
 
     if (newowner) {
-        m = adbus_sig_msg(bus->nameAcquired);
+        m = adbus_sig_msg(s->bus.nameAcquired);
         adbus_msg_setdestination(m, ds_cstr(&newowner->unique), -1);
         adbus_msg_string(m, name, -1);
-        adbus_sig_emit(bus->nameAcquired);
+        adbus_sig_emit(s->bus.nameAcquired);
     }
 
 }
 
 /* -------------------------------------------------------------------------- */
-void adbusI_serv_invalidDestination(adbusI_BusServer* bus, const adbus_Message* msg)
+void adbusI_serv_invalidDestination(adbus_Server* s, const adbus_Message* msg)
 {
-    adbus_MsgFactory* m = bus->msg;
+    adbus_MsgFactory* m = s->bus.msg;
+
     adbus_msg_reset(m);
     adbus_msg_settype(m, ADBUS_MSG_ERROR);
     adbus_msg_setflags(m, ADBUS_MSG_NO_REPLY);
-    adbus_msg_setserial(m, adbus_conn_serial(bus->connection));
 
     adbus_msg_setdestination(m, msg->sender, msg->senderSize);
     adbus_msg_setreply(m, msg->serial);
@@ -372,5 +372,7 @@ void adbusI_serv_invalidDestination(adbusI_BusServer* bus, const adbus_Message* 
 
     adbus_msg_setsig(m, "s", 1);
     adbus_msg_string_f(m, "Invalid destination %s", msg->destination);
+
+    adbus_msg_send(m, s->bus.connection);
 }
 

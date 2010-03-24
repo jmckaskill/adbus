@@ -50,7 +50,9 @@ struct adbus_Connection
     adbus_Interface*            introspectable;
     adbus_Interface*            properties;
 
+    adbus_Message               parseMessage;
     adbus_Buffer*               parseBuffer;
+    adbus_Bool                  dispatchMatch;
     adbus_MsgFactory*           errorMessage;
     d_Vector(MsgFactory)        returnMessages;
     size_t                      depth;

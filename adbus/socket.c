@@ -23,6 +23,10 @@
  * ----------------------------------------------------------------------------
  */
 
+#ifndef _WIN32
+#   define _POSIX_SOURCE
+#endif
+
 #include "internal.h"
 
 #ifdef _WIN32
@@ -51,7 +55,7 @@
 struct Fields
 {
     const char* proto;
-    const char* file;
+    const char* path;
     const char* abstract;
     const char* host;
     const char* port;
@@ -88,8 +92,8 @@ static void ParseFields(struct Fields* f, char* bstr, size_t size)
             eval = estr;
         }
 
-        if (strncmp(bkey, "file", ekey - bkey) == 0) {
-            f->file = bval;
+        if (strncmp(bkey, "path", ekey - bkey) == 0) {
+            f->path = bval;
         } else if (strncmp(bkey, "abstract", ekey - bkey) == 0) {
             f->abstract = bval;
         } else if (strncmp(bkey, "host", ekey - bkey) == 0) {
@@ -245,11 +249,11 @@ static adbus_Socket ConnectUnix(struct Fields* f)
     adbus_Socket sfd;
     int err;
 
-    size_t psize = min(UNIX_PATH_MAX, strlen(f->file));
+    size_t psize = min(UNIX_PATH_MAX, strlen(f->path));
 
     memset(&sa, 0, sizeof(struct sockaddr_un));
     sa.sun_family = AF_UNIX;
-    strncat(sa.sun_path, f->file, psize);
+    strncat(sa.sun_path, f->path, psize);
 
     sfd = socket(AF_UNIX, SOCK_STREAM, 0);
     err = connect(sfd,
@@ -269,11 +273,11 @@ static adbus_Socket BindUnix(struct Fields* f)
     adbus_Socket sfd;
     int err;
 
-    size_t psize = min(UNIX_PATH_MAX, strlen(f->file));
+    size_t psize = min(UNIX_PATH_MAX, strlen(f->path));
 
     memset(&sa, 0, sizeof(struct sockaddr_un));
     sa.sun_family = AF_UNIX;
-    strncat(sa.sun_path, f->file, psize);
+    strncat(sa.sun_path, f->path, psize);
 
     sfd = socket(AF_UNIX, SOCK_STREAM, 0);
     err = bind(sfd,
@@ -359,7 +363,7 @@ static adbus_Bool EnvironmentString(adbus_Bool connect, adbus_BusType type, char
     } else if (type == ADBUS_SYSTEM_BUS) {
         return CopyEnv("DBUS_SYSTEM_BUS_ADDRESS", buf, sz)
 #ifndef _WIN32
-            || CopyString("unix:file=/var/run/dbus/system_bus_socket", buf, sz)
+            || CopyString("unix:path=/var/run/dbus/system_bus_socket", buf, sz)
 #endif
             || CopyString("autostart:", buf, sz);
 
@@ -388,7 +392,7 @@ static adbus_Bool EnvironmentString(adbus_Bool connect, adbus_BusType type, char
  *
  *  For ADBUS_SYSTEM_BUS:
  *  -# DBUS_SYSTEM_BUS_ADDRESS environment variable
- *  -# On unix: the hardcoded string "unix:file=/var/run/dbus/system_bus_socket"
+ *  -# On unix: the hardcoded string "unix:path=/var/run/dbus/system_bus_socket"
  *  -# On windows: the hardcoded string "autostart:"
  *
  *  \return non-zero on error
@@ -418,7 +422,7 @@ int adbus_connect_address(adbus_BusType type, char* buf, size_t sz)
  *
  *  For ADBUS_SYSTEM_BUS:
  *  -# DBUS_SYSTEM_BUS_ADDRESS environment variable
- *  -# On unix: the hardcoded string "unix:file=/var/run/dbus/system_bus_socket"
+ *  -# On unix: the hardcoded string "unix:path=/var/run/dbus/system_bus_socket"
  *  -# On windows: the hardcoded string "autostart:"
  *
  *  \return non-zero on error
@@ -479,7 +483,7 @@ adbus_Socket adbus_sock_bind(adbus_BusType type)
  *
  *  Supported address types are:
  *  - TCP sockets of the form "tcp:host=<hostname>,port=<port number>"
- *  - On unix: unix sockets of the form "unix:file=<filename>"
+ *  - On unix: unix sockets of the form "unix:path=<filename>"
  *  - On linux: abstract unix sockets of the form "unix:abstract=<filename>"
  *
  *  \return ADBUS_SOCK_INVALID on error
@@ -514,7 +518,7 @@ adbus_Socket adbus_sock_connect_s(
 #else
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
         sfd = ConnectTcp(&f);
-    } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.file) {
+    } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.path) {
         sfd = ConnectUnix(&f);
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.abstract) {
         sfd = ConnectAbstract(&f);
@@ -534,7 +538,7 @@ adbus_Socket adbus_sock_connect_s(
  *
  *  Supported address types are:
  *  - TCP sockets of the form "tcp:host=<hostname>,port=<port number>"
- *  - On unix: unix sockets of the form "unix:file=<filename>"
+ *  - On unix: unix sockets of the form "unix:path=<filename>"
  *  - On linux: abstract unix sockets of the form "unix:abstract=<filename>"
  *
  *  For TCP: specifying a port of 0 will cause the underlying sockets API to
@@ -573,7 +577,7 @@ adbus_Socket adbus_sock_bind_s(
 #else
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
         sfd = BindTcp(&f);
-    } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.file) {
+    } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.path) {
         sfd = BindUnix(&f);
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.abstract) {
         sfd = BindAbstract(&f);

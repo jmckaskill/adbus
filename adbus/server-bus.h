@@ -36,13 +36,12 @@ struct adbusI_BusServer
 
     adbus_MsgFactory*       msg;
 
-    adbus_Server*           server;
     adbus_Connection*       connection;
     adbus_Remote*           remote;
 };
 
-ADBUSI_FUNC void adbusI_serv_initBus(adbusI_BusServer* bus, adbus_Interface* interface, adbus_Server* server);
-ADBUSI_FUNC void adbusI_serv_freeBus(adbusI_BusServer* bus);
-ADBUSI_FUNC void adbusI_serv_ownerChanged(adbusI_BusServer* s, const char* name, adbus_Remote* o, adbus_Remote* n);
-ADBUSI_FUNC void adbusI_serv_invalidDestination(adbusI_BusServer* s, const adbus_Message* msg);
+ADBUSI_FUNC void adbusI_serv_initBus(adbus_Server* bus, adbus_Interface* interface);
+ADBUSI_FUNC void adbusI_serv_freeBus(adbus_Server* bus);
+ADBUSI_FUNC void adbusI_serv_ownerChanged(adbus_Server* s, const char* name, adbus_Remote* o, adbus_Remote* n);
+ADBUSI_FUNC void adbusI_serv_invalidDestination(adbus_Server* s, const adbus_Message* msg);
 

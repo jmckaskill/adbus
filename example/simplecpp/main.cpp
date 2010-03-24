@@ -72,6 +72,7 @@ int main()
     adbus_ConnectionCallbacks cbs = {};
     cbs.send_message = &Send;
     adbus::Connection c(&cbs, &s);
+    c.setBuffer(buf);
 
     Quitter q;
     q.bind(c, "/", Interface(), &q);
@@ -90,7 +91,7 @@ int main()
         if (recvd < 0)
             abort();
 
-        if (c.parse(buf))
+        if (c.parse())
             abort();
     }
 

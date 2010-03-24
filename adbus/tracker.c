@@ -87,7 +87,9 @@ adbusI_TrackedRemote* adbusI_getTrackedRemote(
     ti = dh_put(Tracked, &c->tracker.lookup, name, &added);
 
     if (!added) {
-        return dh_val(&c->tracker.lookup, ti);
+        adbusI_TrackedRemote* t = dh_val(&c->tracker.lookup, ti);
+        t->ref++;
+        return t;
 
     } else {
         adbusI_TrackedRemote* t = NEW(adbusI_TrackedRemote);

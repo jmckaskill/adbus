@@ -21,7 +21,7 @@ LDFLAGS_libQtDBus.so += $(LD_QT)
 # Apps
 
 LDFLAGS_lua += -lm -lreadline
-: deps/lua/src/app_*.o deps/lua/src/lib_*.o |> !ld |> lua
+: deps/lua/src/app_*.o lua5.1.so |> !ld |> lua
 
 
 
@@ -36,6 +36,9 @@ LDFLAGS_ex_simpleqt     += $(LD_QT)
 LDFLAGS_ex_qtdbus_ping  += $(LD_QT)
 LDFLAGS_ex_qtdbus_pong  += $(LD_QT)
 
+: example/ping/client.o adbus.so |> !ld |> ex_ping_client
+: example/ping/client-async.o adbus.so |> !ld |> ex_ping_client_async
+: example/ping/server.o adbus.so |> !ld |> ex_ping_server
 : example/bus-qt/*.o adbus.so |> !ldpp |> ex_bus_qt
 : example/client-qt/*.o adbus.so |> !ldpp |> ex_client_qt
 : example/simple/*.o adbus.so |> !ld |> ex_simple

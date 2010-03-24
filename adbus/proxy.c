@@ -408,7 +408,7 @@ void adbus_call_send(
 
     adbus_msg_end(msg);
 
-    // Add reply
+    /* Add reply */
     if (call->callback || call->error) {
         adbus_Reply r;
         adbus_reply_init(&r);

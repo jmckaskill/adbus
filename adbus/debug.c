@@ -23,9 +23,9 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
+#include "debug.h"
 #include "interface.h"
+#include <inttypes.h>
 
 /* -------------------------------------------------------------------------- */
 
@@ -128,37 +128,37 @@ static int LogField(d_String* str, adbus_Iterator* i)
     case ADBUS_UINT8:
         if (adbus_iter_u8(i, &u8))
             return -1;
-        ds_cat_f(str, "%d", (int) *u8);
+        ds_cat_f(str, "%" PRIu8, *u8);
         break;
     case ADBUS_INT16:
         if (adbus_iter_i16(i, &i16))
             return -1;
-        ds_cat_f(str, "%d", (int) *i16);
+        ds_cat_f(str, "%" PRIi16, *i16);
         break;
     case ADBUS_UINT16:
         if (adbus_iter_u16(i, &u16))
             return -1;
-        ds_cat_f(str, "%d", (int) *u16);
+        ds_cat_f(str, "%" PRIu16, *u16);
         break;
     case ADBUS_INT32:
         if (adbus_iter_i32(i, &i32))
             return -1;
-        ds_cat_f(str, "%d", (int) *i32);
+        ds_cat_f(str, "%" PRIi32, *i32);
         break;
     case ADBUS_UINT32:
         if (adbus_iter_u32(i, &u32))
             return -1;
-        ds_cat_f(str, "%u", (unsigned int) *u32);
+        ds_cat_f(str, "%" PRIu32, *u32);
         break;
     case ADBUS_INT64:
         if (adbus_iter_i64(i, &i64))
             return -1;
-        ds_cat_f(str, "%lld", (long long int) *i64);
+        ds_cat_f(str, "%" PRIi64, *i64);
         break;
     case ADBUS_UINT64:
         if (adbus_iter_u64(i, &u64))
             return -1;
-        ds_cat_f(str, "%llu", (long long unsigned int) *u64);
+        ds_cat_f(str, "%" PRIu64, *u64);
         break;
     case ADBUS_DOUBLE:
         if (adbus_iter_double(i, &d))

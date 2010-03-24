@@ -152,11 +152,12 @@ void adbus_msg_reset(adbus_MsgFactory* m)
     ds_clear(&m->sender);
 }
 
-/* ------------------------------------------------------------------------- */
-// Getter functions
-/* ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+ * Getter functions
+ * -------------------------------------------------------------------------
+ */
 
-static void AppendString(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, d_String* field, const char** msgfield, size_t* msgsz)
+static void AppendString(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, d_String* field, size_t* fieldoff, size_t* msgsz)
 {
     *msgsz = ds_size(field);
     if (ds_size(field) > 0) {
@@ -166,14 +167,14 @@ static void AppendString(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, d
         adbus_buf_u8(m->buf, code);
         adbus_buf_beginvariant(m->buf, &v, "s", 1);
         adbus_buf_align(m->buf, 4);
-        *msgfield = (char*) NULL + adbus_buf_size(adbus_msg_argbuffer(m)) + 4;
+        *fieldoff = adbus_buf_size(m->buf) + 4;
         adbus_buf_string(m->buf, ds_cstr(field), ds_size(field));
         adbus_buf_endvariant(m->buf, &v);
         adbus_buf_endstruct(m->buf);
     }
 }
 
-static void AppendSignature(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, const char* field, const char** msgfield, size_t* msgsz)
+static void AppendSignature(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, const char* field, size_t* fieldoff, size_t* msgsz)
 {
     *msgsz = strlen(field);
     if (field) {
@@ -182,14 +183,14 @@ static void AppendSignature(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code
         adbus_buf_beginstruct(m->buf);
         adbus_buf_u8(m->buf, code);
         adbus_buf_beginvariant(m->buf, &v, "g", 1);
-        *msgfield = (char*) NULL + adbus_buf_size(adbus_msg_argbuffer(m)) + 1;
+        *fieldoff = adbus_buf_size(m->buf) + 1;
         adbus_buf_signature(m->buf, field, *msgsz);
         adbus_buf_endvariant(m->buf, &v);
         adbus_buf_endstruct(m->buf);
     }
 }
 
-static void AppendObjectPath(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, d_String* field, const char** msgfield, size_t* msgsz)
+static void AppendObjectPath(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, d_String* field, size_t* fieldoff, size_t* msgsz)
 {
     *msgsz = ds_size(field);
     if (ds_size(field) > 0) {
@@ -199,14 +200,14 @@ static void AppendObjectPath(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t cod
         adbus_buf_u8(m->buf, code);
         adbus_buf_beginvariant(m->buf, &v, "o", 1);
         adbus_buf_align(m->buf, 4);
-        *msgfield = (char*) NULL + adbus_buf_size(adbus_msg_argbuffer(m)) + 4;
+        *fieldoff = adbus_buf_size(m->buf) + 4;
         adbus_buf_objectpath(m->buf, ds_cstr(field), ds_size(field));
         adbus_buf_endvariant(m->buf, &v);
         adbus_buf_endstruct(m->buf);
     }
 }
 
-static void AppendUInt32(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, uint32_t field, const uint32_t** msgfield)
+static void AppendUInt32(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, uint32_t field, size_t* fieldoff)
 {
     adbus_BufVariant v;
     adbus_buf_arrayentry(m->buf, a);
@@ -214,7 +215,7 @@ static void AppendUInt32(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, u
     adbus_buf_u8(m->buf, code);
     adbus_buf_beginvariant(m->buf, &v, "u", 1);
     adbus_buf_align(m->buf, 4);
-    *msgfield = (uint32_t*) ((char*) NULL + adbus_buf_size(adbus_msg_argbuffer(m)));
+    *fieldoff = adbus_buf_size(m->buf);
     adbus_buf_u32(m->buf, field);
     adbus_buf_endvariant(m->buf, &v);
     adbus_buf_endstruct(m->buf);
@@ -244,6 +245,7 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
 {
     adbusI_Header header;
     adbus_BufArray a;
+    size_t ifaceoff = 0, mbroff = 0, erroff = 0, destoff = 0, sendoff = 0, pathoff = 0, replyoff = 0, sigoff = 0;
 
     adbus_buf_reset(m->buf);
     memset(msg, 0, sizeof(adbus_Message));
@@ -292,18 +294,18 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
 
     adbus_buf_appendsig(m->buf, "a(yv)", 5);
     adbus_buf_beginarray(m->buf, &a);
-    AppendString(m, &a, ADBUSI_HEADER_INTERFACE, &m->interface, &msg->interface, &msg->interfaceSize);
-    AppendString(m, &a, ADBUSI_HEADER_MEMBER, &m->member, &msg->member, &msg->memberSize);
-    AppendString(m, &a, ADBUSI_HEADER_ERROR_NAME, &m->error, &msg->error, &msg->errorSize);
-    AppendString(m, &a, ADBUSI_HEADER_DESTINATION, &m->destination, &msg->destination, &msg->destinationSize);
-    AppendString(m, &a, ADBUSI_HEADER_SENDER, &m->sender, &msg->sender, &msg->senderSize);
-    AppendObjectPath(m, &a, ADBUSI_HEADER_OBJECT_PATH, &m->path, &msg->path, &msg->pathSize);
+    AppendString(m, &a, ADBUSI_HEADER_INTERFACE, &m->interface, &ifaceoff, &msg->interfaceSize);
+    AppendString(m, &a, ADBUSI_HEADER_MEMBER, &m->member, &mbroff, &msg->memberSize);
+    AppendString(m, &a, ADBUSI_HEADER_ERROR_NAME, &m->error, &erroff, &msg->errorSize);
+    AppendString(m, &a, ADBUSI_HEADER_DESTINATION, &m->destination, &destoff, &msg->destinationSize);
+    AppendString(m, &a, ADBUSI_HEADER_SENDER, &m->sender, &sendoff, &msg->senderSize);
+    AppendObjectPath(m, &a, ADBUSI_HEADER_OBJECT_PATH, &m->path, &pathoff, &msg->pathSize);
     if (m->replySerial > 0) {
-        AppendUInt32(m, &a, ADBUSI_HEADER_REPLY_SERIAL, (uint32_t) m->replySerial, &msg->replySerial);
+        AppendUInt32(m, &a, ADBUSI_HEADER_REPLY_SERIAL, (uint32_t) m->replySerial, &replyoff);
     }
     if (adbus_buf_size(m->argbuf) > 0) {
         const char* sig = adbus_buf_sig(m->argbuf, NULL);
-        AppendSignature(m, &a, ADBUSI_HEADER_SIGNATURE, sig, &msg->signature, &msg->signatureSize);
+        AppendSignature(m, &a, ADBUSI_HEADER_SIGNATURE, sig, &sigoff, &msg->signatureSize);
     }
     adbus_buf_endarray(m->buf, &a);
 
@@ -322,36 +324,36 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
     msg->flags              = m->flags;
     msg->serial             = (uint32_t) m->serial;
 
-    if (msg->path) {
-        msg->path = (char*) msg->data + (uintptr_t) msg->path;
+    if (pathoff) {
+        msg->path = msg->data + pathoff;
     }
 
-    if (msg->interface) {
-        msg->interface = msg->data + (uintptr_t) msg->interface;
+    if (ifaceoff) {
+        msg->interface = msg->data + ifaceoff;
     }
 
-    if (msg->member) {
-        msg->member = msg->data + (uintptr_t) msg->member;
+    if (mbroff) {
+        msg->member = msg->data + mbroff;
     }
 
-    if (msg->error) {
-        msg->error = msg->data + (uintptr_t) msg->error;
+    if (erroff) {
+        msg->error = msg->data + erroff;
     }
 
-    if (msg->destination) {
-        msg->destination = msg->data + (uintptr_t) msg->destination;
+    if (destoff) {
+        msg->destination = msg->data + destoff;
     }
 
-    if (msg->sender) {
-        msg->sender = msg->data + (uintptr_t) msg->sender;
+    if (sendoff) {
+        msg->sender = msg->data + sendoff;
     }
 
-    if (msg->replySerial) {
-        msg->replySerial = (uint32_t*) (msg->data + (uintptr_t) msg->replySerial);
+    if (replyoff) {
+        msg->replySerial = (uint32_t*) (msg->data + replyoff);
     }
 
-    if (msg->signature) {
-        msg->signature = msg->data + (uintptr_t) msg->signature;
+    if (sigoff) {
+        msg->signature = msg->data + sigoff;
     }
 
     return 0;
@@ -530,9 +532,10 @@ adbus_Bool adbus_msg_reply(const adbus_MsgFactory* m, uint32_t* serial)
     return m->replySerial >= 0;
 }
 
-/* ------------------------------------------------------------------------- */
-// Setter functions
-/* ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+ * Setter functions
+ * -------------------------------------------------------------------------
+ */
 
 /** Sets the message type 
  *  \relates adbus_MsgFactory

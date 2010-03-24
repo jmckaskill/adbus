@@ -69,7 +69,7 @@
 adbus_Server* adbus_serv_new(adbus_Interface* bus)
 {
     adbus_Server* s = NEW(adbus_Server);
-    adbusI_serv_initBus(&s->bus, bus, s);
+    adbusI_serv_initBus(s, bus);
 
     return s;
 }
@@ -80,8 +80,8 @@ adbus_Server* adbus_serv_new(adbus_Interface* bus)
 void adbus_serv_free(adbus_Server* s)
 {
     if (s) {
-        adbusI_serv_freeBus(&s->bus);
-        adbusI_freeServiceQueue(&s->services);
+        adbusI_serv_freeBus(s);
+        adbusI_freeServiceQueue(s);
         assert(dl_isempty(&s->remotes.async));
         assert(dl_isempty(&s->remotes.sync));
         free(s);
@@ -101,7 +101,7 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
     adbus_Remote* direct = NULL;
 
     if (m->destination) {
-        direct = adbusI_lookupRemote(&s->services, m->destination);
+        direct = adbusI_lookupRemote(s, m->destination);
     } else if (m->type == ADBUS_MSG_METHOD) {
         direct = s->bus.remote;
     }
@@ -129,7 +129,7 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
     }
 
     if (m->destination && m->type == ADBUS_MSG_METHOD && !direct) {
-        adbusI_serv_invalidDestination(&s->bus, m);
+        adbusI_serv_invalidDestination(s, m);
     }
 
     return 0;

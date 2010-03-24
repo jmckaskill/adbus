@@ -84,7 +84,7 @@
 #   endif
 
 #else
-#error Don't have any atomics
+#error "Don't have any atomics"
 #endif
 
 /* -------------------------------------------------------------------------- */

@@ -3,3 +3,5 @@
 include qt.tup
 include gcc.tup
 
+!cp = |> ^ CP %f^ cp %f %o |>
+

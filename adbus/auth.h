@@ -32,7 +32,7 @@ enum
 {
     AUTH_NOT_TRIED,
     AUTH_NOT_SUPPORTED,
-    AUTH_BEGIN,
+    AUTH_BEGIN
 };
 
 typedef int (*adbusI_AuthDataCallback)(adbus_Auth* a, d_String* data);

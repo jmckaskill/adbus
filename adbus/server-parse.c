@@ -244,7 +244,7 @@ static int Require(adbus_Buffer* dest, const char** data, size_t* size, size_t h
     size_t copy = need - have;
     assert(need >= have);
     if (*size >= copy) {
-        adbus_buf_append(dest, *data, need);
+        adbus_buf_append(dest, *data, copy);
         *data += copy;
         *size -= copy;
         return 0;

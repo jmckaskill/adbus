@@ -204,7 +204,7 @@ adbus_ConnReply* adbus_conn_addreply(
     remote = adbusI_getTrackedRemote(c, reg->remote, reg->remoteSize);
     ii = dh_put(Reply, &c->replies.lookup, serial, &added);
 
-    assert(!added && remote);
+    assert(added && remote);
 
     reply                   = NEW(adbus_ConnReply);
     reply->set              = &c->replies;

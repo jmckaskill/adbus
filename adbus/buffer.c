@@ -419,30 +419,30 @@ ADBUS_INLINE void AlignField(adbus_Buffer* b, char field)
 {
     switch (field)
     {
-        case 'y': // u8
-        case 'g': // signature
-        case 'v': // variant
+        case 'y': /* u8 */
+        case 'g': /* signature */
+        case 'v': /* variant */
             break;
 
-        case 'n': // i16
-        case 'q': // u16
+        case 'n': /* i16 */
+        case 'q': /* u16 */
             Align(b, 2);
             break;
 
-        case 'b': // bool
-        case 'i': // i32
-        case 'u': // u32
-        case 's': // string
-        case 'o': // object path
-        case 'a': // array
+        case 'b': /* bool */
+        case 'i': /* i32 */
+        case 'u': /* u32 */
+        case 's': /* string */
+        case 'o': /* object path */
+        case 'a': /* array */
             Align(b, 4);
             break;
 
-        case 'x': // i64
-        case 't': // u64
-        case 'd': // double
-        case '(': // struct
-        case '{': // dict entry
+        case 'x': /* i64 */
+        case 't': /* u64 */
+        case 'd': /* double */
+        case '(': /* struct */
+        case '{': /* dict entry */
             Align(b, 8);
             break;
 
@@ -456,28 +456,28 @@ ADBUS_INLINE uintptr_t AlignValue(uintptr_t value, char field)
 {
     switch (field)
     {
-        case 'y': // u8
-        case 'g': // signature
-        case 'v': // variant
+        case 'y': /* u8 */
+        case 'g': /* signature */
+        case 'v': /* variant */
             return value;
 
-        case 'n': // i16
-        case 'q': // u16
+        case 'n': /* i16 */
+        case 'q': /* u16 */
             return ADBUS_ALIGN(value, 2);
 
-        case 'b': // bool
-        case 'i': // i32
-        case 'u': // u32
-        case 's': // string
-        case 'o': // object path
-        case 'a': // array
+        case 'b': /* bool */
+        case 'i': /* i32 */
+        case 'u': /* u32 */
+        case 's': /* string */
+        case 'o': /* object path */
+        case 'a': /* array */
             return ADBUS_ALIGN(value, 4);
 
-        case 'x': // i64
-        case 't': // u64
-        case 'd': // double
-        case '(': // struct
-        case '{': // dict entry
+        case 'x': /* i64 */
+        case 't': /* u64 */
+        case 'd': /* double */
+        case '(': /* struct */
+        case '{': /* dict entry */
             return ADBUS_ALIGN(value, 8);
 
         default:

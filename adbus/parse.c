@@ -469,7 +469,7 @@ void adbus_clonedata(adbus_Message* from, adbus_Message* to)
 
     *to = *from;
     to->data = (char*) malloc(from->size);
-    memcpy(to->data, from->data, from->size);
+    memcpy((char*) to->data, from->data, from->size);
 
     off = to->data - from->data;
 

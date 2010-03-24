@@ -498,9 +498,10 @@ adbus_Member* adbus_iface_signal(adbus_Interface* i, const char* name, int size)
 adbus_Member* adbus_iface_property(adbus_Interface* i, const char* name, int size)
 { return GetMethod(i, ADBUSI_PROPERTY, name, size); }
 
-/* ------------------------------------------------------------------------- */
-// Member management
-/* ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+ * Member management
+ * -------------------------------------------------------------------------
+ */
 
 /** Appends to the argument signature.
  *  \relates adbus_Member
@@ -700,6 +701,11 @@ static int DoCall(adbus_CbData* d)
     adbus_Member* mbr = (adbus_Member*) d->user1;
     /* d->user2 is already set to the bind userdata */
     d->user1 = mbr->methodData;
+
+    if (d->ret) {
+        adbus_msg_setsig(d->ret, ds_cstr(&mbr->retsig), ds_size(&mbr->retsig));
+    }
+
     ret = adbus_dispatch(mbr->methodCallback, d);
     adbus_iface_deref(mbr->interface);
     return ret;
@@ -742,9 +748,10 @@ int adbus_mbr_call(
 
 
 
-/* ------------------------------------------------------------------------- */
-// Introspection callback (private)
-/* ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+ * Introspection callback (private)
+ * -------------------------------------------------------------------------
+ */
 
 static void IntrospectArguments(adbus_Member* m, d_String* out)
 {
@@ -884,9 +891,10 @@ void adbusI_introspectInterface(adbus_Interface* i, d_String* out)
 
 
 
-/* ------------------------------------------------------------------------- */
-// Properties callbacks (private)
-/* ------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------
+ * Properties callbacks (private)
+ * -------------------------------------------------------------------------
+ */
 
 int adbusI_proxiedGetProperty(adbus_CbData* d)
 {
@@ -906,7 +914,6 @@ int adbusI_proxiedGetProperty(adbus_CbData* d)
     /* User2 is already set to the bind cuser2 */
 
     /* Get the property value */
-    adbus_msg_setsig(d->ret, "v", 1);
     adbus_msg_beginvariant(d->ret, &v, mbr->propertyType, -1);
     ret = mbr->getPropertyCallback(d);
 
@@ -928,7 +935,6 @@ int adbusI_proxiedGetAllProperties(adbus_CbData* d)
     d_Hash(Member)* mbrs = &interface->members;
     
     /* Iterate over the properties and marshal up the values */
-    adbus_msg_setsig(d->ret, "a{sv}", 5);
     adbus_msg_beginarray(d->ret, &a);
 
     for (mi = dh_begin(mbrs); mi != dh_end(mbrs); ++mi) {

@@ -33,7 +33,7 @@ enum adbusI_CallType
 {
     METHOD_CALL,
     GET_PROP_CALL,
-    SET_PROP_CALL,
+    SET_PROP_CALL
 };
 
 typedef enum adbusI_CallType adbusI_CallType;

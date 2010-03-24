@@ -753,18 +753,18 @@ int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
     } else if (a->server && MATCH(cmdb, cmdsz, "CANCEL")) {
         return ServerReset(a);
 
-    } else if (a->server && a->okSent && MATCH(cmdb, cmdsz, "AUTH_BEGIN")) {
+    } else if (a->server && a->okSent && MATCH(cmdb, cmdsz, "BEGIN")) {
         return 1;
 
     } else if (!a->server && MATCH(cmdb, cmdsz, "OK")) {
-        Send(a, "AUTH_BEGIN\r\n");
+        Send(a, "BEGIN\r\n");
         return 1;
 
     } else if (!a->server && MATCH(cmdb, cmdsz, "REJECTED")) {
         return ClientReset(a);
 
     } else if (MATCH(cmdb, cmdsz, "ERROR")) {
-        // We have no way of handling these
+        /* We have no way of handling these */
         return -1;
 
     } else {

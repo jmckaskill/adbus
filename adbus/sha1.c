@@ -2,7 +2,7 @@
 
 Copyright (c) 2005 Michael D. Leonhard
 
-http:/*tamale.net/
+http://tamale.net
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -34,7 +34,7 @@ SOFTWARE.
 static uint32_t lrot( uint32_t x, int bits )
 {
   return (x<<bits) | (x>>(32 - bits));
-};
+}
 
 /* Save a 32-bit unsigned integer to memory, in big-endian order */
 static void storeBigEndianUint32(unsigned char* byte, uint32_t num )

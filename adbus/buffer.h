@@ -25,7 +25,7 @@
 
 #include "internal.h"
 
-DVECTOR_INIT(char, char);
+DVECTOR_INIT(char, char)
 
 struct adbus_Buffer
 {
@@ -34,3 +34,4 @@ struct adbus_Buffer
     char            sig[256];
     const char*     sigp;
 };
+

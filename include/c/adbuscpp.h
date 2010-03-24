@@ -883,19 +883,26 @@ namespace adbus
         BindPath path(const std::string& path)
         { return BindPath(*this, path); }
 
-        uint32_t serial() const {return adbus_conn_serial(m_C);}
+        uint32_t serial() const
+        { return adbus_conn_serial(m_C); }
 
-        int parse(adbus_Buffer* b)
-        {return adbus_conn_parse(m_C, b);}
+        int parse()
+        { return adbus_conn_parse(m_C); }
+
+        int parseStep()
+        { return adbus_conn_parse(m_C); }
+
+        void setBuffer(adbus_Buffer* buf)
+        { adbus_conn_setbuffer(m_C, buf); }
 
         int dispatch(adbus_Message* msg)
-        {return adbus_conn_dispatch(m_C, msg);}
+        { return adbus_conn_dispatch(m_C, msg); }
 
         void connectToBus()
-        {adbus_conn_connect(m_C, NULL, NULL);}
+        { adbus_conn_connect(m_C, NULL, NULL); }
 
         void connectToBus(adbus_Callback callback, void* data)
-        {adbus_conn_connect(m_C, callback, data);}
+        { adbus_conn_connect(m_C, callback, data); }
 
         std::string uniqueName()
         {

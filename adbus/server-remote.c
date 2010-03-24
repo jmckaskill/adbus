@@ -79,7 +79,7 @@ void adbus_remote_disconnect(adbus_Remote* r)
         adbusI_remote_freeParser(&r->parser);
 
         while (dv_size(&r->services) > 0) {
-            adbusI_releaseService(&s->services, r, dv_a(&r->services, 0)->name);
+            adbusI_releaseService(s, r, dv_a(&r->services, 0)->name);
         }
         dv_free(ServiceQueue, &r->services);
 

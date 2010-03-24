@@ -59,6 +59,7 @@ int main(void)
     cbs.send_message = &Send;
 
     adbus_Connection* c = adbus_conn_new(&cbs, &s);
+    adbus_conn_setbuffer(c, buf);
 
     adbus_Interface* i = adbus_iface_new("nz.co.foobar.adbus.SimpleTest", -1);
     adbus_Member* mbr = adbus_iface_addmethod(i, "Quit", -1);
@@ -79,7 +80,7 @@ int main(void)
         if (recvd < 0)
             abort();
 
-        if (adbus_conn_parse(c, buf))
+        if (adbus_conn_parse(c))
             abort();
     }
 
