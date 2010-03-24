@@ -128,8 +128,8 @@ int adbusluaI_tomatch(
 
     } else if (lua_istable(L, -1)) {
         d_Vector(Argument) vec;
-        ZERO(&vec);
         int args = lua_gettop(L);
+        ZERO(vec);
         lua_pushnil(L);
         while (lua_next(L, args) != 0) {
             if (!lua_isnumber(L, -2) || !lua_isstring(L, -1)) {

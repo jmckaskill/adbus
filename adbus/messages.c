@@ -23,11 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "connection.h"
-#include "interface.h"
-
-#include "dmem/string.h"
+#include "messages.h"
 
 /** \struct adbus_CbData
  *  \brief Data structure used for message callbacks.
@@ -108,7 +104,7 @@
  *  user data supplied in the bind.
  */
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Dispatch a message callback
  *  \relates adbus_CbData
@@ -126,7 +122,7 @@ int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d)
     return callback(d);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 #ifdef _MSC_VER
 #pragma warning(disable:4702) /* unreachable code due to longjmp */
@@ -144,8 +140,9 @@ int adbus_errorf_jmp(
         ...)
 {
     d_String msg;
-    ZERO(&msg);
     va_list ap;
+
+    ZERO(msg);
     va_start(ap, errorMsgFormat);
     ds_cat_vf(&msg, errorMsgFormat, ap);
     va_end(ap);
@@ -158,7 +155,7 @@ int adbus_errorf_jmp(
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Setup an error reply
  *  \relates adbus_CbData
@@ -190,8 +187,9 @@ int adbus_errorf(
         ...)
 {
     d_String msg;
-    ZERO(&msg);
     va_list ap;
+
+    ZERO(msg);
     va_start(ap, errorMsgFormat);
     ds_cat_vf(&msg, errorMsgFormat, ap);
     va_end(ap);
@@ -203,7 +201,7 @@ int adbus_errorf(
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Setup an error reply
  *  \relates adbus_CbData
@@ -225,39 +223,39 @@ int adbus_error(
     if (errorMessage && errorMessageSize < 0)
         errorMessageSize = strlen(errorMessage);
 
-    if (errorMessage)
-        adbusI_log("error '%*s' '%*s'", errorNameSize, errorName, errorMessageSize, errorMessage);
-    else
-        adbusI_log("error '%*s'", errorNameSize, errorName);
-
-    if (!d->ret)
-        return 0;
+    if (errorMessage) {
+        ADBUSI_LOG("Error '%*s' '%*s'", errorNameSize, errorName, errorMessageSize, errorMessage);
+    } else {
+        ADBUSI_LOG("Error '%*s'", errorNameSize, errorName);
+    }
 
     assert(errorName);
 
-    adbus_MsgFactory* m = d->ret;
-    adbus_msg_reset(m);
-    adbus_msg_settype(m, ADBUS_MSG_ERROR);
-    adbus_msg_setflags(m, ADBUS_MSG_NO_REPLY);
-    adbus_msg_setserial(m, adbus_conn_serial(d->connection));
+    if (d->ret) {
+        adbus_MsgFactory* m = d->ret;
+        adbus_msg_reset(m);
+        adbus_msg_settype(m, ADBUS_MSG_ERROR);
+        adbus_msg_setflags(m, ADBUS_MSG_NO_REPLY);
+        adbus_msg_setserial(m, adbus_conn_serial(d->connection));
 
-    adbus_msg_setreply(m, d->msg->serial);
-    adbus_msg_seterror(m, errorName, errorNameSize);
+        adbus_msg_setreply(m, d->msg->serial);
+        adbus_msg_seterror(m, errorName, errorNameSize);
 
-    if (d->msg->destination) {
-        adbus_msg_setdestination(m, d->msg->destination, d->msg->destinationSize);
-    }
+        if (d->msg->destination) {
+            adbus_msg_setdestination(m, d->msg->destination, d->msg->destinationSize);
+        }
 
-    if (errorMessage) {
-        adbus_msg_setsig(m, "s", 1);
-        adbus_msg_string(m, errorMessage, errorMessageSize);
-        adbus_msg_end(m);
+        if (errorMessage) {
+            adbus_msg_setsig(m, "s", 1);
+            adbus_msg_string(m, errorMessage, errorMessageSize);
+            adbus_msg_end(m);
+        }
     }
 
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 int adbus_error_argument(adbus_CbData* d)
 {
@@ -279,6 +277,8 @@ int adbus_error_argument(adbus_CbData* d)
     }
 }
 
+/* ------------------------------------------------------------------------- */
+
 int adbusI_pathError(adbus_CbData* d)
 {
     return adbus_errorf(
@@ -287,6 +287,8 @@ int adbusI_pathError(adbus_CbData* d)
             "The path '%s' does not exist.",
             d->msg->path);
 }
+
+/* ------------------------------------------------------------------------- */
 
 int adbusI_interfaceError(adbus_CbData* d)
 {
@@ -298,6 +300,37 @@ int adbusI_interfaceError(adbus_CbData* d)
             d->msg->interface,
             d->msg->member);
 }
+
+static void SetupError(const adbus_Message* msg, adbus_MsgFactory* ret, const char* error)
+{
+    adbus_msg_reset(ret);
+    adbus_msg_settype(ret, ADBUS_MSG_ERROR);
+    adbus_msg_setflags(ret, ADBUS_MSG_NO_REPLY);
+
+    adbus_msg_setreply(ret, msg->serial);
+    adbus_msg_seterror(ret, error, -1);
+
+    if (msg->destination) {
+        adbus_msg_setdestination(ret, msg->destination, msg->destinationSize);
+    }
+}
+
+void adbusI_sendInterfaceError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
+{
+    SetupError(msg, ret, "nz.co.foobar.adbus.InvalidInterface");
+
+    adbus_msg_setsig(ret, "s", 1);
+    adbus_msg_string_f(
+            ret,
+            "The path '%s' does not export the interface '%s'.",
+            msg->path,
+            msg->interface,
+            msg->member);
+
+    adbus_msg_send(ret, c);
+}
+
+/* ------------------------------------------------------------------------- */
 
 int adbusI_methodError(adbus_CbData* d)
 {
@@ -319,6 +352,32 @@ int adbusI_methodError(adbus_CbData* d)
     }
 }
 
+void adbusI_sendMethodError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
+{
+    SetupError(msg, ret, "nz.co.foobar.adbus.InvalidMethod");
+
+    adbus_msg_setsig(ret, "s", 1);
+
+    if (msg->interface) {
+        adbus_msg_string_f(
+                ret,
+                "The path '%s' does not export the method '%s.%s'.",
+                msg->path,
+                msg->interface,
+                msg->member);
+    } else {
+        adbus_msg_string_f(
+                ret,
+                "The path '%s' does not export the method '%s'.",
+                msg->path,
+                msg->member);
+    }
+
+    adbus_msg_send(ret, c);
+}
+
+/* ------------------------------------------------------------------------- */
+
 int adbusI_propertyError(adbus_CbData* d)
 {
     return adbus_errorf(
@@ -329,6 +388,8 @@ int adbusI_propertyError(adbus_CbData* d)
             d->msg->interface,
             d->msg->member);
 }
+
+/* ------------------------------------------------------------------------- */
 
 int adbusI_propWriteError(adbus_CbData* d)
 {
@@ -341,6 +402,8 @@ int adbusI_propWriteError(adbus_CbData* d)
             d->msg->path);
 }
 
+/* ------------------------------------------------------------------------- */
+
 int adbusI_propReadError(adbus_CbData* d)
 {
     return adbus_errorf(
@@ -351,6 +414,8 @@ int adbusI_propReadError(adbus_CbData* d)
             d->msg->member,
             d->msg->path);
 }
+
+/* ------------------------------------------------------------------------- */
 
 int adbusI_propTypeError(adbus_CbData* d)
 { 

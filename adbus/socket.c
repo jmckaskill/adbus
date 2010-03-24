@@ -23,8 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
+#include "internal.h"
 
 #ifdef _WIN32
 #   include <Winsock2.h>
@@ -36,11 +35,6 @@
 #   include <sys/un.h>
 #   include <netdb.h>
 #   include <unistd.h>
-#endif
-
-#include <string.h>
-
-#ifndef _WIN32
 #   define closesocket(x) close(x)
 #endif
 
@@ -52,7 +46,7 @@
  *  \brief Miscellaneous functions
  */
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 struct Fields
 {
@@ -75,15 +69,17 @@ static void ParseFields(struct Fields* f, char* bstr, size_t size)
     bstr = p + 1;
 
     while (bstr < estr) {
-        char* bkey = bstr;
-        char* ekey = (char*) memchr(bstr, '=', estr - bstr);
+        char *bkey, *ekey, *bval, *eval;
+
+        bkey = bstr;
+        ekey = (char*) memchr(bstr, '=', estr - bstr);
         if (!ekey)
             return;
 
         bstr = ekey + 1;
 
-        char* bval = bstr;
-        char* eval = (char*) memchr(bstr, ',', estr - bstr);
+        bval = bstr;
+        eval = (char*) memchr(bstr, ',', estr - bstr);
         if (eval) {
             bstr = eval + 1;
             *eval = '\0';
@@ -104,7 +100,7 @@ static void ParseFields(struct Fields* f, char* bstr, size_t size)
     }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static adbus_Socket ConnectTcp(struct Fields* f)
 {
@@ -120,8 +116,7 @@ static adbus_Socket ConnectTcp(struct Fields* f)
     hints.ai_flags = 0;
     hints.ai_protocol = 0;          /* Any protocol */
 
-    int s = getaddrinfo(f->host, f->port, &hints, &result);
-    if (s != 0)
+    if (getaddrinfo(f->host, f->port, &hints, &result) != 0)
         return ADBUS_SOCK_INVALID;
 
     /* getaddrinfo() returns a list of address structures.
@@ -148,7 +143,7 @@ static adbus_Socket ConnectTcp(struct Fields* f)
     return sfd;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static adbus_Socket BindTcp(struct Fields* f)
 {
@@ -164,8 +159,7 @@ static adbus_Socket BindTcp(struct Fields* f)
     hints.ai_flags = AI_PASSIVE;
     hints.ai_protocol = 0;          /* Any protocol */
 
-    int s = getaddrinfo(NULL, f->port, &hints, &result);
-    if (s != 0) {
+    if (getaddrinfo(NULL, f->port, &hints, &result) != 0) {
         return ADBUS_SOCK_INVALID;
     }
 
@@ -193,23 +187,26 @@ static adbus_Socket BindTcp(struct Fields* f)
     return sfd;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 #ifndef _WIN32
 #define UNIX_PATH_MAX 108
 static adbus_Socket ConnectAbstract(struct Fields* f)
 {
+    struct sockaddr_un sa;
+    adbus_Socket sfd;
+    int err;
+
     size_t psize = min(UNIX_PATH_MAX-1, strlen(f->abstract));
 
-    struct sockaddr_un sa;
     memset(&sa, 0, sizeof(struct sockaddr_un));
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path+1, f->abstract, psize);
 
-    adbus_Socket sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    int err = connect(sfd,
-                      (const struct sockaddr*) &sa,
-                      sizeof(sa.sun_family) + psize + 1);
+    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    err = connect(sfd,
+                  (const struct sockaddr*) &sa,
+                  sizeof(sa.sun_family) + psize + 1);
     if (err) {
         closesocket(sfd);
         return ADBUS_SOCK_INVALID;
@@ -220,17 +217,20 @@ static adbus_Socket ConnectAbstract(struct Fields* f)
 
 static adbus_Socket BindAbstract(struct Fields* f)
 {
+    struct sockaddr_un sa;
+    adbus_Socket sfd;
+    int err;
+
     size_t psize = min(UNIX_PATH_MAX-1, strlen(f->abstract));
 
-    struct sockaddr_un sa;
     memset(&sa, 0, sizeof(struct sockaddr_un));
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path+1, f->abstract, psize);
 
-    adbus_Socket sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    int err = bind(sfd,
-                   (const struct sockaddr*) &sa,
-                   sizeof(sa.sun_family) + psize + 1);
+    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    err = bind(sfd,
+               (const struct sockaddr*) &sa,
+               sizeof(sa.sun_family) + psize + 1);
     if (err) {
         closesocket(sfd);
         return ADBUS_SOCK_INVALID;
@@ -241,17 +241,20 @@ static adbus_Socket BindAbstract(struct Fields* f)
 
 static adbus_Socket ConnectUnix(struct Fields* f)
 {
+    struct sockaddr_un sa;
+    adbus_Socket sfd;
+    int err;
+
     size_t psize = min(UNIX_PATH_MAX, strlen(f->file));
 
-    struct sockaddr_un sa;
     memset(&sa, 0, sizeof(struct sockaddr_un));
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path, f->file, psize);
 
-    adbus_Socket sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    int err = connect(sfd,
-                      (const struct sockaddr*) &sa,
-                      sizeof(sa.sun_family) + psize);
+    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    err = connect(sfd,
+                  (const struct sockaddr*) &sa,
+                  sizeof(sa.sun_family) + psize);
     if (err) {
         closesocket(sfd);
         return ADBUS_SOCK_INVALID;
@@ -262,17 +265,20 @@ static adbus_Socket ConnectUnix(struct Fields* f)
 
 static adbus_Socket BindUnix(struct Fields* f)
 {
+    struct sockaddr_un sa;
+    adbus_Socket sfd;
+    int err;
+
     size_t psize = min(UNIX_PATH_MAX, strlen(f->file));
 
-    struct sockaddr_un sa;
     memset(&sa, 0, sizeof(struct sockaddr_un));
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path, f->file, psize);
 
-    adbus_Socket sfd = socket(AF_UNIX, SOCK_STREAM, 0);
-    int err = bind(sfd,
-                   (const struct sockaddr*) &sa,
-                   sizeof(sa.sun_family) + psize);
+    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    err = bind(sfd,
+               (const struct sockaddr*) &sa,
+               sizeof(sa.sun_family) + psize);
     if (err) {
         closesocket(sfd);
         return ADBUS_SOCK_INVALID;
@@ -283,7 +289,7 @@ static adbus_Socket BindUnix(struct Fields* f)
 
 #endif
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static adbus_Bool CopyEnv(const char* env, char* buf, size_t sz)
 {
@@ -299,6 +305,7 @@ static adbus_Bool CopyEnv(const char* env, char* buf, size_t sz)
 #ifdef _WIN32
 static adbus_Bool CopySharedMem(const wchar_t* name, char* buf, size_t sz)
 {
+    void* view;
     HANDLE map = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READONLY, 0, sz - 1, name);
     if (map == INVALID_HANDLE_VALUE)
         return 0;
@@ -309,7 +316,7 @@ static adbus_Bool CopySharedMem(const wchar_t* name, char* buf, size_t sz)
         return 0;
     }
 
-    void* view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, sz - 1);
+    view = MapViewOfFile(map, FILE_MAP_READ, 0, 0, sz - 1);
     if (view)
         CopyMemory(buf, view, sz - 1);
 
@@ -423,7 +430,7 @@ int adbus_bind_address(adbus_BusType type, char* buf, size_t sz)
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Connects a BSD socket to the specified bus type.
  *  \ingroup adbus_Socket
@@ -444,7 +451,7 @@ adbus_Socket adbus_sock_connect(adbus_BusType type)
     return adbus_sock_connect_s(buf, -1);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Binds a BSD socket to the specified bus type.
  *  \ingroup adbus_Socket
@@ -465,7 +472,7 @@ adbus_Socket adbus_sock_bind(adbus_BusType type)
     return adbus_sock_bind_s(buf, -1);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Connects a BSD socket to the specified address.
  *  \ingroup adbus_Socket
@@ -488,16 +495,17 @@ adbus_Socket adbus_sock_connect_s(
         const char*     envstr,
         int             size)
 {
+    char* str;
+    struct Fields f;
+    adbus_Socket sfd = ADBUS_SOCK_INVALID;
+
+    ZERO(f);
+
     if (size < 0)
         size = strlen(envstr);
-
-    char* str = adbusI_strndup(envstr, size);
-    struct Fields f;
-    memset(&f, 0, sizeof(struct Fields));
+    str = adbusI_strndup(envstr, size);
 
     ParseFields(&f, str, size);
-
-    adbus_Socket sfd = ADBUS_SOCK_INVALID;
 
 #ifdef _WIN32
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
@@ -519,7 +527,7 @@ adbus_Socket adbus_sock_connect_s(
 }
 
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Binds a BSD socket to the specified address.
  *  \ingroup adbus_Socket
@@ -546,16 +554,17 @@ adbus_Socket adbus_sock_bind_s(
         const char*     envstr,
         int             size)
 {
+    char* str;
+    struct Fields f;
+    adbus_Socket sfd = ADBUS_SOCK_INVALID;
+
+    ZERO(f);
+
     if (size < 0)
         size = strlen(envstr);
-
-    char* str = adbusI_strndup(envstr, size);
-    struct Fields f;
-    memset(&f, 0, sizeof(struct Fields));
+    str = adbusI_strndup(envstr, size);
 
     ParseFields(&f, str, size);
-
-    adbus_Socket sfd = ADBUS_SOCK_INVALID;
 
 #ifdef _WIN32
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
@@ -576,10 +585,10 @@ adbus_Socket adbus_sock_bind_s(
     return sfd;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
-static adbus_ssize_t Send(void* d, const char* b, size_t sz)
-{ return send(*(adbus_Socket*) d, b, sz, 0); }
+static int Send(void* d, const char* b, size_t sz)
+{ return (int) send(*(adbus_Socket*) d, b, sz, 0); }
 
 static uint8_t Rand(void* d)
 { (void) d; return (uint8_t) rand(); }
@@ -606,8 +615,8 @@ static uint8_t Rand(void* d)
  */
 int adbus_sock_cauth(adbus_Socket sock, adbus_Buffer* buffer)
 {
-    adbus_Auth* a = adbus_cauth_new(&Send, &Rand, &sock);
     int ret = 0;
+    adbus_Auth* a = adbus_cauth_new(&Send, &Rand, &sock);
 
     adbus_cauth_external(a);
 

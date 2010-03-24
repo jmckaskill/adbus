@@ -23,11 +23,8 @@
  * ----------------------------------------------------------------------------
  */
 
+#include "proxy.h"
 
-#define ADBUS_LIBRARY
-#include "misc.h"
-
-#include "dmem/string.h"
 
 /** \struct adbus_Proxy
  *
@@ -198,36 +195,11 @@
 
 /* ------------------------------------------------------------------------- */
 
-enum CallType
-{
-    METHOD_CALL,
-    GET_PROP_CALL,
-    SET_PROP_CALL,
-};
-
-struct adbus_Proxy
-{
-    /** \privatesection */
-    adbus_State*        state;
-    adbus_Connection*   connection;
-    adbus_MsgFactory*   message;
-    d_String            service;
-    d_String            path;
-    d_String            interface;
-    enum CallType       type;
-    adbus_BufVariant    variant;
-};
-
-/* ------------------------------------------------------------------------- */
-
 /** Create a new proxy tied to the provided state
  *  \relates adbus_Proxy
  */
-adbus_Proxy* adbus_proxy_new(
-        adbus_State*        state)
+adbus_Proxy* adbus_proxy_new(adbus_State* state)
 {
-    adbusI_log("new proxy");
-
     adbus_Proxy* p  = NEW(adbus_Proxy);
     p->state        = state;
     p->message      = adbus_msg_new();
@@ -243,7 +215,7 @@ adbus_Proxy* adbus_proxy_new(
 void adbus_proxy_free(adbus_Proxy* p)
 {
     if (p) {
-        adbusI_log("free proxy %s %s", ds_cstr(&p->service), ds_cstr(&p->path));
+        adbus_conn_deref(p->connection);
         adbus_msg_free(p->message);
         ds_free(&p->service);
         ds_free(&p->path);
@@ -270,9 +242,8 @@ void adbus_proxy_init(
     if (psize < 0)
         psize = strlen(path);
 
-    adbusI_log("init proxy %*s %*s", ssize, service, psize, path);
-
     p->connection = connection;
+    adbus_conn_ref(p->connection);
 
     ds_set_n(&p->service, service, ssize);
     ds_set_n(&p->path, path, psize);
@@ -334,12 +305,9 @@ void adbus_call_method(
         const char*         method,
         int                 size)
 {
-    memset(call, 0, sizeof(adbus_Call));
-    if (!p->connection)
-      return;
-
     adbus_MsgFactory* m = p->message;
 
+    p->type = METHOD_CALL;
     memset(call, 0, sizeof(adbus_Call));
     call->msg = m;
 
@@ -367,9 +335,9 @@ void adbus_call_setproperty(
         const char*         type,
         int                 typesize)
 {
-    assert(ds_size(&p->interface) > 0);
-
     adbus_MsgFactory* m = p->message;
+
+    assert(ds_size(&p->interface) > 0);
     p->type = SET_PROP_CALL;
 
     memset(call, 0, sizeof(adbus_Call));
@@ -401,10 +369,10 @@ void adbus_call_getproperty(
         const char*         property,
         int                 size)
 {
-    assert(ds_size(&p->interface) > 0);
-
     adbus_MsgFactory* m = p->message;
+
     p->type = GET_PROP_CALL;
+    assert(ds_size(&p->interface) > 0);
 
     memset(call, 0, sizeof(adbus_Call));
     call->msg = m;
@@ -470,8 +438,7 @@ void adbus_call_send(
         adbus_msg_setflags(msg, adbus_msg_flags(msg) | ADBUS_MSG_NO_REPLY);
     }
 
-
-    // Send message
+    /* Send message */
     adbus_msg_send(msg, p->connection);
 }
 

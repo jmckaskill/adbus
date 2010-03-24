@@ -109,23 +109,23 @@ int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t 
 
         } else if (MATCH(keyb, keye, "sender")) {
             m->m.sender           = valb;
-            m->m.senderSize       = vale - valb;
+            m->m.senderSize       = (int) (vale - valb);
 
         } else if (MATCH(keyb, keye, "interface")) {
             m->m.interface        = valb;
-            m->m.interfaceSize    = vale - valb;
+            m->m.interfaceSize    = (int) (vale - valb);
 
         } else if (MATCH(keyb, keye, "member")) {
             m->m.member           = valb;
-            m->m.memberSize       = vale - valb;
+            m->m.memberSize       = (int) (vale - valb);
 
         } else if (MATCH(keyb, keye, "path")) {
             m->m.path             = valb;
-            m->m.pathSize         = vale - valb;
+            m->m.pathSize         = (int) (vale - valb);
 
         } else if (MATCH(keyb, keye, "destination")) {
             m->m.destination      = valb;
-            m->m.destinationSize  = vale - valb;
+            m->m.destinationSize  = (int) (vale - valb);
 
         } else if (IsArgKey(keyb, keye, &argnum)) {
             adbus_Argument* a;

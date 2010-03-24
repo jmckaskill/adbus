@@ -29,11 +29,11 @@
 
 ADBUSI_DATA adbus_LogCallback sLogFunction;
 
-ADBUSI_FUNC int adbusI_logmsg(const char* header, const adbus_Message* msg);
-ADBUSI_FUNC int adbusI_logbind(const char* header, const adbus_Bind* bind);
-ADBUSI_FUNC int adbusI_logmatch(const char* header, const adbus_Match* match);
-ADBUSI_FUNC int adbusI_logreply(const char* header, const adbus_Reply* reply);
-ADBUSI_FUNC int adbusI_log(const char* format, ...);
+ADBUSI_FUNC void adbusI_logmsg(const char* header, const adbus_Message* msg);
+ADBUSI_FUNC void adbusI_logbind(const char* header, const adbus_Bind* bind);
+ADBUSI_FUNC void adbusI_logmatch(const char* header, const adbus_Match* match);
+ADBUSI_FUNC void adbusI_logreply(const char* header, const adbus_Reply* reply);
+ADBUSI_FUNC void adbusI_log(const char* format, ...);
 
 #define ADBUSI_LOG_MSG(header, msg)     if (!sLogFunction) {} else adbusI_logmsg(header, msg)
 #define ADBUSI_LOG_BIND(header, bind)   if (!sLogFunction) {} else adbusI_logbind(header, bind)

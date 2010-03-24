@@ -23,8 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
+#include "signal.h"
 #include "interface.h"
 
 /** \struct adbus_Signal
@@ -50,25 +49,6 @@
  *  \endcode
  *
  */
-
-/* ------------------------------------------------------------------------- */
-
-struct Bind
-{
-    adbus_Connection*   connection;
-    char*               path;
-    size_t              pathSize;
-};
-
-DVECTOR_INIT(Bind, struct Bind);
-
-struct adbus_Signal
-{
-    /** \privatesection */
-    adbus_MsgFactory*   message;
-    d_Vector(Bind)      binds;
-    adbus_Member*       member;
-};
 
 /* ------------------------------------------------------------------------- */
 
@@ -106,8 +86,9 @@ void adbus_sig_free(adbus_Signal* s)
  */
 void adbus_sig_reset(adbus_Signal* s)
 {
+    size_t i;
     adbus_msg_free(s->message);
-    for (size_t i = 0; i < dv_size(&s->binds); i++) {
+    for (i = 0; i < dv_size(&s->binds); i++) {
         free(dv_a(&s->binds, i).path);
     }
     dv_clear(Bind, &s->binds);
@@ -124,10 +105,11 @@ void adbus_sig_bind(
         const char*         path,
         int                 pathSize)
 {
+    struct Bind* b  = dv_push(Bind, &s->binds, 1);
+
     if (pathSize < 0)
         pathSize = strlen(path);
 
-    struct Bind* b  = dv_push(Bind, &s->binds, 1);
     b->path         = adbusI_strndup(path, pathSize);
     b->pathSize     = pathSize;
     b->connection   = c;
@@ -158,16 +140,16 @@ adbus_MsgFactory* adbus_sig_msg(adbus_Signal* s)
  */
 void adbus_sig_emit(adbus_Signal* s)
 {
+    size_t i;
     adbus_MsgFactory* m = s->message;
-    adbus_Interface* i = s->member->interface;
+    adbus_Interface* interface = s->member->interface;
 
     adbus_msg_end(m);
     adbus_msg_setmember(m, s->member->name.str, s->member->name.sz);
-    adbus_msg_setinterface(m, i->name.str, i->name.sz);
+    adbus_msg_setinterface(m, interface->name.str, interface->name.sz);
 
-    for (size_t i = 0; i < dv_size(&s->binds); i++) {
+    for (i = 0; i < dv_size(&s->binds); i++) {
         struct Bind* b = &dv_a(&s->binds, i);
-
         adbus_Connection* c = b->connection;
 
         adbus_msg_settype(m, ADBUS_MSG_SIGNAL);
@@ -178,7 +160,7 @@ void adbus_sig_emit(adbus_Signal* s)
         adbus_msg_send(m, c);
     }
 
-    // Reset the message
+    /* Reset the message */
     adbus_sig_msg(s);
 }
 

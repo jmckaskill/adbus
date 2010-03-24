@@ -35,7 +35,7 @@
 
 
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 char adbusI_nativeEndianness(void)
 {
@@ -44,14 +44,16 @@ char adbusI_nativeEndianness(void)
     return little ? 'l' : 'B';
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 const uint8_t adbusI_majorProtocolVersion = 1;
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 adbus_Bool adbusI_isValidObjectPath(const char* str, size_t len)
 {
+    const char *slash, *cur;
+
     if (!str || len == 0)
         return 0;
     if (str[0] != '/')
@@ -59,10 +61,11 @@ adbus_Bool adbusI_isValidObjectPath(const char* str, size_t len)
     if (len > 1 && str[len - 1] == '/')
         return 0;
 
-    // Now we check for consecutive '/' and that
-    // the path components only use [A-Z][a-z][0-9]_
-    const char* slash = str;
-    const char* cur = str;
+    /* Now we check for consecutive '/' and that
+     * the path components only use [A-Z][a-z][0-9]_
+     */
+    slash = str;
+    cur = str;
     while (++cur < str + len)
     {
         if (*cur == '/')
@@ -87,14 +90,16 @@ adbus_Bool adbusI_isValidObjectPath(const char* str, size_t len)
     return 1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 adbus_Bool adbusI_isValidInterfaceName(const char* str, size_t len)
 {
+    const char *dot, *cur;
+
     if (!str || len == 0 || len > 255)
         return 0;
 
-    // Must not begin with a digit
+    /* Must not begin with a digit */
     if (!(  ('a' <= str[0] && str[0] <= 'z')
                 || ('A' <= str[0] && str[0] <= 'Z')
                 || (str[0] == '_')))
@@ -102,10 +107,11 @@ adbus_Bool adbusI_isValidInterfaceName(const char* str, size_t len)
         return 0;
     }
 
-    // Now we check for consecutive '.' and that
-    // the components only use [A-Z][a-z][0-9]_
-    const char* dot = str - 1;
-    const char* cur = str;
+    /* Now we check for consecutive '.' and that
+     * the components only use [A-Z][a-z][0-9]_
+     */
+    dot = str - 1;
+    cur = str;
     while (++cur < str + len)
     {
         if (*cur == '.')
@@ -127,21 +133,23 @@ adbus_Bool adbusI_isValidInterfaceName(const char* str, size_t len)
             return 0;
         }
     }
-    // Interface names must include at least one '.'
+    /* Interface names must include at least one '.' */
     if (dot == str - 1)
         return 0;
 
     return 1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 adbus_Bool adbusI_isValidBusName(const char* str, size_t len)
 {
+    const char *dot, *cur;
+
     if (!str || len == 0 || len > 255)
         return 0;
 
-    // Bus name must either begin with : or not a digit
+    /* Bus name must either begin with : or not a digit */
     if (!(  (str[0] == ':')
                 || ('a' <= str[0] && str[0] <= 'z')
                 || ('A' <= str[0] && str[0] <= 'Z')
@@ -151,10 +159,11 @@ adbus_Bool adbusI_isValidBusName(const char* str, size_t len)
         return 0;
     }
 
-    // Now we check for consecutive '.' and that
-    // the components only use [A-Z][a-z][0-9]_
-    const char* dot = str[0] == ':' ? str : str - 1;
-    const char* cur = str;
+    /* Now we check for consecutive '.' and that
+     * the components only use [A-Z][a-z][0-9]_
+     */
+    dot = str[0] == ':' ? str : str - 1;
+    cur = str;
     while (++cur < str + len)
     {
         if (*cur == '.')
@@ -177,21 +186,22 @@ adbus_Bool adbusI_isValidBusName(const char* str, size_t len)
             return 0;
         }
     }
-    // Bus names must include at least one '.'
+    /* Bus names must include at least one '.' */
     if (dot == str - 1)
         return 0;
 
     return 1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 adbus_Bool adbusI_isValidMemberName(const char* str, size_t len)
 {
+    const char* cur;
     if (!str || len == 0 || len > 255)
         return 0;
 
-    // Must not begin with a digit
+    /* Must not begin with a digit */
     if (!(   ('a' <= str[0] && str[0] <= 'z')
           || ('A' <= str[0] && str[0] <= 'Z')
           || (str[0] == '_')))
@@ -199,8 +209,8 @@ adbus_Bool adbusI_isValidMemberName(const char* str, size_t len)
         return 0;
     }
 
-    // We now check that we only use [A-Z][a-z][0-9]_
-    const char* cur = str;
+    /* We now check that we only use [A-Z][a-z][0-9]_ */
+    cur = str;
     while (++cur < str + len)
     {
         if ( ('a' <= *cur && *cur <= 'z')
@@ -219,7 +229,7 @@ adbus_Bool adbusI_isValidMemberName(const char* str, size_t len)
     return 1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 const char* adbus_nextarg(const char* sig)
 {
@@ -258,11 +268,13 @@ const char* adbus_nextarg(const char* sig)
 
         case ADBUS_DICTENTRY_BEGIN:
             {
-                const char* val = adbus_nextarg(sig + 1);
+                const char *val, *end;
+
+                val = adbus_nextarg(sig + 1);
                 if (!val)
                     return NULL;
 
-                const char* end = adbus_nextarg(val);
+                end = adbus_nextarg(val);
                 if (!end || *end != ADBUS_DICTENTRY_END)
                     return NULL;
 
@@ -274,7 +286,7 @@ const char* adbus_nextarg(const char* sig)
     }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 void adbusI_relativePath(
         d_String*  out,
@@ -283,75 +295,84 @@ void adbusI_relativePath(
         const char* path2,
         int         size2)
 {
+    size_t i;
+
     ds_clear(out);
     if (size1 < 0)
         size1 = strlen(path1);
     if (size2 < 0)
         size2 = strlen(path2);
 
-    // Make sure it starts with a /
+    /* Make sure it starts with a / */
     if (size1 > 0 && path1[0] != '/')
         ds_cat(out, "/");
     if (size1 > 0)
         ds_cat_n(out, path1, size1);
 
-    // Make sure it has a / seperator
+    /* Make sure it has a / separator */
     if (size2 > 0 && path2[0] != '/')
         ds_cat(out, "/");
     if (size2 > 0)
         ds_cat_n(out, path2, size2);
 
-    // Remove repeating slashes
-    for (size_t i = 1; i < ds_size(out); ++i) {
+    /* Remove repeating slashes */
+    for (i = 1; i < ds_size(out); ++i) {
         if (ds_a(out, i) == '/' && ds_a(out, i-1) == '/') {
             ds_erase(out, i, 1);
         }
     }
 
-    // Remove trailing /
+    /* Remove trailing / */
     if (ds_size(out) > 1 && ds_a(out, ds_size(out) - 1) == '/')
         ds_erase_end(out, 1);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
+
+void adbusI_sanitisePath(d_String* out, const char* path, int sz)
+{ adbusI_relativePath(out, path, sz, NULL, 0); }
+
+
+/* ------------------------------------------------------------------------- */
 
 void adbusI_parentPath(
         dh_strsz_t  path,
         dh_strsz_t* parent)
 {
+    int size;
+
 #ifndef NDEBUG
     {
-        // Path should have already been sanitised so double /'s should not happen
+        /* Path should have already been sanitised so double /'s should not happen */
         d_String sanitised;
-        ZERO(&sanitised);
-        adbusI_relativePath(&sanitised, path.str, path.sz, NULL, 0);
+        ZERO(sanitised);
+        adbusI_sanitisePath(&sanitised, path.str, path.sz);
         assert(ds_cmp_n(&sanitised, path.str, path.sz) == 0);
         ds_free(&sanitised);
     }
 #endif
 
-    int size = path.sz - 1;
-
-    // Search back until we find the first '/' that is not the last character
+    /* Search back until we find the first '/' that is not the last character */
+    size = path.sz - 1;
     while (size > 0 && path.str[size - 1] != '/') {
         --size;
     }
 
     if (size <= 0) {
-        // Parent of "/"
+        /* Parent of "/" */
         parent->str = NULL;
     } else if (size == 1) {
-        // Parent of "/Foo" - "/"
+        /* Parent of "/Foo" - "/" */
         parent->str = path.str;
         parent->sz  = size;
     } else {
-        // Parent of "/Foo/Bar" - "/Foo" (size is currently at "/Foo/")
+        /* Parent of "/Foo/Bar" - "/Foo" (size is currently at "/Foo/") */
         parent->str = path.str;
         parent->sz  = size - 1;
     }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static void Append(d_String* s, const char* format, int vsize, const char* value)
 {
@@ -379,6 +400,8 @@ static const char* TypeString(adbus_MessageType type)
 
 void adbusI_matchString(d_String* s, const adbus_Match* m)
 {
+    size_t i;
+
     ds_cat(s, "");
 
     if (m->type)
@@ -390,7 +413,7 @@ void adbusI_matchString(d_String* s, const adbus_Match* m)
     Append(s, "path='%*s',", m->pathSize, m->path);
     Append(s, "destination='%*s',", m->destinationSize, m->destination);
 
-    for (size_t i = 0; i < m->argumentsSize; ++i) {
+    for (i = 0; i < m->argumentsSize; ++i) {
         adbus_Argument* arg = &m->arguments[i];
         if (arg->value) {
             if (arg->size >= 0) {
@@ -401,7 +424,7 @@ void adbusI_matchString(d_String* s, const adbus_Match* m)
         }
     }
 
-    // Remove the trailing ','
+    /* Remove the trailing ',' */
     if (ds_size(s) > 0)
         ds_erase_end(s, 1);
 }
@@ -427,10 +450,10 @@ static adbus_Bool StringMatches(
 }
 
 
-static adbus_Bool ArgsMatch(
-        struct Match*   match,
-        adbus_Message*  msg)
+static adbus_Bool ArgsMatch(const adbus_Match* match, adbus_Message* msg)
 {
+    size_t i;
+
     if (match->argumentsSize == 0)
         return 1;
 
@@ -440,7 +463,7 @@ static adbus_Bool ArgsMatch(
     if (msg->argumentsSize < match->argumentsSize)
         return 0;
 
-    for (size_t i = 0; i < match->argumentsSize; i++) {
+    for (i = 0; i < match->argumentsSize; i++) {
         adbus_Argument* matcharg = &match->arguments[i];
         adbus_Argument* msgarg = &msg->arguments[i];
 
@@ -478,7 +501,7 @@ adbus_Bool adbusI_matchesMessage(const adbus_Match* match, adbus_Message* msg)
         return 0;
     } else if (!StringMatches(match->sender, match->senderSize, msg->sender, msg->senderSize)) {
         return 0;
-    } else if (!ArgsMatches(match, msg))
+    } else if (!ArgsMatch(match, msg)) {
         return 0;
     } else {
         return 1;

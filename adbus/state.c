@@ -23,10 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
-
-#include "dmem/list.h"
+#include "state.h"
 
 /** \struct adbus_State
  *  \brief Helper class to manage connection services (binds, matches and
@@ -107,62 +104,6 @@
  *
  */
 
-
-/* State multithreading
- *
- * Multithreaded support is acheived by having a connection specific data
- * structure, which is only modified on the connection thread. The list of
- * said connection structs is owned on the local thread, but the contents of
- * the conn struct is owned on the connection thread.
- *
- * Initially created and added to connection list on the local thread. Binds,
- * replies, and matches are added by sending a proxy message to the connection
- * thread. Likewise the connection struct is removed and freed via a proxied
- * message.
- */
-
-
-/* ------------------------------------------------------------------------- */
-
-struct Data;
-DILIST_INIT(Data, struct Data);
-
-struct Data
-{
-    d_IList(Data)           hl;
-    struct Conn*            conn;
-    union {
-        adbus_Bind          bind;
-        adbus_Reply         reply;
-        adbus_Match         match;
-    } u;
-    void*                   data;
-    adbus_Callback          release[2];
-    void*                   ruser[2];
-};
-
-struct Conn;
-DILIST_INIT(Conn, struct Conn);
-
-struct Conn
-{
-    d_IList(Conn)           hl;
-    adbus_Connection*       connection;
-    d_IList(Data)           binds;
-    d_IList(Data)           matches;
-    d_IList(Data)           replies;
-    adbus_ProxyMsgCallback  proxy;
-    void*                   puser;
-    adbus_ProxyCallback     relproxy;
-    void*                   relpuser;
-};
-
-struct adbus_State
-{
-    d_IList(Conn)           connections;
-};
-
-
 /* ------------------------------------------------------------------------- */
 
 static void DupString(const char** str, int* sz)
@@ -172,9 +113,9 @@ static void DupString(const char** str, int* sz)
     *str = adbusI_strndup(*str, *sz);
 }
 
-static void FreeData(struct Data* d)
+static void FreeData(adbusI_StateData* d)
 {
-    dil_remove(Data, d, &d->hl);
+    dil_remove(StateData, d, &d->hl);
 
     if (d->release[0]) {
         if (d->conn->relproxy) {
@@ -196,14 +137,14 @@ static void FreeData(struct Data* d)
 }
 
 static void ReleaseDataCallback(void* user)
-{ FreeData((struct Data*) user); }
+{ FreeData((adbusI_StateData*) user); }
 
-static void LookupConnection(adbus_State* s, struct Data* d, adbus_Connection* c);
+static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connection* c);
 
 /* ------------------------------------------------------------------------- */
 
-// Always called on the connection thread
-static int DoBind(struct Data* d)
+/* Always called on the connection thread */
+static int DoBind(adbusI_StateData* d)
 {
     adbus_Bind* b = &d->u.bind;
 
@@ -222,19 +163,20 @@ static int DoBind(struct Data* d)
     if (!d->data)
         return -1;
 
-    dil_insert_after(Data, &d->conn->binds, d, &d->hl);
+    dil_insert_after(StateData, &d->conn->binds, d, &d->hl);
     return 0;
 }
 
 static void ProxyBind(void* user)
 {
-    struct Data* d = (struct Data*) user;
+    adbusI_StateData* d = (adbusI_StateData*) user;
     int err = DoBind(d);
 
     adbus_iface_deref(d->u.bind.interface);
     free((char*) d->u.bind.path);
-    if (err)
+    if (err) {
         FreeData(d);
+    }
 }
 
 /** Adds a binding to the supplied connection.
@@ -252,14 +194,13 @@ void adbus_state_bind(
         adbus_Connection*   c,
         const adbus_Bind*   b)
 {
-    assert(!b->proxy && !b->relproxy);
-
-    struct Data* d = NEW(struct Data);
+    adbusI_StateData* d = NEW(adbusI_StateData);
     d->u.bind = *b;
     LookupConnection(s, d, c);
 
-    if (adbus_conn_shouldproxy(c))
-    {
+    assert(!b->proxy && !b->relproxy);
+
+    if (adbus_conn_shouldproxy(c)) {
         adbus_Bind* b2 = &d->u.bind;
 
         DupString(&b2->path, &b2->pathSize);
@@ -271,17 +212,16 @@ void adbus_state_bind(
 
         adbus_iface_ref(b2->interface);
         adbus_conn_proxy(c, &ProxyBind, d);
-    }
-    else
-    {
-        if (DoBind(d))
+    } else {
+        if (DoBind(d)) {
             FreeData(d);
+        }
     }
 }
 
 /* ------------------------------------------------------------------------- */
 
-static int DoAddMatch(struct Data* d)
+static int DoAddMatch(adbusI_StateData* d)
 {
     adbus_Match* m = &d->u.match;
 
@@ -300,13 +240,13 @@ static int DoAddMatch(struct Data* d)
     if (!d->data)
         return -1;
 
-    dil_insert_after(Data, &d->conn->matches, d, &d->hl);
+    dil_insert_after(StateData, &d->conn->matches, d, &d->hl);
     return 0;
 }
 
 static void ProxyAddMatch(void* user)
 {
-    struct Data* d  = (struct Data*) user;
+    adbusI_StateData* d  = (adbusI_StateData*) user;
 
     int err = DoAddMatch(d);
 
@@ -319,8 +259,9 @@ static void ProxyAddMatch(void* user)
     free((char*) m->error);
     free(m->arguments);
 
-    if (err)
+    if (err) {
         FreeData(d);
+    }
 }
 
 
@@ -339,14 +280,13 @@ void adbus_state_addmatch(
         adbus_Connection*   c,
         const adbus_Match*  m)
 {
-    assert(!m->proxy && !m->relproxy);
-
-    struct Data* d = NEW(struct Data);
+    adbusI_StateData* d = NEW(adbusI_StateData);
     LookupConnection(s, d, c);
     d->u.match = *m;
 
-    if (adbus_conn_shouldproxy(c))
-    {
+    assert(!m->proxy && !m->relproxy);
+
+    if (adbus_conn_shouldproxy(c)) {
         adbus_Match* m2 = &d->u.match;
 
         DupString(&m2->sender, &m2->senderSize);
@@ -367,17 +307,16 @@ void adbus_state_addmatch(
         }
 
         adbus_conn_proxy(c, &ProxyAddMatch, d);
-    }
-    else
-    {
-        if (DoAddMatch(d))
+    } else {
+        if (DoAddMatch(d)) {
             FreeData(d);
+        }
     }
 }
 
 /* ------------------------------------------------------------------------- */
 
-static int DoAddReply(struct Data* d)
+static int DoAddReply(adbusI_StateData* d)
 {
     adbus_Reply* r = &d->u.reply;
 
@@ -396,18 +335,19 @@ static int DoAddReply(struct Data* d)
     if (!d->data)
         return -1;
 
-    dil_insert_after(Data, &d->conn->replies, d, &d->hl);
+    dil_insert_after(StateData, &d->conn->replies, d, &d->hl);
     return 0;
 }
 
 static void ProxyReply(void* user)
 {
-    struct Data* d = (struct Data*) user;
+    adbusI_StateData* d = (adbusI_StateData*) user;
     int err = DoAddReply(d);
 
     free((char*) d->u.reply.remote);
-    if (err)
+    if (err) {
         FreeData(d);
+    }
 }
 
 /** Adds a reply to the supplied connection.
@@ -425,14 +365,13 @@ void adbus_state_addreply(
         adbus_Connection*   c,
         const adbus_Reply*  r)
 {
-    assert(!r->proxy && !r->relproxy);
-
-    struct Data* d = NEW(struct Data);
+    adbusI_StateData* d = NEW(adbusI_StateData);
     LookupConnection(s, d, c);
     d->u.reply = *r;
 
-    if (adbus_conn_shouldproxy(c))
-    {
+    assert(!r->proxy && !r->relproxy);
+
+    if (adbus_conn_shouldproxy(c)) {
         adbus_Reply* r2 = &d->u.reply;
 
         DupString(&r2->remote, &r2->remoteSize);
@@ -443,11 +382,10 @@ void adbus_state_addreply(
         r2->relpuser = d->conn->relpuser;
 
         adbus_conn_proxy(c, &ProxyReply, d);
-    }
-    else
-    {
-        if (DoAddReply(d))
+    } else {
+        if (DoAddReply(d)) {
             FreeData(d);
+        }
     }
 }
 
@@ -458,29 +396,25 @@ void adbus_state_addreply(
  */
 adbus_State* adbus_state_new(void)
 {
-    if (ADBUS_TRACE_MEMORY) {
-        adbusI_log("new state");
-    }
-
     return NEW(adbus_State);
 }
 
 /* ------------------------------------------------------------------------- */
 
-// Called on the local thread
-static void LookupConnection(adbus_State* s, struct Data* d, adbus_Connection* c)
+/* Called on the local thread */
+static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connection* c)
 {
-    struct Conn* conn;
-    DL_FOREACH(Conn, conn, &s->connections, hl) {
+    adbusI_StateConn* conn;
+    DL_FOREACH(StateConn, conn, &s->connections, hl) {
         if (conn->connection == c) {
             d->conn = conn;
             return;
         }
     }
 
-    conn = NEW(struct Conn);
+    conn = NEW(adbusI_StateConn);
     conn->connection = c;
-    dil_insert_after(Conn, &s->connections, conn, &conn->hl);
+    dil_insert_after(StateConn, &s->connections, conn, &conn->hl);
     adbus_conn_getproxy(c, NULL, &conn->proxy, &conn->puser);
     adbus_conn_getproxy(c, &conn->relproxy, NULL, &conn->relpuser);
     adbus_conn_ref(c);
@@ -488,22 +422,23 @@ static void LookupConnection(adbus_State* s, struct Data* d, adbus_Connection* c
     d->conn = conn;
 }
 
-// Called on the connection thread
+/* Called on the connection thread */
 static void ResetConn(void* user)
 {
-    struct Conn* c = (struct Conn*) user;
-    struct Data* d;
-    DIL_FOREACH(Data, d, &c->binds, hl) {
+    adbusI_StateData* d;
+    adbusI_StateConn* c = (adbusI_StateConn*) user;
+
+    DIL_FOREACH(StateData, d, &c->binds, hl) {
         adbus_conn_unbind(c->connection, (adbus_ConnBind*) d->data);
     }
     assert(dil_isempty(&c->binds));
 
-    DIL_FOREACH(Data, d, &c->matches, hl) {
+    DIL_FOREACH(StateData, d, &c->matches, hl) {
         adbus_conn_removematch(c->connection, (adbus_ConnMatch*) d->data);
     }
     assert(dil_isempty(&c->matches));
 
-    DIL_FOREACH(Data, d, &c->replies, hl) {
+    DIL_FOREACH(StateData, d, &c->replies, hl) {
         adbus_conn_removereply(c->connection, (adbus_ConnReply*) d->data);
     }
     assert(dil_isempty(&c->replies));
@@ -521,9 +456,9 @@ static void ResetConn(void* user)
  */
 void adbus_state_reset(adbus_State* s)
 {
-    struct Conn* c;
-    DIL_FOREACH(Conn, c, &s->connections, hl) {
-        dil_remove(Conn, c, &c->hl);
+    adbusI_StateConn* c;
+    DIL_FOREACH(StateConn, c, &s->connections, hl) {
+        dil_remove(StateConn, c, &c->hl);
         if (adbus_conn_shouldproxy(c->connection)) {
             adbus_conn_proxy(c->connection, &ResetConn, c);
         } else {

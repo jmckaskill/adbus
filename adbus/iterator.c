@@ -23,8 +23,8 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
+#include "internal.h"
+#include "messages.h"
 
 /** Skip over a single complete type.
  * \relates adbus_Iterator
@@ -33,40 +33,40 @@ int adbus_iter_value(adbus_Iterator* i)
 {
     switch (*i->sig)
     {
-        case 'b': // bool
+        case 'b': /* bool */
             return adbus_iter_bool(i, NULL);
 
-        case 'y': // u8
+        case 'y': /* u8 */
             return adbus_iter_u8(i, NULL);
 
-        case 'n': // i16
+        case 'n': /* i16 */
             return adbus_iter_i16(i, NULL);
-        case 'q': // u16
+        case 'q': /* u16 */
             return adbus_iter_u16(i, NULL);
 
-        case 'i': // i32
+        case 'i': /* i32 */
             return adbus_iter_i32(i, NULL);
-        case 'u': // u32
+        case 'u': /* u32 */
             return adbus_iter_u32(i, NULL);
 
-        case 'x': // i64
+        case 'x': /* i64 */
             return adbus_iter_i64(i, NULL);
-        case 't': // u64
+        case 't': /* u64 */
             return adbus_iter_u64(i, NULL);
 
-        case 'd': // double
+        case 'd': /* double */
             return adbus_iter_double(i, NULL);
 
-        case 's': // string
+        case 's': /* string */
             return adbus_iter_string(i, NULL, NULL);
 
-        case 'o': // object path
+        case 'o': /* object path */
             return adbus_iter_objectpath(i, NULL, NULL);
 
-        case 'g': // signature
+        case 'g': /* signature */
             return adbus_iter_signature(i, NULL, NULL);
 
-        case 'v': // variant
+        case 'v': /* variant */
             {
                 adbus_IterVariant v;
                 return adbus_iter_beginvariant(i, &v)
@@ -74,14 +74,14 @@ int adbus_iter_value(adbus_Iterator* i)
                     || adbus_iter_endvariant(i, &v);
             }
 
-        case 'a': // array
+        case 'a': /* array */
             {
                 adbus_IterArray a;
                 return adbus_iter_beginarray(i, &a)
                     || adbus_iter_endarray(i, &a);
             }
 
-        case '(': // struct
+        case '(': /* struct */
             if (adbus_iter_beginstruct(i))
                 return -1;
             while (*i->sig != ')') {
@@ -91,7 +91,7 @@ int adbus_iter_value(adbus_Iterator* i)
             }
             return adbus_iter_endstruct(i);
 
-        case '{': // dict entry
+        case '{': /* dict entry */
             if (adbus_iter_begindictentry(i))
                 return -1;
             if (adbus_iter_value(i))
@@ -130,12 +130,14 @@ void adbus_iter_args(adbus_Iterator* i, const adbus_Message* msg)
 
 static int Flip16(adbus_Iterator* i)
 {
+    uint16_t* p;
+
     if (adbus_iter_align(i, 2))
         return -1;
     if (i->size < 2)
         return -1;
 
-    uint16_t* p = (uint16_t*) i->data;
+    p = (uint16_t*) i->data;
     *p =  ((*p & UINT16_C(0xFF00)) >> 8)
         | ((*p & UINT16_C(0x00FF)) << 8);
 
@@ -147,12 +149,14 @@ static int Flip16(adbus_Iterator* i)
 
 static int Flip32(adbus_Iterator* i, adbus_Bool consume)
 {
+    uint32_t* p;
+
     if (adbus_iter_align(i, 4))
         return -1;
     if (i->size < 4)
         return -1;
 
-    uint32_t* p = (uint32_t*) i->data;
+    p = (uint32_t*) i->data;
     *p =  ((*p & UINT32_C(0xFF000000)) >> 24)
         | ((*p & UINT32_C(0x00FF0000)) >> 8)
         | ((*p & UINT32_C(0x0000FF00)) << 8)
@@ -168,12 +172,14 @@ static int Flip32(adbus_Iterator* i, adbus_Bool consume)
 
 static int Flip64(adbus_Iterator* i)
 {
+    uint64_t* p;
+
     if (adbus_iter_align(i, 8))
         return -1;
     if (i->size < 8)
         return -1;
 
-    uint64_t* p = (uint64_t*) i->data;
+    p = (uint64_t*) i->data;
     *p =  ((*p & UINT64_C(0xFF00000000000000)) >> 56)
         | ((*p & UINT64_C(0x00FF000000000000)) >> 40)
         | ((*p & UINT64_C(0x0000FF0000000000)) >> 24)
@@ -221,9 +227,12 @@ static int FlipVariant(adbus_Iterator* i)
  */
 int adbus_flip_value(char** data, size_t* size, const char** sig)
 {
-    adbus_Iterator i = {*data, *size, *sig};
-
     int ret = 0;
+    adbus_Iterator i;
+    
+    i.data = *data;
+    i.size = *size;
+    i.sig  = *sig;
 
     switch (*(i.sig)++) 
     {
@@ -312,9 +321,9 @@ int adbus_flip_data(char* data, size_t size, const char* sig)
 
 
 
-// ----------------------------------------------------------------------------
-// Check functions
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
+/* Check functions
+/* ------------------------------------------------------------------------- */
 
 static void Sig(adbus_CbData* d, char field)
 {

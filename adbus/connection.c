@@ -52,7 +52,7 @@
 
     For example: 
     \code
-    adbus_ssize_t SendMsg(void* user, adbus_Message* m)
+    int SendMsg(void* user, adbus_Message* m)
     { return send(*(adbus_Socket*) user, m->data, m->size, 0);
     \endcode
  */
@@ -150,7 +150,7 @@
     int ReadSignalled()
     {
         // Read all the data available
-        adbus_ssize_t read = RECV_SIZE;
+        int read = RECV_SIZE;
         while (read == RECV_SIZE)
         {
             // adbus_buf_recvbuf() gives us a place at the end of the buffer
@@ -239,43 +239,34 @@
  */
 
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 // Connection management
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Creates a new connection.
  *  \relates adbus_Connection
  */
 adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
 {
-    if (ADBUS_TRACE_MEMORY) {
-        adbusI_log("new connection");
-    }
-
+    adbus_Member* m;
     adbus_Connection* c = NEW(adbus_Connection);
 
+    c->callbacks    = *cb;
+    c->user         = user;
+
+    c->ref          = 1;
     c->nextSerial   = 1;
-    c->connected    = 0;
-
-    c->returnMessage    = adbus_msg_new();
-
-    c->state = adbus_state_new();
-
-    c->callbacks = *cb;
-    c->user = user;
+    c->state        = adbus_state_new();
 
     c->bus = adbus_proxy_new(c->state);
     adbus_proxy_init(c->bus, c, "org.freedesktop.DBus", -1, "/org/freedesktop/DBus", -1);
     adbus_proxy_setinterface(c->bus, "org.freedesktop.DBus", -1);
-
-    adbus_Member* m;
 
     c->introspectable = adbus_iface_new("org.freedesktop.DBus.Introspectable", -1);
 
     m = adbus_iface_addmethod(c->introspectable, "Introspect", -1);
     adbus_mbr_setmethod(m, &adbusI_introspect, NULL);
     adbus_mbr_retsig(m, "s", -1);
-
 
     c->properties = adbus_iface_new("org.freedesktop.DBus.Properties", -1);
 
@@ -308,9 +299,9 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
  *  \relates adbus_Connection
  */
 void adbus_conn_ref(adbus_Connection* connection)
-{ adbus_InterlockedIncrement(&connection->ref); }
+{ adbusI_InterlockedIncrement(&connection->ref); }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** \def adbus_conn_free(c)
  *  \brief Decrements the connection ref count.
@@ -327,95 +318,41 @@ void adbus_conn_ref(adbus_Connection* connection)
  */
 void adbus_conn_deref(adbus_Connection* c)
 {
-    if (c && adbus_InterlockedDecrement(&c->ref) == 0) {
-        if (ADBUS_TRACE_MEMORY) {
-            adbusI_log("free connection");
-        }
+    if (c && adbusI_InterlockedDecrement(&c->ref) == 0) {
+        size_t i;
 
-        // Remove the service lookups first, since they do not hook up to
-        // release callbacks.
+        /* Free the connection services first */
+        adbusI_freeReplies(c);
+        adbusI_freeMatches(c);
+        adbusI_freeObjectTree(&c->binds);
 
-        for (dh_Iter si = dh_begin(&c->services); si != dh_end(&c->services); ++si) {
-            if (dh_exist(&c->services, si)) {
-                adbusI_freeServiceLookup(dh_val(&c->services, si));
-            }
-        }
-        dh_clear(ServiceLookup, &c->services);
-
-        // Clear out the lookup tables. These will disconnect from the binds,
-        // replies, and matches so that the bind etc free methods dont try and
-        // disconnect from the lookup tables. 
-
-        for (dh_Iter ii = dh_begin(&c->paths); ii != dh_end(&c->paths); ++ii) {
-            if (dh_exist(&c->paths, ii)){
-                struct ObjectPath* p = dh_val(&c->paths, ii);
-                p->connection = NULL;
-                adbusI_freeObjectPath(p);
-            }
-        }
-        dh_clear(ObjectPath, &c->paths);
-
-        for (dh_Iter ri = dh_begin(&c->remotes); ri != dh_end(&c->remotes); ++ri) {
-            if (dh_exist(&c->remotes, ri)) {
-                struct Remote* r = dh_val(&c->remotes, ri);
-                r->connection = NULL;
-                adbusI_freeRemote(r);
-            }
-        }
-        dh_clear(Remote, &c->remotes);
-
-        // Release and free the connection services.  Note we protect against
-        // the release callback removing the any other services that have yet
-        // to be freed
-
-        adbus_ConnBind* b;
-        DIL_FOREACH(Bind, b, &c->binds, fl) {
-            adbusI_freeBind(b);
-        }
-
-        adbus_ConnReply* r;
-        DIL_FOREACH(Reply, r, &c->replies, fl) {
-            adbusI_freeReply(r);
-        }
-
-        adbus_ConnMatch* m;
-        DIL_FOREACH(Match, m, &c->matches, hl) {
-            adbusI_freeMatch(m);
-        }
-
-        // Assert that the above release callbacks have not added any more
-        // services
-
-        assert(dil_isempty(&c->binds));
-        assert(dil_isempty(&c->replies));
-        assert(dil_isempty(&c->matches));
-        assert(dh_size(&c->services) == 0);
-        assert(dh_size(&c->paths) == 0);
-        assert(dh_size(&c->remotes) == 0);
-
-        dh_free(ServiceLookup, &c->services);
-        dh_free(ObjectPath, &c->paths);
-        dh_free(Remote, &c->remotes);
-
-        adbus_state_free(c->state);
+        adbusI_freeRemoteTracker(c);
+        adbusI_freeConnBusData(&c->connect);
 
         adbus_proxy_free(c->bus);
+        adbus_state_free(c->state);
+
+        for (i = 0; i < dv_size(&c->returnMessages); i++) {
+            adbus_msg_free(dv_a(&c->returnMessages, i));
+        }
+        dv_free(MsgFactory, &c->returnMessages);
+
+        adbus_msg_free(c->errorMessage);
         adbus_iface_free(c->introspectable);
         adbus_iface_free(c->properties);
+        adbus_buf_free(c->parseBuffer);
 
-        adbus_msg_free(c->returnMessage);
-
-        free(c->uniqueService);
-
-        dv_free(char, &c->parseBuffer);
+        if (c->callbacks.release) {
+            c->callbacks.release(c->user);
+        }
 
         free(c);
     }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 // Message
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Sends a message on the connection
  *  \relates adbus_Connection
@@ -432,23 +369,18 @@ int adbus_conn_send(
         adbus_Connection* c,
         adbus_Message*    message)
 {
-    if (ADBUS_TRACE_MSG) {
-        adbusI_logmsg("sending", message);
-    }
-
-    assert(message->serial != 0);
+    ADBUSI_LOG_MSG("Sending", message);
 
     if (!c->callbacks.send_message)
         return -1;
 
-    adbus_ssize_t sent = c->callbacks.send_message(c->user, message);
-    if (sent != (adbus_ssize_t) message->size)
+    if (c->callbacks.send_message(c->user, message) != (int) message->size)
         return -1;
 
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Gets a serial that can be used for sending messages.
  *  \relates adbus_Connection
@@ -456,73 +388,154 @@ int adbus_conn_send(
  *  \note This function is thread safe and may be called in both callbacks and
  *  on other threads.
  *
- *  \todo Actually make this thread safe.
  */
 uint32_t adbus_conn_serial(adbus_Connection* c)
+{ return (uint32_t) adbusI_InterlockedIncrement(&c->nextSerial); }
+
+
+
+
+
+/* --------------------------------------------------------------------------
+ * Parsing and dispatch
+ * --------------------------------------------------------------------------
+ */
+static void SendReply(adbus_Connection* c, adbus_Message* msg, adbus_MsgFactory* ret)
 {
-    if (c->nextSerial == UINT32_MAX)
-        c->nextSerial = 1;
-    return c->nextSerial++;
+    if (ret) {
+        if (adbus_msg_type(ret) == ADBUS_MSG_INVALID) {
+            adbus_msg_settype(ret, ADBUS_MSG_RETURN);
+        }
+
+        if (msg->sender) {
+            adbus_msg_setdestination(ret, msg->sender, msg->senderSize);
+        }
+
+        adbus_msg_setreply(ret, msg->serial);
+        adbus_msg_setflags(ret, adbus_msg_flags(ret) | ADBUS_MSG_NO_REPLY);
+        adbus_msg_send(ret, c);
+    }
 }
 
-
-
-
-
-// ----------------------------------------------------------------------------
-// Parsing and dispatch
-// ----------------------------------------------------------------------------
-
-static int Dispatch(adbus_CbData* d)
+static int Dispatchstep(
+        adbus_Connection* c,
+        adbus_Message*    msg)
 {
-    if (d->msg->size == 0)
-        return 0;
+    adbus_CbData d;
+    adbus_ConnMatch* nextmatch = dil_getiter(&c->matches.list);
+    adbus_Bool called = 0;
+    int err = 0;
 
-    if (ADBUS_TRACE_MSG) {
-        adbusI_logmsg("received", d->msg);
+    c->depth++;
+    if (c->depth >= dv_size(&c->returnMessages)) {
+        adbus_MsgFactory** pmsg = dv_push(MsgFactory, &c->returnMessages, 1);
+        *pmsg = adbus_msg_new();
     }
 
-    if (    d->msg->type == ADBUS_MSG_METHOD
-        &&  !d->msg->flags & ADBUS_MSG_NO_REPLY
-        &&  d->ret) {
-        adbus_msg_reset(d->ret);
-    } else {
-        d->ret = NULL;
-    }
+    ZERO(d);
+    d.connection    = c;
+    d.msg           = msg;
 
-    // Dispatch the method call
-    if (d->msg->type == ADBUS_MSG_METHOD)
-    {
-        if (adbusI_dispatchBind(d))
-            return -1;
+    if (nextmatch == NULL) {
+        ADBUSI_LOG_MSG("Received", msg);
 
-        // Setup the needed return fields
-        if (d->ret) {
-            if (adbus_msg_type(d->ret) == ADBUS_MSG_INVALID)
-                adbus_msg_settype(d->ret, ADBUS_MSG_RETURN);
+        switch (msg->type) 
+        {
+        case ADBUS_MSG_METHOD:
+            {
+                adbus_ConnBind* bind;
+                adbus_Member* mbr = adbusI_getMethod(c, &d, &bind);
+                if (mbr) {
+                    called = 1;
 
-            if (!adbus_msg_serial(d->ret))
-                adbus_msg_setserial(d->ret, adbus_conn_serial(d->connection));
+                    if ((msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
+                        d.ret = dv_a(&c->returnMessages, c->depth);
+                        adbus_msg_reset(d.ret);
+                    }
 
-            adbus_msg_setflags(d->ret, adbus_msg_flags(d->ret) | ADBUS_MSG_NO_REPLY);
+                    err = adbus_mbr_call(mbr, bind, &d);
 
-            adbus_msg_setreply(d->ret, d->msg->serial);
-            if (d->msg->sender)
-                adbus_msg_setdestination(d->ret, d->msg->sender, d->msg->senderSize);
+                    if (!err) {
+                        SendReply(c, msg, d.ret);
+                    }
+                }
+            }
+            break;
+        case ADBUS_MSG_RETURN:
+            {
+                adbus_ConnReply* reply = adbusI_getReply(c, &d);
+                if (reply) {
+                    called = 1;
+                    d.user1 = reply->cuser;
 
+                    if (reply->proxy) {
+                        err = reply->proxy(reply->puser, reply->callback, &d);
+                    } else {
+                        err = adbus_dispatch(reply->callback, &d);
+                    }
+                }
+                adbusI_finishReply(reply);
+            }
+            break;
+        case ADBUS_MSG_ERROR:
+            {
+                adbus_ConnReply* reply = adbusI_getReply(c, &d);
+                if (reply) {
+                    called = 1;
+                    d.user1 = reply->euser;
+
+                    if (reply->proxy) {
+                        err = reply->proxy(reply->puser, reply->error, &d);
+                    } else {
+                        err = adbus_dispatch(reply->error, &d);
+                    }
+                }
+                adbusI_finishReply(reply);
+            }
+            break;
+        default:
+            break;
         }
     }
 
-    // Dispatch match and reply
-    adbus_MsgFactory* ret = d->ret;
-    d->ret = NULL;
-    int err = adbusI_dispatchMatch(d) || adbusI_dispatchReply(d);
-    d->ret = ret;
+    d.ret = NULL;
 
-    return err;
+    if (err) {
+        return -1;
+    }
+
+    if (called) {
+        /* Setup the match iter to begin with the match list on the next step */
+        dil_setiter(&c->matches.list, c->matches.list.next);
+        return 0;
+    }
+
+    /* Dispatch matches */
+    {
+        adbus_ConnMatch* match = adbusI_getNextMatch(c, &d);
+
+        if (match) {
+            d.user1 = match->m.cuser;
+
+            if (match->m.proxy) {
+                err = match->m.proxy(match->m.puser, match->m.callback, &d);
+            } else {
+                err = adbus_dispatch(match->m.callback, &d);
+            }
+
+            if (err) {
+                return -1;
+            }
+
+            return 0;
+        }
+    }
+
+    /* We've finished processing this message */
+    return 1;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Dispatch a pre-parsed message
  *  \relates adbus_Connection
@@ -531,27 +544,18 @@ int adbus_conn_dispatch(
         adbus_Connection* c,
         adbus_Message*    message)
 {
-    if (message->size == 0)
-        return 0;
+    int ret = 0;
 
-    adbus_CbData d;
-    memset(&d, 0, sizeof(adbus_CbData));
-    d.connection    = c;
-    d.msg           = message;
-    d.ret           = c->returnMessage;
+    while (ret == 0)
+        ret = Dispatchstep(c, message);
 
-    if (Dispatch(&d))
+    if (ret < 0)
         return -1;
-
-    // Send off reply if needed
-    if (d.ret) {
-        adbus_msg_send(d.ret, c);
-    }
 
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Consume messages from the supplied buffer.
  *  \relates adbus_Connection
@@ -582,13 +586,13 @@ int adbus_conn_parse(
                 return -1;
 
         } else {
-            char* dest = dv_push(char, &c->parseBuffer, msgsize);
-            memcpy(dest, data, msgsize);
-            if (adbus_parse(&m, dest, msgsize))
+            adbus_buf_reset(c->parseBuffer);
+            adbus_buf_append(c->parseBuffer, data, msgsize);
+
+            if (adbus_parse(&m, adbus_buf_data(c->parseBuffer), msgsize))
                 return -1;
             if (adbus_conn_dispatch(c, &m))
                 return -1;
-            dv_clear(char, &c->parseBuffer);
         }
 
         data += msgsize;
@@ -599,7 +603,7 @@ int adbus_conn_parse(
     return 0;
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** See if calling code should use adbus_conn_proxy()
  *  \relates adbus_Connection
@@ -608,7 +612,7 @@ int adbus_conn_parse(
 adbus_Bool adbus_conn_shouldproxy(adbus_Connection* c)
 { return c->callbacks.should_proxy && c->callbacks.should_proxy(c->user) && c->callbacks.proxy; }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Proxy a call over to the connection thread or call immediately if already
  * on it.
@@ -625,7 +629,7 @@ void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, void* user)
     }
 }
 
-// ----------------------------------------------------------------------------
+/* -------------------------------------------------------------------------- */
 
 /** Get proxy functions for the current thread.
  *  \relates adbus_Connection

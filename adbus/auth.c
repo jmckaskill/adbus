@@ -23,14 +23,13 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
+/* Allow use of features specific to Windows XP or later. */
+#define WINVER 0x0500
+#define _WIN32_WINNT 0x0501
+
+#include "auth.h"
 #include "sha1.h"
 
-#include "dmem/string.h"
-#include "dmem/queue.h"
-
-#include <adbus.h>
 #include <stdio.h>
 
 /** \struct adbus_Auth
@@ -183,13 +182,9 @@
  *  
  */
 
-DQUEUE_INIT(char, char);
-
 /* -------------------------------------------------------------------------- */
 
 #ifdef _WIN32
-#define WINVER 0x0500	// Allow use of features specific to Windows 2000 or later.
-#define _WIN32_WINNT 0x0501	// Allow use of features specific to Windows XP or later.
 #include <malloc.h>
 #include <windows.h>
 #include <sddl.h>
@@ -205,7 +200,7 @@ static void LocalId(d_String* id)
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &process_token))
         goto failed;
 
-    // it should fail as it has no buffer
+    /* it should fail as it has no buffer */
     if (GetTokenInformation(process_token, TokenUser, NULL, 0, &n))
         goto failed;
 
@@ -255,31 +250,36 @@ static void LocalId(d_String* id)
 
 static void HexDecode(d_String* out, const char* str, size_t size)
 {
+    size_t i;
+    const uint8_t* ustr = (const uint8_t*) str;
+
     if (size % 2 != 0)
         return;
 
-    const uint8_t* ustr = (const uint8_t*) str;
-    for (size_t i = 0; i < size / 2; ++i)
+    for (i = 0; i < size / 2; ++i)
     {
         uint8_t hi = ustr[2*i];
-        if ('0' <= hi && hi <= '9')
-            hi = hi - '0';
-        else if ('a' <= hi && hi <= 'f')
-            hi = hi - 'a' + 10;
-        else if ('A' <= hi && hi <= 'F')
-            hi = hi - 'A' + 10;
-        else
-            return;
-
         uint8_t lo = ustr[2*i + 1];
-        if ('0' <= lo && lo <= '9')
-            lo = lo - '0';
-        else if ('a' <= lo && lo <= 'f')
-            lo = lo - 'a' + 10;
-        else if ('A' <= lo && lo <= 'F')
-            lo = lo - 'A' + 10;
-        else
+
+        if ('0' <= hi && hi <= '9') {
+            hi = hi - '0';
+        } else if ('a' <= hi && hi <= 'f') {
+            hi = hi - 'a' + 10;
+        } else if ('A' <= hi && hi <= 'F') {
+            hi = hi - 'A' + 10;
+        } else {
             return;
+        }
+
+        if ('0' <= lo && lo <= '9') {
+            lo = lo - '0';
+        } else if ('a' <= lo && lo <= 'f') {
+            lo = lo - 'a' + 10;
+        } else if ('A' <= lo && lo <= 'F') {
+            lo = lo - 'A' + 10;
+        } else {
+            return;
+        }
 
         ds_cat_char(out, (hi << 4) | lo);
     }
@@ -289,20 +289,24 @@ static void HexDecode(d_String* out, const char* str, size_t size)
 
 static void HexEncode(d_String* out, const char* data, size_t size)
 {
+    size_t i;
     const uint8_t* udata = (const uint8_t*) data;
-    for (size_t i = 0; i < size; ++i)
+    for (i = 0; i < size; ++i)
     {
         uint8_t hi = udata[i] >> 4;
-        if (hi < 10)
-            hi += '0';
-        else
-            hi += 'a' - 10;
-
         uint8_t lo = udata[i] & 0x0F;
-        if (lo < 10)
+
+        if (hi < 10) {
+            hi += '0';
+        } else {
+            hi += 'a' - 10;
+        }
+
+        if (lo < 10) {
             lo += '0';
-        else
+        } else {
             lo += 'a' - 10;
+        }
 
         ds_cat_char(out, hi);
         ds_cat_char(out, lo);
@@ -310,45 +314,53 @@ static void HexEncode(d_String* out, const char* data, size_t size)
 }
 
 /* -------------------------------------------------------------------------- */
-static int GetCookie(const char* keyring,
-                      const char* id,
-                      d_String* cookie)
+static int GetCookie(const char*  keyring,
+                     const char*  id,
+                     d_String*    cookie)
 {
+    char buf[4096];
+    FILE* file = NULL;
     d_String keyringFile;
-    ZERO(&keyringFile);
 #ifdef _WIN32
     const char* home = getenv("userprofile");
 #else
     const char* home = getenv("HOME");
 #endif
+
+    ZERO(keyringFile);
+
     if (home) {
         ds_cat(&keyringFile, home);
         ds_cat(&keyringFile, "/");
     }
-    // If no HOME env then we go off the current directory
+
+    /* If no HOME env then we go off the current directory */
     ds_cat(&keyringFile, ".dbus-keyrings/");
     ds_cat(&keyringFile, keyring);
-    FILE* file = fopen(ds_cstr(&keyringFile), "r");
+
+    file = fopen(ds_cstr(&keyringFile), "r");
     if (!file)
         goto end;
-    char buf[4096];
+
     while(fgets(buf, 4096, file))
     {
-        // Find the line that begins with id
+        /* Find the line that begins with id */
         if (strncmp(buf, id, strlen(id)) == 0)
         {
-            const char* bufEnd = buf + strlen(buf);
-            const char* idEnd = buf + strlen(id);
+            const char *bufEnd, *idEnd, *timeBegin, *timeEnd, *dataBegin, *dataEnd;
+
+            bufEnd = buf + strlen(buf);
+            idEnd = buf + strlen(id);
             if (idEnd >= bufEnd)
                 break;
 
-            const char* timeBegin = idEnd + 1;
-            const char* timeEnd = strchr(timeBegin, ' ');
+            timeBegin = idEnd + 1;
+            timeEnd = strchr(timeBegin, ' ');
             if (!timeEnd)
                 break;
 
-            const char* dataBegin = timeEnd + 1;
-            const char* dataEnd = bufEnd - 1; // -1 for \n
+            dataBegin = timeEnd + 1;
+            dataEnd = bufEnd - 1; /* -1 for \n */
             ds_set_n(cookie, dataBegin, dataEnd - dataBegin);
             break;
         }
@@ -367,15 +379,17 @@ static int ParseServerData(const char* data,
                            d_String* id,
                            d_String* serverData)
 {
-    const char* keyringEnd = strchr(data, ' ');
+    const char *keyringEnd, *idBegin, *idEnd;
+
+    keyringEnd = strchr(data, ' ');
     if (!keyringEnd)
         return 1;
 
     if (keyring)    
         ds_set_n(keyring, data, keyringEnd - data);
     
-    const char* idBegin = keyringEnd + 1;
-    const char* idEnd = strchr(idBegin, ' ');
+    idBegin = keyringEnd + 1;
+    idEnd = strchr(idBegin, ' ');
     if (!idEnd)
         return 1;
     
@@ -393,32 +407,6 @@ static int ParseServerData(const char* data,
 
 
 
-/* -------------------------------------------------------------------------- */
-enum
-{
-    NOT_TRIED,
-    NOT_SUPPORTED,
-    BEGIN,
-};
-
-typedef int (*DataCallback)(adbus_Auth* a, d_String* data);
-
-struct adbus_Auth
-{
-    /** \privatesection */
-    adbus_Bool              server;
-    int                     cookie;
-    int                     external;
-    adbus_SendCallback      send;
-    adbus_RandCallback      rand;
-    adbus_ExternalCallback  externalcb;
-    void*                   data;
-    DataCallback            onData;
-    d_Queue(char)           buf;
-    d_String                id;
-    d_String                okCmd;
-    adbus_Bool              okSent;
-};
 
 /* -------------------------------------------------------------------------- */
 /** Free an auth structure 
@@ -427,7 +415,6 @@ struct adbus_Auth
 void adbus_auth_free(adbus_Auth* a)
 {
     if (a) {
-        dq_free(char, &a->buf);
         ds_free(&a->id);
         ds_free(&a->okCmd);
         free(a);
@@ -448,7 +435,7 @@ adbus_Auth* adbus_sauth_new(
 {
     adbus_Auth* a   = NEW(adbus_Auth);
     a->server       = 1;
-    a->external     = NOT_SUPPORTED;
+    a->external     = AUTH_NOT_SUPPORTED;
     a->send         = send;
     a->rand         = rand;
     a->data         = data;
@@ -479,12 +466,12 @@ void adbus_sauth_setuuid(adbus_Auth* a, const char* uuid)
  *  is the user data supplied in adbus_sauth_new().
  *
  */
-ADBUS_API void adbus_sauth_external(
+void adbus_sauth_external(
         adbus_Auth*             a,
         adbus_ExternalCallback  cb)
 {
-    assert(a->server && a->external == NOT_SUPPORTED);
-    a->external   = NOT_TRIED;
+    assert(a->server && a->external == AUTH_NOT_SUPPORTED);
+    a->external   = AUTH_NOT_TRIED;
     a->externalcb = cb;
 }
 
@@ -502,7 +489,7 @@ adbus_Auth* adbus_cauth_new(
 {
     adbus_Auth* a   = NEW(adbus_Auth);
     a->server       = 0;
-    a->external     = NOT_SUPPORTED;
+    a->external     = AUTH_NOT_SUPPORTED;
     a->send         = send;
     a->rand         = rand;
     a->data         = data;
@@ -516,10 +503,10 @@ adbus_Auth* adbus_cauth_new(
 /** Sets up a client auth to try the external auth mechanism
  *  \relates adbus_Auth
  */
-ADBUS_API void adbus_cauth_external(adbus_Auth* a)
+ void adbus_cauth_external(adbus_Auth* a)
 {
-    assert(!a->server && a->external == NOT_SUPPORTED);
-    a->external   = NOT_TRIED;
+    assert(!a->server && a->external == AUTH_NOT_SUPPORTED);
+    a->external   = AUTH_NOT_TRIED;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -528,7 +515,7 @@ static int ClientReset(adbus_Auth* a);
 /** Initiates the client auth
  *  \relates adbus_Auth
  */
-ADBUS_API int adbus_cauth_start(adbus_Auth* a)
+int adbus_cauth_start(adbus_Auth* a)
 { return ClientReset(a); }
 
 
@@ -538,7 +525,8 @@ ADBUS_API int adbus_cauth_start(adbus_Auth* a)
 /* -------------------------------------------------------------------------- */
 static void RandomData(adbus_Auth* a, d_String* str)
 {
-    for (size_t i = 0; i < 64; i++) {
+    size_t i;
+    for (i = 0; i < 64; i++) {
         ds_cat_char(str, a->rand(a->data));
     }
 }
@@ -547,10 +535,10 @@ static void RandomData(adbus_Auth* a, d_String* str)
 static int Send(adbus_Auth* a, const char* data)
 {
     size_t sz = strlen(data);
-    adbus_ssize_t sent = a->send(a->data, data, sz);
+    int sent = a->send(a->data, data, sz);
     if (sent < 0) {
         return -1;
-    } else if (sent != (adbus_ssize_t) sz) {
+    } else if (sent != (int) sz) {
         assert(0);
         return -1;
     } else {
@@ -578,7 +566,7 @@ static int ServerOk(adbus_Auth* a)
 /* -------------------------------------------------------------------------- */
 static int ServerExternalInit(adbus_Auth* a)
 { 
-    a->external = BEGIN;
+    a->external = AUTH_BEGIN;
     if (a->externalcb == NULL || a->externalcb(a->data, ds_cstr(&a->id))) {
         return ServerOk(a);
     } else {
@@ -591,7 +579,7 @@ static int ServerExternalInit(adbus_Auth* a)
 static int ServerAuth(adbus_Auth* a, const char* mech, size_t mechsz, d_String* data)
 {
     ds_set_s(&a->id, data);
-    if (a->external == NOT_TRIED && MATCH(mech, mechsz, "EXTERNAL")) {
+    if (a->external == AUTH_NOT_TRIED && MATCH(mech, mechsz, "EXTERNAL")) {
         return ServerExternalInit(a);
     } else {
         return ServerReset(a);
@@ -606,17 +594,25 @@ static int ServerAuth(adbus_Auth* a, const char* mech, size_t mechsz, d_String* 
 static int ClientCookie(adbus_Auth* a, d_String* data)
 {
     int ret = 0;
-    d_String keyring;   ZERO(&keyring);
-    d_String keyringid; ZERO(&keyringid);
-    d_String servdata;  ZERO(&servdata);
-    d_String cookie;    ZERO(&cookie);
-    d_String shastr;    ZERO(&shastr);
-    d_String reply;     ZERO(&reply);
-    d_String replyarg;  ZERO(&replyarg);
-    d_String localdata; ZERO(&localdata);
-    uint8_t* digest     = NULL;
-    SHA1 sha;
+    uint8_t* digest = NULL;
+    adbusI_SHA1 sha;
+    d_String keyring;   
+    d_String keyringid; 
+    d_String servdata;  
+    d_String cookie;    
+    d_String shastr;    
+    d_String reply;     
+    d_String replyarg;  
+    d_String localdata; 
 
+    ZERO(keyring);
+    ZERO(keyringid);
+    ZERO(servdata);
+    ZERO(cookie);
+    ZERO(shastr);
+    ZERO(reply);
+    ZERO(replyarg);
+    ZERO(localdata);
 
     if (    ParseServerData(ds_cstr(data), &keyring, &keyringid, &servdata)
         ||  GetCookie(ds_cstr(&keyring), ds_cstr(&keyringid), &cookie))
@@ -633,9 +629,9 @@ static int ClientCookie(adbus_Auth* a, d_String* data)
     ds_cat(&shastr, ":");
     ds_cat_s(&shastr, &cookie);
 
-    SHA1Init(&sha);
-    SHA1AddBytes(&sha, ds_cstr(&shastr), ds_size(&shastr));
-    digest = SHA1GetDigest(&sha);
+    adbusI_SHA1Init(&sha);
+    adbusI_SHA1AddBytes(&sha, ds_cstr(&shastr), ds_size(&shastr));
+    digest = adbusI_SHA1GetDigest(&sha);
 
     HexEncode(&replyarg, ds_cstr(&localdata), ds_size(&localdata));
     ds_cat(&replyarg, " ");
@@ -665,16 +661,16 @@ static int ClientReset(adbus_Auth* a)
 {
     int ret = 0;
     d_String msg;
-    ZERO(&msg);
+    ZERO(msg);
 
-    if (a->external == NOT_TRIED) {
+    if (a->external == AUTH_NOT_TRIED) {
         ds_cat(&msg, "AUTH EXTERNAL ");
         a->onData = NULL;
-        a->external = BEGIN;
-    } else if (a->cookie == NOT_TRIED) {
+        a->external = AUTH_BEGIN;
+    } else if (a->cookie == AUTH_NOT_TRIED) {
         ds_cat(&msg, "AUTH DBUS_COOKIE_SHA1 ");
         a->onData = &ClientCookie;
-        a->cookie = BEGIN;
+        a->cookie = AUTH_BEGIN;
     } else {
         ret = -1;
         goto end;
@@ -702,18 +698,21 @@ end:
  */
 int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
 {
+    const char *end, *cmdb, *cmde;
+    size_t cmdsz;
+
     if (line[len - 1] == '\n')
         len--;
     if (line[len - 1] == '\r')
         len--;
 
-    const char* end = line + len;
+    end = line + len;
 
-    const char* cmdb = line;
-    const char* cmde = (const char*) memchr(cmdb, ' ', end - cmdb);
+    cmdb = line;
+    cmde = (const char*) memchr(cmdb, ' ', end - cmdb);
     if (cmde == NULL)
         cmde = end;
-    size_t cmdsz = cmde - cmdb;
+    cmdsz = cmde - cmdb;
 
     if (a->server && cmde != end && MATCH(cmdb, cmdsz, "AUTH")) {
         const char* mechb = cmde + 1;
@@ -721,11 +720,13 @@ int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
         if (meche) {
             const char* datab = meche + 1;
             d_String data;
-            ZERO(&data);
+            int ret;
+
+            ZERO(data);
 
             HexDecode(&data, datab, end - datab);
 
-            int ret = ServerAuth(a, mechb, meche - mechb, &data);
+            ret = ServerAuth(a, mechb, meche - mechb, &data);
             ds_free(&data);
             return ret;
 
@@ -736,24 +737,27 @@ int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
 
     } else if (a->onData && MATCH(cmdb, cmdsz, "DATA")) {
         d_String data;
-        ZERO(&data);
+        int ret;
+
+        ZERO(data);
+
         if (cmde != end) {
             const char* datab = line + sizeof("DATA");
             HexDecode(&data, datab, end - datab);
         }
 
-        int ret = a->onData(a, &data);
+        ret = a->onData(a, &data);
         ds_free(&data);
         return ret;
         
     } else if (a->server && MATCH(cmdb, cmdsz, "CANCEL")) {
         return ServerReset(a);
 
-    } else if (a->server && a->okSent && MATCH(cmdb, cmdsz, "BEGIN")) {
+    } else if (a->server && a->okSent && MATCH(cmdb, cmdsz, "AUTH_BEGIN")) {
         return 1;
 
     } else if (!a->server && MATCH(cmdb, cmdsz, "OK")) {
-        Send(a, "BEGIN\r\n");
+        Send(a, "AUTH_BEGIN\r\n");
         return 1;
 
     } else if (!a->server && MATCH(cmdb, cmdsz, "REJECTED")) {

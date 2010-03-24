@@ -32,7 +32,7 @@
 
 /* -------------------------------------------------------------------------- */
 
-DHASH_MAP_INIT_STR(StringPair, char*)
+DHASH_MAP_INIT_STR(StringPair, const char*)
 DVECTOR_INIT(String, char*)
 
 enum adbusI_MemberType
@@ -73,7 +73,7 @@ struct adbus_Member
     void*                   setPropertyData;
 };
 
-DHASH_MAP_INIT_STRSZ(MemberPtr, adbus_Member*)
+DHASH_MAP_INIT_STRSZ(Member, adbus_Member*)
 
 /* -------------------------------------------------------------------------- */
 
@@ -82,15 +82,22 @@ struct adbus_Interface
     /** \privatesection */
     volatile long           ref;
     dh_strsz_t              name;
-    d_Hash(MemberPtr)       members;
+    d_Hash(Member)          members;
 };
 
 /* -------------------------------------------------------------------------- */
 
-ADBUSI_FUNC int adbusI_introspect(adbus_CbData* details);
 ADBUSI_FUNC int adbusI_getProperty(adbus_CbData* details);
 ADBUSI_FUNC int adbusI_getAllProperties(adbus_CbData* details);
 ADBUSI_FUNC int adbusI_setProperty(adbus_CbData* details);
+ADBUSI_FUNC void adbusI_introspectInterface(adbus_Interface* i, d_String* out);
+
+/* user1 the member, user2 is the bind user2, interface is ref'd */
+ADBUSI_FUNC int adbusI_proxiedGetProperty(adbus_CbData* d);
+ADBUSI_FUNC int adbusI_proxiedSetProperty(adbus_CbData* d);
+
+/* user1 the interface, user2 is the bind user2, interface is ref'd */
+ADBUSI_FUNC int adbusI_proxiedGetAllProperties(adbus_CbData* d);
 
 
 

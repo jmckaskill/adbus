@@ -33,6 +33,8 @@
 #   define __STDC_CONSTANT_MACROS
 #endif
 
+#define ADBUS_LIBRARY
+
 #include <adbus.h>
 #include "dmem/hash.h"
 #include "dmem/list.h"
@@ -64,6 +66,8 @@ typedef struct adbusI_ReplySet adbusI_ReplySet;
 typedef struct adbusI_ObjectTree adbusI_ObjectTree;
 typedef struct adbusI_ObjectNode adbusI_ObjectNode;
 typedef struct adbusI_ConnBusData adbusI_ConnBusData;
+typedef struct adbusI_StateData adbusI_StateData;
+typedef struct adbusI_StateConn adbusI_StateConn;
 
 #include "debug.h"
 #include "misc.h"

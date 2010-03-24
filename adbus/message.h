@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "misc.h"
+#include "internal.h"
 
 struct adbus_MsgFactory
 {
@@ -33,16 +33,14 @@ struct adbus_MsgFactory
     adbus_Buffer*         buf;
     adbus_Buffer*         argbuf;
 
-    // Base header
+    /* Base header */
     adbus_MessageType     messageType;
     int                   flags;
     int64_t               serial;
     size_t                argumentOffset;
 
-    // Variable header fields
-    uint32_t              replySerial;
-    adbus_Bool            hasReplySerial;
-
+    /* Variable header fields */
+    int64_t               replySerial;
     d_String              path;
     d_String              interface;
     d_String              member;

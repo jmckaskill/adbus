@@ -33,12 +33,6 @@ enum
 
 enum
 {
-    ADBUSI_PARSE_ERROR  = -2,
-    ADBUSI_ERROR        = -1
-};
-
-enum
-{
     ADBUSI_HEADER_INVALID      = 0,
     ADBUSI_HEADER_OBJECT_PATH  = 1,
     ADBUSI_HEADER_INTERFACE    = 2,

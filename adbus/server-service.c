@@ -51,7 +51,7 @@ int adbusI_requestService(
         uint32_t        flags)
 {
     adbusI_ServiceQueue* queue;
-    adbusI_ServiceOwner* owner;
+    adbusI_ServiceOwner* owner = NULL;
     adbus_Remote* previous;
 
     int added;

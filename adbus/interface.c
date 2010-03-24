@@ -28,11 +28,7 @@
 
 #include "connection.h"
 #include "misc.h"
-
-#include "dmem/vector.h"
-
-#include <assert.h>
-#include <string.h>
+#include "messages.h"
 
 /** \struct adbus_Interface
  *  
@@ -310,6 +306,8 @@
  */
 
 
+/* ------------------------------------------------------------------------- */
+
 /** Creates a new interface.
  *  \relates adbus_Interface
  */
@@ -317,31 +315,24 @@ adbus_Interface* adbus_iface_new(
         const char*     name,
         int             size)
 {
-    if (size < 0)
-        size = strlen(name);
-
     adbus_Interface* i  = NEW(adbus_Interface);
-    i->name.str         = adbusI_strndup(name, size);
-    i->name.sz          = size;
-
-    if (ADBUS_TRACE_MEMORY) {
-        adbusI_log("new interface %s", i->name);
-    }
+    i->name.sz          = (size >= 0) ? size : strlen(name);
+    i->name.str         = adbusI_strndup(name, i->name.sz);
 
     adbus_iface_ref(i);
 
     return i;  
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Refs an interface.
  *  \relates adbus_Interface
  */
 void adbus_iface_ref(adbus_Interface* interface)
-{ adbus_InterlockedIncrement(&interface->ref); }
+{ adbusI_InterlockedIncrement(&interface->ref); }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static void FreeMember(adbus_Member* member);
 
@@ -350,23 +341,22 @@ static void FreeMember(adbus_Member* member);
  */
 void adbus_iface_deref(adbus_Interface* i)
 {
-    if (i && adbus_InterlockedDecrement(&i->ref) == 0) {
-        if (ADBUS_TRACE_MEMORY) {
-            adbusI_log("free interface %s", i->name);
-        }
+    if (i && adbusI_InterlockedDecrement(&i->ref) == 0) {
+        dh_Iter ii;
 
-        for (dh_Iter ii = dh_begin(&i->members); ii != dh_end(&i->members); ++ii) {
-            if (dh_exist(&i->members, ii))
+        for (ii = dh_begin(&i->members); ii != dh_end(&i->members); ++ii) {
+            if (dh_exist(&i->members, ii)) {
                 FreeMember(dh_val(&i->members, ii));
+            }
         }
-        dh_free(MemberPtr, &i->members);
+        dh_free(Member, &i->members);
 
         free((char*) i->name.str);
         free(i);
     }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static adbus_Member* AddMethod(
         adbus_Interface*    i,
@@ -374,23 +364,22 @@ static adbus_Member* AddMethod(
         const char*         name,
         int                 size)
 {
-    if (size < 0)
-        size = strlen(name);
+    dh_Iter mi;
+    int added;
 
     adbus_Member* m = NEW(adbus_Member);
     m->interface    = i;
     m->type         = type;
-    m->name.str     = adbusI_strndup(name, size);
-    m->name.sz      = size;
+    m->name.sz      = (size >= 0) ? size : strlen(name);
+    m->name.str     = adbusI_strndup(name, m->name.sz);
 
-    int ret;
-    dh_Iter ki = dh_put(MemberPtr, &i->members, m->name, &ret);
-    if (!ret) {
-        FreeMember(dh_val(&i->members, ki));
+    mi = dh_put(Member, &i->members, m->name, &added);
+    if (!added) {
+        FreeMember(dh_val(&i->members, mi));
     }
 
-    dh_key(&i->members, ki) = m->name;
-    dh_val(&i->members, ki) = m;
+    dh_key(&i->members, mi) = m->name;
+    dh_val(&i->members, mi) = m;
 
     return m;
 }
@@ -424,43 +413,48 @@ adbus_Member* adbus_iface_addproperty(
     return m;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static void FreeMember(adbus_Member* m)
 {
-    if (!m)
-        return;
+    if (m) {
+        dh_Iter ii;
+        size_t i;
 
-    if (m->release[0])
-        m->release[0](m->ruser[0]);
-    if (m->release[1])
-        m->release[1](m->ruser[1]);
-
-    for (dh_Iter ii = dh_begin(&m->annotations); ii != dh_end(&m->annotations); ++ii) {
-        if (dh_exist(&m->annotations, ii)) {
-            free((char*) dh_key(&m->annotations, ii));
-            free(dh_val(&m->annotations, ii));
+        if (m->release[0]) {
+            m->release[0](m->ruser[0]);
         }
+
+        if (m->release[1]) {
+            m->release[1](m->ruser[1]);
+        }
+
+        for (ii = dh_begin(&m->annotations); ii != dh_end(&m->annotations); ++ii) {
+            if (dh_exist(&m->annotations, ii)) {
+                free((char*) dh_key(&m->annotations, ii));
+                free((char*) dh_val(&m->annotations, ii));
+            }
+        }
+        dh_free(StringPair, &m->annotations);
+
+        for (i = 0; i < dv_size(&m->arguments); i++) {
+            free(dv_a(&m->arguments, i));
+        }
+        dv_free(String, &m->arguments);
+
+        for (i = 0; i < dv_size(&m->returns); i++) {
+            free(dv_a(&m->returns, i));
+        }
+        dv_free(String, &m->returns);
+
+        free(m->propertyType);
+        free((char*) m->name.str);
+
+        free(m);
     }
-    dh_free(StringPair, &m->annotations);
-
-    for (size_t i = 0; i < dv_size(&m->arguments); i++) {
-        free(dv_a(&m->arguments, i));
-    }
-    dv_free(String, &m->arguments);
-
-    for (size_t j = 0; j < dv_size(&m->returns); j++) {
-        free(dv_a(&m->returns, j));
-    }
-    dv_free(String, &m->returns);
-
-    free(m->propertyType);
-    free((char*) m->name.str);
-
-    free(m);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static adbus_Member* GetMethod(
         adbus_Interface*      i,
@@ -468,20 +462,22 @@ static adbus_Member* GetMethod(
         const char*           name,
         int                   size)
 {
-    dh_strsz_t mstr = {
-        name,
-        size >= 0 ? (size_t) size : strlen(name),
-    };
+    dh_strsz_t mstr;
+    dh_Iter mi;
+    adbus_Member* mbr;
 
-    dh_Iter ii = dh_get(MemberPtr, &i->members, mstr);
-    if (ii == dh_end(&i->members))
+    mstr.str = name;
+    mstr.sz  = (size >= 0) ? size : strlen(name);
+
+    mi = dh_get(Member, &i->members, mstr);
+    if (mi == dh_end(&i->members))
         return NULL;
 
-    adbus_Member* m = dh_val(&i->members, ii);
-    if (m->type != type)
+    mbr = dh_val(&i->members, mi);
+    if (mbr->type != type)
         return NULL;
 
-    return m;
+    return mbr;
 }
 
 /** Gets a method.
@@ -502,9 +498,9 @@ adbus_Member* adbus_iface_signal(adbus_Interface* i, const char* name, int size)
 adbus_Member* adbus_iface_property(adbus_Interface* i, const char* name, int size)
 { return GetMethod(i, ADBUSI_PROPERTY, name, size); }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 // Member management
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Appends to the argument signature.
  *  \relates adbus_Member
@@ -518,13 +514,14 @@ void adbus_mbr_argsig(adbus_Member* m, const char* sig, int size)
 {
     assert(m->type == ADBUSI_METHOD || m->type == ADBUSI_SIGNAL);
 
-    if (size >= 0)
+    if (size >= 0) {
         ds_cat_n(&m->argsig, sig, size);
-    else
+    } else {
         ds_cat(&m->argsig, sig);
+    }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Sets the next argument name.
  *  \relates adbus_Member
@@ -537,16 +534,13 @@ void adbus_mbr_argsig(adbus_Member* m, const char* sig, int size)
  */
 void adbus_mbr_argname(adbus_Member* m, const char* name, int size)
 {
-    assert(m->type == ADBUSI_METHOD || m->type == ADBUSI_SIGNAL);
-
-    if (size < 0)
-        size = strlen(name);
-
     char** pstr = dv_push(String, &m->arguments, 1);
-    *pstr = adbusI_strndup(name, size);
+    *pstr = (size >= 0) ? adbusI_strndup(name, size) : adbusI_strdup(name);
+
+    assert(m->type == ADBUSI_METHOD || m->type == ADBUSI_SIGNAL);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Appends to the return argument signature.
  *  \relates adbus_Member
@@ -560,13 +554,14 @@ void adbus_mbr_retsig(adbus_Member* m, const char* sig, int size)
 {
     assert(m->type == ADBUSI_METHOD);
 
-    if (size >= 0)
+    if (size >= 0) {
         ds_cat_n(&m->retsig, sig, size);
-    else
+    } else {
         ds_cat(&m->retsig, sig);
+    }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Sets the next return argument name.
  *  \relates adbus_Member
@@ -580,16 +575,13 @@ void adbus_mbr_retsig(adbus_Member* m, const char* sig, int size)
  */
 void adbus_mbr_retname(adbus_Member* m, const char* name, int size)
 {
-    assert(m->type == ADBUSI_METHOD);
-
-    if (size < 0)
-        size = strlen(name);
-
     char** pstr = dv_push(String, &m->returns, 1);
-    *pstr = adbusI_strndup(name, size);
+    *pstr = (size >= 0) ? adbusI_strndup(name, size) : adbusI_strdup(name);
+
+    assert(m->type == ADBUSI_METHOD);
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Adds an annotation to the member.
  *  \relates adbus_Member
@@ -601,6 +593,9 @@ void adbus_mbr_annotate(
         const char*         value,
         int                 valueSize)
 {
+    int added;
+    dh_Iter ii;
+
     name = (nameSize >= 0)
          ? adbusI_strndup(name, nameSize)
          : adbusI_strdup(name);
@@ -609,18 +604,17 @@ void adbus_mbr_annotate(
           ? adbusI_strndup(value, valueSize)
           : adbusI_strdup(value);
 
-    int added;
-    dh_Iter ki = dh_put(StringPair, &m->annotations, name, &added);
+    ii = dh_put(StringPair, &m->annotations, name, &added);
     if (!added) {
-        free((char*) dh_key(&m->annotations, ki));
-        free(dh_val(&m->annotations, ki));
+        free((char*) dh_key(&m->annotations, ii));
+        free((char*) dh_val(&m->annotations, ii));
     }
 
-    dh_key(&m->annotations, ki) = name;
-    dh_val(&m->annotations, ki) = (char*) value;
+    dh_key(&m->annotations, ii) = (char*) name;
+    dh_val(&m->annotations, ii) = (char*) value;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Adds a callback and user data to be called when the interface is freed.
  *  \relates adbus_Member
@@ -642,7 +636,7 @@ void adbus_mbr_addrelease(
     }
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Sets the method callback.
  *  \relates adbus_Member
@@ -660,7 +654,7 @@ void adbus_mbr_setmethod(
     m->methodData     = user1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Sets the get callback for properties.
  *  \relates adbus_Member
@@ -679,7 +673,7 @@ void adbus_mbr_setgetter(
     m->getPropertyData     = user1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 /** Sets the set callback for properties.
  *  \relates adbus_Member
@@ -698,16 +692,17 @@ void adbus_mbr_setsetter(
     m->setPropertyData     = user1;
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static int DoCall(adbus_CbData* d)
 {
+    int ret;
     adbus_Member* mbr = (adbus_Member*) d->user1;
-    // d->user2 is already set to the bind userdata
+    /* d->user2 is already set to the bind userdata */
     d->user1 = mbr->methodData;
-    int err = adbus_dispatch(mbr->methodCallback, d);
+    ret = adbus_dispatch(mbr->methodCallback, d);
     adbus_iface_deref(mbr->interface);
-    return err;
+    return ret;
 }
 
 /** Calls a method member directly.
@@ -715,7 +710,7 @@ static int DoCall(adbus_CbData* d)
  *
  *  \note This may proxy the method call to another thread.
  *
- *  This is useful when using the dbus binding for other purposes eg bindings
+ *  This is useful when using the dbus binding for other purposes eg. bindings
  *  into an embedded scripting language.
  *
  *  The bind can be gotten from the return value of adbus_conn_bind() or by
@@ -747,9 +742,9 @@ int adbus_mbr_call(
 
 
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 // Introspection callback (private)
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static void IntrospectArguments(adbus_Member* m, d_String* out)
 {
@@ -787,11 +782,12 @@ static void IntrospectArguments(adbus_Member* m, d_String* out)
  
 }
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static void IntrospectAnnotations(adbus_Member* m, d_String* out)
 {
-    for (dh_Iter ai = dh_begin(&m->annotations); ai != dh_end(&m->annotations); ++ai) {
+    dh_Iter ai;
+    for (ai = dh_begin(&m->annotations); ai != dh_end(&m->annotations); ++ai) {
         if (dh_exist(&m->annotations, ai)) {
             ds_cat(out, "\t\t\t<annotation name=\"");
             ds_cat(out, dh_key(&m->annotations, ai));
@@ -801,7 +797,7 @@ static void IntrospectAnnotations(adbus_Member* m, d_String* out)
         }
     }
 }
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
 static void IntrospectMember(adbus_Member* m, d_String* out)
 {
@@ -809,13 +805,14 @@ static void IntrospectMember(adbus_Member* m, d_String* out)
     {
         case ADBUSI_PROPERTY:
             {
+                adbus_Bool read  = (m->getPropertyCallback != NULL);
+                adbus_Bool write = (m->setPropertyCallback != NULL);
+
                 ds_cat(out, "\t\t<property name=\"");
                 ds_cat_n(out, m->name.str, m->name.sz);
                 ds_cat(out, "\" type=\"");
                 ds_cat(out, m->propertyType);
                 ds_cat(out, "\" access=\"");
-                adbus_Bool read  = (m->getPropertyCallback != NULL);
-                adbus_Bool write = (m->setPropertyCallback != NULL);
                 if (read && write) {
                     ds_cat(out, "readwrite");
                 } else if (read) {
@@ -826,12 +823,9 @@ static void IntrospectMember(adbus_Member* m, d_String* out)
                     assert(0);
                 }
 
-                if (dh_size(&m->annotations) == 0)
-                {
+                if (dh_size(&m->annotations) == 0) {
                     ds_cat(out, "\"/>\n");
-                }
-                else
-                {
+                } else {
                     ds_cat(out, "\">\n");
                     IntrospectAnnotations(m, out);
                     ds_cat(out, "\t\t</property>\n");
@@ -868,80 +862,21 @@ static void IntrospectMember(adbus_Member* m, d_String* out)
     }
 }
 
-// ----------------------------------------------------------------------------
-
-static void IntrospectInterfaces(struct ObjectPath* p, d_String* out)
+void adbusI_introspectInterface(adbus_Interface* i, d_String* out)
 {
-    for (dh_Iter bi = dh_begin(&p->interfaces); bi != dh_end(&p->interfaces); ++bi) {
-        if (dh_exist(&p->interfaces, bi)) {
-            adbus_Interface* i = dh_val(&p->interfaces, bi)->interface;
-            ds_cat(out, "\t<interface name=\"");
-            ds_cat_n(out, i->name.str, i->name.sz);
-            ds_cat(out, "\">\n");
+    dh_Iter mi;
 
-            for (dh_Iter mi = dh_begin(&i->members); mi != dh_end(&i->members); ++mi) {
-                if (dh_exist(&i->members, mi)) {
-                    IntrospectMember(dh_val(&i->members, mi), out);
-                }
-            }
+    ds_cat(out, "\t<interface name=\"");
+    ds_cat_n(out, i->name.str, i->name.sz);
+    ds_cat(out, "\">\n");
 
-            ds_cat(out, "\t</interface>\n");
+    for (mi = dh_begin(&i->members); mi != dh_end(&i->members); ++mi) {
+        if (dh_exist(&i->members, mi)) {
+            IntrospectMember(dh_val(&i->members, mi), out);
         }
     }
-}
 
-// ----------------------------------------------------------------------------
-
-static void IntrospectNode(struct ObjectPath* p, d_String* out)
-{
-    ds_cat(out,
-           "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\"\n"
-           "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
-           "<node>\n");
-
-    IntrospectInterfaces(p, out);
-
-    size_t namelen = p->path.sz;
-    // Now add the child objects
-    for (size_t i = 0; i < dv_size(&p->children); ++i) {
-        // Find the child tail ie ("bar" for "/foo/bar" or "foo" for "/foo")
-        const char* child = dv_a(&p->children, i)->path.str;
-        child += namelen;
-        if (namelen > 1)
-            child += 1; // +1 for '/' when p is not the root node
-
-        ds_cat(out, "\t<node name=\"");
-        ds_cat(out, child);
-        ds_cat(out, "\"/>\n");
-    }
-
-    ds_cat(out, "</node>\n");
-}
-
-// ----------------------------------------------------------------------------
-
-int adbusI_introspect(adbus_CbData* d)
-{
-    adbus_check_end(d);
-
-    // If no reply is wanted, we're done
-    if (!d->ret) {
-        return 0;
-    }
-
-    struct ObjectPath* p = (struct ObjectPath*) d->user2;
-
-    d_String out;
-    ZERO(&out);
-    IntrospectNode(p, &out);
-
-    adbus_msg_setsig(d->ret, "s", 1);
-    adbus_msg_string(d->ret, ds_cstr(&out), ds_size(&out));
-    adbus_msg_end(d->ret);
-
-    ds_free(&out);
-
-    return 0;
+    ds_cat(out, "\t</interface>\n");
 }
 
 
@@ -949,107 +884,70 @@ int adbusI_introspect(adbus_CbData* d)
 
 
 
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 // Properties callbacks (private)
-// ----------------------------------------------------------------------------
+/* ------------------------------------------------------------------------- */
 
-static int ProxiedGetProperty(adbus_CbData* d)
+int adbusI_proxiedGetProperty(adbus_CbData* d)
 {
-    adbus_Member* mbr = (adbus_Member*) d->user1;
-    // user2 is already set to the bind user2
-
-    // Get the property value
+    int ret = 0;
     adbus_BufVariant v;
-    adbus_msg_setsig(d->ret, "v", 1);
-    adbus_msg_beginvariant(d->ret, &v, mbr->propertyType, -1);
+
+    adbus_Member* mbr = (adbus_Member*) d->user1;
+
+    /* Check that we can read the property */
+    if (!mbr->getPropertyCallback) {
+        adbusI_propReadError(d);
+        goto end;
+    }
 
     d->getprop = adbus_msg_argbuffer(d->ret);
     d->user1 = mbr->getPropertyData;
-    int err = mbr->getPropertyCallback(d);
+    /* User2 is already set to the bind cuser2 */
+
+    /* Get the property value */
+    adbus_msg_setsig(d->ret, "v", 1);
+    adbus_msg_beginvariant(d->ret, &v, mbr->propertyType, -1);
+    ret = mbr->getPropertyCallback(d);
+
+end:
     adbus_iface_deref(mbr->interface);
-    return err;
+    return ret;
 }
 
-int adbusI_getProperty(adbus_CbData* d)
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_proxiedGetAllProperties(adbus_CbData* d)
 {
-    struct ObjectPath* path = (struct ObjectPath*) d->user2;
-
-    // Unpack the message
-    size_t isz, msz;
-    const char* iname  = adbus_check_string(d, &isz);
-    const char* mname  = adbus_check_string(d, &msz);
-    adbus_check_end(d);
-
-    // Get the interface
-    adbus_ConnBind* bind;
-    adbus_Interface* interface = adbus_conn_interface(
-            path->connection,
-            path->path.str,
-            path->path.sz,
-            iname,
-            isz,
-            &bind);
-
-    if (!interface) {
-        return adbusI_interfaceError(d);
-    }
-
-    // Get the property
-    adbus_Member* mbr = adbus_iface_property(interface, mname, msz);
-
-    if (!mbr) {
-        return adbusI_propertyError(d);
-    }
-
-    // Check that we can read the property
-    if (!mbr->getPropertyCallback) {
-        return adbusI_propReadError(d);
-    }
-
-    // If no reply is wanted we are finished
-    if (!d->ret)
-        return 0;
-
-    adbus_iface_ref(interface);
-    d->user1 = mbr;
-    d->user2 = bind->cuser2;
-
-    if (bind->proxy) {
-        return bind->proxy(bind->puser, &ProxiedGetProperty, d);
-    } else {
-        return ProxiedGetProperty(d);
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-static int ProxiedGetAllProperties(adbus_CbData* d)
-{
-    adbus_Interface* interface = (adbus_Interface*) d->user1;
-    // User2 is already set to the bind cuser2
-    
-    // Iterate over the properties and marshal up the values
     adbus_BufArray a;
+    adbus_BufVariant v;
+    dh_Iter mi;
+
+    adbus_Interface* interface = (adbus_Interface*) d->user1;
+    d_Hash(Member)* mbrs = &interface->members;
+    
+    /* Iterate over the properties and marshal up the values */
     adbus_msg_setsig(d->ret, "a{sv}", 5);
     adbus_msg_beginarray(d->ret, &a);
 
-    d_Hash(MemberPtr)* mbrs = &interface->members;
-    for (dh_Iter mi = dh_begin(mbrs); mi != dh_end(mbrs); ++mi) {
+    for (mi = dh_begin(mbrs); mi != dh_end(mbrs); ++mi) {
         if (dh_exist(mbrs, mi)) {
+
             adbus_Member* mbr = dh_val(mbrs, mi);
-            // Check that it is a property
+            adbus_MsgCallback callback = mbr->getPropertyCallback;
+
+            /* Check that it is a property */
             if (mbr->type != ADBUSI_PROPERTY) {
                 continue;
             }
 
-            // Check that we can read the property
-            adbus_MsgCallback callback = mbr->getPropertyCallback;
+            /* Check that we can read the property */
             if (!callback) {
                 continue;
             }
 
-            // Set the property entry
-            adbus_BufVariant v;
+            /* Set the property entry */
             adbus_msg_arrayentry(d->ret, &a);
             adbus_msg_begindictentry(d->ret);
             adbus_msg_string(d->ret, mbr->name.str, mbr->name.sz);
@@ -1057,6 +955,8 @@ static int ProxiedGetAllProperties(adbus_CbData* d)
 
             d->getprop = adbus_msg_argbuffer(d->ret);
             d->user1 = mbr->getPropertyData;
+            /* User2 is already set to the bind cuser2 */
+
             if (callback(d) || adbus_msg_type(d->ret) == ADBUS_MSG_ERROR)
                 goto err;
 
@@ -1075,114 +975,51 @@ err:
     return -1;
 }
 
-int adbusI_getAllProperties(adbus_CbData* d)
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_proxiedSetProperty(adbus_CbData* d)
 {
-    struct ObjectPath* path = (struct ObjectPath*) d->user2;
-
-    // Unpack the message
-    size_t isz;
-    const char* iname = adbus_check_string(d, &isz);
-    adbus_check_end(d);
-
-    // Get the interface
-    adbus_ConnBind* bind;
-    adbus_Interface* interface = adbus_conn_interface(
-            path->connection,
-            path->path.str,
-            path->path.sz,
-            iname,
-            isz,
-            &bind);
-
-    if (!interface) {
-        return adbusI_interfaceError(d);
-    }
-
-    // If no reply is wanted we are finished
-    if (!d->ret)
-        return 0;
-
-    adbus_iface_ref(interface);
-    d->user1 = interface;
-    d->user2 = bind->cuser2;
-
-    if (bind->proxy) {
-        return bind->proxy(bind->puser, &ProxiedGetAllProperties, d);
-    } else {
-        return ProxiedGetAllProperties(d);
-    }
-}
-
-// ----------------------------------------------------------------------------
-
-static int ProxiedSetProperty(adbus_CbData* d)
-{
-    adbus_Member* mbr = (adbus_Member*) d->user1;
-    // user2 is already set to the bind cuser2
-
-    // Set the property
-    d->setprop = d->checkiter;
-    d->user1 = mbr->setPropertyData;
-    int err = mbr->setPropertyCallback(d);
-    adbus_iface_deref(mbr->interface);
-    return err;
-}
-
-int adbusI_setProperty(adbus_CbData* d)
-{
-    struct ObjectPath* path = (struct ObjectPath*) d->user2;
-
-    // Unpack the message
-    size_t isz, msz;
-    const char* iname  = adbus_check_string(d, &isz);
-    const char* mname  = adbus_check_string(d, &msz);
-
-    // Get the interface
-    adbus_ConnBind* bind;
-    adbus_Interface* interface = adbus_conn_interface(
-            path->connection,
-            path->path.str,
-            path->path.sz,
-            iname,
-            isz,
-            &bind);
-
-    if (!interface) {
-        return adbusI_interfaceError(d);
-    }
-
-    // Get the property
-    adbus_Member* mbr = adbus_iface_property(interface, mname, msz);
-
-    if (!mbr) {
-        return adbusI_propertyError(d);
-    }
-
-    // Check that we can write the property
-    adbus_MsgCallback callback = mbr->setPropertyCallback;
-    if (!callback) {
-        return adbusI_propWriteError(d);
-    }
-
-    // Get the property type
+    int ret = -1;
     adbus_IterVariant v;
-    const char* sig = adbus_check_beginvariant(d, &v);
 
-    // Check the property type
-    if (strcmp(mbr->propertyType, sig) != 0) {
-        return adbusI_propTypeError(d);
+    adbus_Member* mbr = (adbus_Member*) d->user1;
+    adbus_MsgCallback callback = mbr->setPropertyCallback;
+
+    /* Check that we can write the property */
+    if (!callback) {
+        ret = adbusI_propWriteError(d);
+        goto end;
     }
 
-    adbus_iface_ref(interface);
-    d->user1 = mbr;
-    d->user2 = bind->cuser2;
-    
-    if (bind->proxy) {
-        return bind->proxy(bind->puser, &ProxiedSetProperty, d);
-    } else {
-        return ProxiedSetProperty(d);
+    /* Jump over the interface and member fields */
+    adbus_iter_args(&d->setprop, d->msg);
+    if (adbus_iter_string(&d->setprop, NULL, NULL))
+        goto end;
+    if (adbus_iter_string(&d->setprop, NULL, NULL))
+        goto end;
+
+    /* Check the property type */
+    if (adbus_iter_beginvariant(&d->setprop, &v))
+        goto end;
+
+    if (strcmp(mbr->propertyType, v.sig) != 0) {
+        ret = adbusI_propTypeError(d);
+        goto end;
     }
+
+    /* setprop is already setup */
+    d->user1 = mbr->setPropertyData;
+    /* user2 is already set to the bind cuser2 */
+
+    /* Set the property */
+    ret = mbr->setPropertyCallback(d);
+
+end:
+    adbus_iface_deref(mbr->interface);
+    return ret;
 }
+
 
 
 

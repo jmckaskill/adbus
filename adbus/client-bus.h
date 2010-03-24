@@ -34,6 +34,8 @@ struct adbusI_ConnBusData
     char* volatile      unique;
 };
 
+ADBUSI_FUNC void adbusI_freeConnBusData(adbusI_ConnBusData* d);
+
 ADBUS_API void adbus_conn_connect(
         adbus_Connection*       connection,
         adbus_Callback          callback,

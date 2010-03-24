@@ -408,25 +408,25 @@ void adbusI_freeObjectTree(adbusI_ObjectTree* t)
 
 /* -------------------------------------------------------------------------- */
 
-int adbusI_dispatchBind(adbus_CbData* d)
+adbus_Member* adbusI_getMethod(adbus_Connection* c, adbus_CbData* d, adbus_ConnBind** bind)
 {
     adbus_Member* member;
-    adbus_ConnBind* bind;
 
     if (d->msg->interface) {
         /* If we know the interface, then we try and find the method on that
          * interface.
          */
         adbus_Interface* interface = adbus_conn_interface(
-                d->connection,
+                c,
                 d->msg->path,
                 d->msg->pathSize,
                 d->msg->interface,
                 (int) d->msg->interfaceSize,
-                &bind);
+                bind);
 
         if (!interface) {
-            return adbusI_interfaceError(d);
+            adbusI_sendInterfaceError(c, d->msg, c->errorMessage);
+            return NULL;
         }
 
         member = adbus_iface_method(
@@ -439,20 +439,21 @@ int adbusI_dispatchBind(adbus_CbData* d)
          * interface with the member name.
          */
         member = adbus_conn_method(
-                d->connection,
+                c,
                 d->msg->path,
                 d->msg->pathSize,
                 d->msg->member,
                 (int) d->msg->memberSize,
-                &bind);
+                bind);
 
     }
 
     if (!member) {
-        return adbusI_methodError(d);
+        adbusI_sendMethodError(c, d->msg, c->errorMessage);
+        return NULL;
     }
 
-    return adbus_mbr_call(member, bind, d);
+    return member;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -545,7 +546,188 @@ adbus_Member* adbus_conn_method(
     return NULL;
 }
 
+/* ------------------------------------------------------------------------- */
 
+static void IntrospectInterfaces(adbusI_ObjectNode* node, d_String* out)
+{
+    dh_Iter bi;
+    for (bi = dh_begin(&node->binds); bi != dh_end(&node->binds); ++bi) {
+        if (dh_exist(&node->binds, bi)) {
+            adbusI_introspectInterface(dh_val(&node->binds, bi)->interface, out);
+        }
+    }
+}
 
+/* ------------------------------------------------------------------------- */
 
+static void IntrospectNode(adbusI_ObjectNode* node, d_String* out)
+{
+    size_t namelen;
+    adbusI_ObjectNode* child;
+
+    ds_cat(out,
+           "<!DOCTYPE node PUBLIC \"-//freedesktop/DTD D-BUS Object Introspection 1.0//EN\"\n"
+           "\"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd\">\n"
+           "<node>\n");
+
+    IntrospectInterfaces(node, out);
+
+    namelen = node->path.sz;
+    /* Now add the child objects */
+    DL_FOREACH (ObjectNode, child, &node->children, hl) {
+        /* Find the child tail ie ("bar" for "/foo/bar" or "foo" for "/foo") */
+        const char* childstr = child->path.str;
+        childstr += namelen;
+        if (namelen > 1)
+            childstr += 1; /* +1 for '/' separator when we are not the root node */
+
+        ds_cat(out, "\t<node name=\"");
+        ds_cat(out, childstr);
+        ds_cat(out, "\"/>\n");
+    }
+
+    ds_cat(out, "</node>\n");
+}
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_introspect(adbus_CbData* d)
+{
+    adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
+
+    adbus_check_end(d);
+
+    if (d->ret) {
+        d_String out;
+        ZERO(out);
+        IntrospectNode(node, &out);
+
+        adbus_msg_setsig(d->ret, "s", 1);
+        adbus_msg_string(d->ret, ds_cstr(&out), ds_size(&out));
+        adbus_msg_end(d->ret);
+
+        ds_free(&out);
+    }
+
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_getProperty(adbus_CbData* d)
+{
+    dh_strsz_t mname, iname;
+    adbus_ConnBind* bind;
+    adbus_Interface* interface;
+    adbus_Member* mbr;
+    dh_Iter ii;
+
+    adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
+
+    /* Unpack the message */
+    iname.str = adbus_check_string(d, &iname.sz);
+    mname.str = adbus_check_string(d, &mname.sz);
+    adbus_check_end(d);
+
+    /* Get the interface */
+    ii = dh_get(Bind, &node->binds, iname); 
+    if (ii == dh_end(&node->binds)) {
+        return adbusI_interfaceError(d);
+    }
+    bind = dh_val(&node->binds, ii);
+    interface = dh_val(&node->binds, ii)->interface;
+
+    /* Get the property */
+    mbr = adbus_iface_property(interface, mname.str, mname.sz);
+
+    if (!mbr) {
+        return adbusI_propertyError(d);
+    }
+
+    adbus_iface_ref(interface);
+    d->user1 = mbr;
+    d->user2 = bind->cuser2;
+
+    if (bind->proxy) {
+        return bind->proxy(bind->puser, &adbusI_proxiedGetProperty, d);
+    } else {
+        return adbusI_proxiedGetProperty(d);
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_getAllProperties(adbus_CbData* d)
+{
+    dh_strsz_t iname;
+    adbus_ConnBind* bind;
+    adbus_Interface* interface;
+    dh_Iter ii;
+
+    adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
+
+    /* Unpack the message */
+    iname.str = adbus_check_string(d, &iname.sz);
+    adbus_check_end(d);
+
+    /* Get the interface */
+    ii = dh_get(Bind, &node->binds, iname); 
+    if (ii == dh_end(&node->binds)) {
+        return adbusI_interfaceError(d);
+    }
+    bind = dh_val(&node->binds, ii);
+    interface = dh_val(&node->binds, ii)->interface;
+
+    adbus_iface_ref(interface);
+    d->user1 = interface;
+    d->user2 = bind->cuser2;
+
+    if (bind->proxy) {
+        return bind->proxy(bind->puser, &adbusI_proxiedGetAllProperties, d);
+    } else {
+        return adbusI_proxiedGetAllProperties(d);
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_setProperty(adbus_CbData* d)
+{
+    dh_strsz_t mname, iname;
+    adbus_ConnBind* bind;
+    adbus_Interface* interface;
+    adbus_Member* mbr;
+    dh_Iter ii;
+
+    adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
+
+    /* Unpack the message */
+    iname.str = adbus_check_string(d, &iname.sz);
+    mname.str = adbus_check_string(d, &mname.sz);
+
+    /* Get the interface */
+    ii = dh_get(Bind, &node->binds, iname); 
+    if (ii == dh_end(&node->binds)) {
+        return adbusI_interfaceError(d);
+    }
+    bind = dh_val(&node->binds, ii);
+    interface = dh_val(&node->binds, ii)->interface;
+
+    /* Get the property */
+    mbr = adbus_iface_property(interface, mname.str, mname.sz);
+
+    if (!mbr) {
+        return adbusI_propertyError(d);
+    }
+
+    adbus_iface_ref(interface);
+    d->user1 = mbr;
+    d->user2 = bind->cuser2;
+    
+    if (bind->proxy) {
+        return bind->proxy(bind->puser, &adbusI_proxiedSetProperty, d);
+    } else {
+        return adbusI_proxiedSetProperty(d);
+    }
+}
 

@@ -23,8 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
+#include "parse.h"
 #include <stddef.h>
 
 /** \struct adbus_Message
@@ -34,7 +33,7 @@
  *  A message structure can be filled out by using adbus_parse() or it may be
  *  filled out manually. When filling out manually all fields except arguments
  *  are required to be set if they are in the message (otherwise they should
- *  be zero intialised). Most places that require arguments to be set should
+ *  be zero initialised). Most places that require arguments to be set should
  *  call adbus_parseargs() before using it.
  *
  *  \warning adbus_parseargs() allocates some space on the heap to store the
@@ -181,9 +180,10 @@
  *  Size of arguments field.
  */
 
-/* -------------------------------------------------------------------------- */
-// Manually unpack even for native endianness since value not be 4 byte
-// aligned
+/* --------------------------------------------------------------------------
+ * Manually unpack even for native endianness since value not be 4 byte
+ * aligned
+ */
 static uint32_t Get32(char endianness, uint32_t* value)
 {
     uint8_t* p = (uint8_t*) value;
@@ -212,12 +212,14 @@ static uint32_t Get32(char endianness, uint32_t* value)
  */
 size_t adbus_parse_size(const char* data, size_t size)
 {
+    adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
+    size_t hsize;
+
     if (size < sizeof(adbusI_ExtendedHeader))
         return 0;
 
-    adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
-    size_t hsize = sizeof(adbusI_Header) + Get32(h->endianness, &h->headerFieldLength);
-    return ADBUSI_ALIGN(hsize, 8) + Get32(h->endianness, &h->length);
+    hsize = sizeof(adbusI_Header) + Get32(h->endianness, &h->headerFieldLength);
+    return ADBUS_ALIGN(hsize, 8) + Get32(h->endianness, &h->length);
 }
 
 /** Fills out an adbus_Message by parsing the data.
@@ -241,16 +243,19 @@ size_t adbus_parse_size(const char* data, size_t size)
  */ 
 int adbus_parse(adbus_Message* m, char* data, size_t size)
 {
-    assert((char*) ADBUSI_ALIGN(data, 8) == data);
-    assert(size > sizeof(adbusI_ExtendedHeader));
-
     adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
     adbus_Bool native = (h->endianness == adbusI_nativeEndianness());
+    adbus_Iterator i;
+    adbus_IterArray a;
 
-    if (h->type == ADBUS_MSG_INVALID)
+    assert((char*) ADBUS_ALIGN(data, 8) == data);
+    assert(size > sizeof(adbusI_ExtendedHeader));
+
+    if (h->type == ADBUS_MSG_INVALID) {
         return -1;
-    else if (h->type > ADBUS_MSG_SIGNAL)
+    } else if (h->type > ADBUS_MSG_SIGNAL) {
         return 0;
+    }
 
     if (!native && adbus_flip_data(data, size, "yyyyuua(yv)"))
         return -1;
@@ -259,58 +264,57 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
 
     memset(m, 0, sizeof(adbus_Message));
     m->data     = data;
-    m->size     = ADBUSI_ALIGN(h->headerFieldLength + sizeof(adbusI_ExtendedHeader), 8) + h->length;
+    m->size     = ADBUS_ALIGN(h->headerFieldLength + sizeof(adbusI_ExtendedHeader), 8) + h->length;
     m->argsize  = h->length;
     m->argdata  = data + m->size - m->argsize;
     m->type     = (adbus_MessageType) h->type;
     m->flags    = h->flags;
     m->serial   = h->serial;
 
-    adbus_Iterator i = {
-        data + sizeof(adbusI_Header),
-        size - sizeof(adbusI_Header),
-        "a(yv)"
-    };
-    adbus_IterArray a;
+    i.data = data + sizeof(adbusI_Header);
+    i.size = size - sizeof(adbusI_Header);
+    i.sig  = "a(yv)";
     if (adbus_iter_beginarray(&i, &a))
         return -1;
 
     while (adbus_iter_inarray(&i, &a)) {
         const uint8_t* code;
         adbus_IterVariant v;
+        const char** pstr;
+        size_t* psize;
+
         if (    adbus_iter_beginstruct(&i) 
             ||  adbus_iter_u8(&i, &code)
             ||  adbus_iter_beginvariant(&i, &v))
         {
             return -1;
         }
-        const char** pstr;
-        size_t* psize;
+
         switch (*code) {
-            case HEADER_INVALID:
+            case ADBUSI_HEADER_INVALID:
                 return -1;
 
-            case HEADER_INTERFACE:
+            case ADBUSI_HEADER_INTERFACE:
                 pstr  = &m->interface;
                 psize = &m->interfaceSize;
                 goto string;
 
-            case HEADER_MEMBER:
+            case ADBUSI_HEADER_MEMBER:
                 pstr  = &m->member;
                 psize = &m->memberSize;
                 goto string;
 
-            case HEADER_ERROR_NAME:
+            case ADBUSI_HEADER_ERROR_NAME:
                 pstr  = &m->error;
                 psize = &m->errorSize;
                 goto string;
 
-            case HEADER_DESTINATION:
+            case ADBUSI_HEADER_DESTINATION:
                 pstr  = &m->destination;
                 psize = &m->destinationSize;
                 goto string;
 
-            case HEADER_SENDER:
+            case ADBUSI_HEADER_SENDER:
                 pstr  = &m->sender;
                 psize = &m->senderSize;
                 goto string;
@@ -324,7 +328,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
                 }
                 break;
 
-            case HEADER_OBJECT_PATH:
+            case ADBUSI_HEADER_OBJECT_PATH:
                 if (    i.sig[0] != 'o' 
                     ||  i.sig[1] != '\0'
                     ||  adbus_iter_objectpath(&i, &m->path, &m->pathSize))
@@ -333,7 +337,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
                 }
                 break;
 
-            case HEADER_SIGNATURE:
+            case ADBUSI_HEADER_SIGNATURE:
                 if (    i.sig[0] != 'g' 
                     ||  i.sig[1] != '\0'
                     ||  adbus_iter_signature(&i, &m->signature, NULL))
@@ -342,7 +346,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
                 }
                 break;
 
-            case HEADER_REPLY_SERIAL:
+            case ADBUSI_HEADER_REPLY_SERIAL:
                 if (    i.sig[0] != 'u' 
                     ||  i.sig[1] != '\0'
                     ||  adbus_iter_u32(&i, &m->replySerial))
@@ -385,7 +389,8 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     return 0;
 }
 
-DVECTOR_INIT(Argument, adbus_Argument);
+DVECTOR_INIT(Argument, adbus_Argument)
+
 /** Parse the arguments in a message.
  *  
  *  \relates adbus_Message
@@ -402,13 +407,16 @@ DVECTOR_INIT(Argument, adbus_Argument);
  */
 int adbus_parseargs(adbus_Message* m)
 {
+    d_Vector(Argument) args;
+    adbus_Iterator i;
+
     if (m->arguments)
         return 0;
 
-    d_Vector(Argument) args;
-    ZERO(&args);
-
-    adbus_Iterator i = {m->argdata, m->argsize, m->signature};
+    ZERO(args);
+    i.data = m->argdata;
+    i.size = m->argsize;
+    i.sig  = m->signature;
 
     assert(m->signature != NULL);
 
@@ -457,18 +465,17 @@ void adbus_freeargs(adbus_Message* m)
  */
 void adbus_clonedata(adbus_Message* from, adbus_Message* to)
 {
+    ptrdiff_t off;
+
     *to = *from;
+    to->data = (char*) malloc(from->size);
+    memcpy(to->data, from->data, from->size);
 
-    char* data = (char*) malloc(from->size);
-    memcpy(data, from->data, from->size);
-    to->data = data;
+    off = to->data - from->data;
 
-    ptrdiff_t off = from->data - to->data;
-
-    // Update all data pointers to point into the new data section
+    /* Update all data pointers to point into the new data section */
     to->argdata += off;
     to->signature += off;
-    to->replySerial += off;
     to->path += off;
     to->interface += off;
     to->member += off;
@@ -476,10 +483,13 @@ void adbus_clonedata(adbus_Message* from, adbus_Message* to)
     to->destination += off;
     to->sender += off;
 
+    to->replySerial = (uint32_t*) (off + (char*) to->replySerial);
+
     if (from->arguments) {
+        size_t i;
         to->arguments = (adbus_Argument*) malloc(sizeof(adbus_Argument) * from->argumentsSize);
 
-        for (size_t i = 0; i < to->argumentsSize; i++) {
+        for (i = 0; i < to->argumentsSize; i++) {
             if (to->arguments[i].value) {
                 to->arguments[i].value += off;
             }

@@ -37,6 +37,7 @@ struct adbus_ConnReply
 
     adbusI_TrackedRemote*       remote;
     uint32_t                    serial;
+    adbus_Bool                  incallback;
 
     adbus_MsgCallback           callback;
     void*                       cuser;
@@ -63,7 +64,8 @@ struct adbusI_ReplySet
 };
 
 ADBUSI_FUNC void adbusI_freeReplies(adbus_Connection* c);
-ADBUSI_FUNC int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d);
+ADBUSI_FUNC adbus_ConnReply* adbusI_getReply(adbus_Connection* c, adbus_CbData* d);
+ADBUSI_FUNC void adbusI_finishReply(adbus_ConnReply* reply);
 
 ADBUS_API void adbus_reply_init(adbus_Reply* reply);
 

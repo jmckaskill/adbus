@@ -85,6 +85,10 @@ const char*  adbus_conn_uniquename(
     return unique;
 }
 
+/* -------------------------------------------------------------------------- */
+
+void adbusI_freeConnBusData(adbusI_ConnBusData* d)
+{ free(d->unique); }
 
 
 

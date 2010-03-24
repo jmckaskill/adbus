@@ -33,6 +33,8 @@
 #include "tracker.h"
 
 
+DVECTOR_INIT(MsgFactory, adbus_MsgFactory*)
+
 struct adbus_Connection
 {
     /** \privatesection */
@@ -49,7 +51,9 @@ struct adbus_Connection
     adbus_Interface*            properties;
 
     adbus_Buffer*               parseBuffer;
-    adbus_MsgFactory*           returnMessage;
+    adbus_MsgFactory*           errorMessage;
+    d_Vector(MsgFactory)        returnMessages;
+    size_t                      depth;
 
     adbusI_ConnBusData          connect;
     adbusI_ObjectTree           binds;

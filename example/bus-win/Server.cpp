@@ -162,16 +162,16 @@ Remote::~Remote()
     closesocket(m_Socket);
 }
 
-adbus_ssize_t Remote::SendMsg(void* d, adbus_Message* m)
+int Remote::SendMsg(void* d, adbus_Message* m)
 {
     Remote* r = (Remote*) d;
-    return (adbus_ssize_t) send(r->m_Socket, m->data, (int) m->size, 0);
+    return (int) send(r->m_Socket, m->data, (int) m->size, 0);
 }
 
-adbus_ssize_t Remote::Send(void* d, const char* b, size_t sz)
+int Remote::Send(void* d, const char* b, size_t sz)
 {
     Remote* r = (Remote*) d;
-    return (adbus_ssize_t) send(r->m_Socket, b, (int) sz, 0);
+    return (int) send(r->m_Socket, b, (int) sz, 0);
 }
 
 uint8_t Remote::Rand(void* d)

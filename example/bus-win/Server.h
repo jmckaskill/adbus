@@ -87,8 +87,8 @@ public:
   void Disconnect();
 
 private:
-  static adbus_ssize_t SendMsg(void* d, adbus_Message* m);
-  static adbus_ssize_t Send(void* d, const char* b, size_t sz);
+  static int SendMsg(void* d, adbus_Message* m);
+  static int Send(void* d, const char* b, size_t sz);
   static uint8_t       Rand(void* d);
 
   Server*                     m_Server;

@@ -242,6 +242,7 @@ static void FreeReply(adbus_ConnReply* r)
         if (ii != dh_end(h)) {
             dh_del(Reply, h, ii);
         }
+        r->set = NULL;
     }
 
     /* Disconnect from list */
@@ -254,6 +255,7 @@ static void FreeReply(adbus_ConnReply* r)
         } else {
             r->release[0](r->ruser[0]);
         }
+        r->release[0] = NULL;
     }
 
     if (r->release[1]) {
@@ -262,11 +264,17 @@ static void FreeReply(adbus_ConnReply* r)
         } else {
             r->release[1](r->ruser[1]);
         }
+        r->release[1] = NULL;
     }
 
-    /* Free data */
-    adbusI_derefTrackedRemote(r->remote);
-    free(r);
+    /* If we are in the callback, we will come back and do this once the
+     * callback is complete.
+     */
+    if (!r->incallback) {
+        /* Free data */
+        adbusI_derefTrackedRemote(r->remote);
+        free(r);
+    }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -305,69 +313,61 @@ void adbus_conn_removereply(
 
 /* -------------------------------------------------------------------------- */
 
-int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
+#define BUS "org.freedesktop.DBus"
+
+adbus_ConnReply* adbusI_getReply(adbus_Connection* c, adbus_CbData* d)
 {
-    int ret;
     dh_Iter ii;
     uint32_t serial;
-    adbus_ConnReply *reply, *reply2;
-    adbus_MsgCallback cb = NULL;
+    adbus_ConnReply* reply;
+    const char *sender, *unique;
+    size_t sendsz, uniqsz;
 
-    if (    (   d->msg->type != ADBUS_MSG_RETURN
-            &&  d->msg->type != ADBUS_MSG_ERROR)
-        ||  !d->msg->replySerial
-        ||  !d->msg->sender)
-    {
-        return 0;
-    }
+    if (!d->msg->replySerial)
+        return NULL;
 
     /* Lookup the reply */
 
     serial = *d->msg->replySerial;
     ii = dh_get(Reply, &c->replies.lookup, serial);
     if (ii == dh_end(&c->replies.lookup))
-        return 0;
+        return NULL;
 
     reply = dh_val(&c->replies.lookup, ii);
 
-    /* Remove the reply from the lookup hash table. FreeReply does this if
-     * reply->set is still set, but we do it now, since we know ii and the
-     * callback may invalidate ii.
+    /* We only allow replies from the expected remote, bus server, or null for
+     * security reasons
      */
-    dh_del(Reply, &c->replies.lookup, ii);
-    reply->set = NULL;
+    sender = d->msg->sender;
+    sendsz = d->msg->senderSize;
+    unique = reply->remote->unique.str;
+    uniqsz = reply->remote->unique.sz;
+    if (    !sender
+        ||  (unique && sendsz == uniqsz && memcmp(sender, unique, sendsz) == 0)
+        ||  (sendsz == sizeof(BUS) - 1 && memcmp(sender, BUS, sendsz) == 0))
+    {
 
-    /* Set the list iterator so we can detect if the callback removes the
-     * reply
-     */
-    dil_setiter(&c->replies.list, reply);
+        /* Remove the reply from the lookup hash table. FreeReply does this if
+         * reply->set is still set, but we do it now, since we know ii and the
+         * callback may invalidate ii.
+         */
+        dh_del(Reply, &c->replies.lookup, ii);
+        reply->set = NULL;
 
-    if (d->msg->type == ADBUS_MSG_RETURN && reply->callback) {
-        d->user1 = reply->cuser;
-        cb = reply->callback;
-    } else if (d->msg->type == ADBUS_MSG_ERROR && reply->error) {
-        d->user1 = reply->euser;
-        cb = reply->error;
+        reply->incallback = 1;
+
+        return reply;
     }
-
-    if (cb) {
-        if (reply->proxy) {
-            ret = reply->proxy(reply->puser, cb, d);
-        } else {
-            ret = adbus_dispatch(cb, d);
-        }
+    else 
+    {
+        return NULL;
     }
-
-    /* Re-get the reply out to see if we need to remove it (the callback may
-     * have already done this)
-     */
-    reply2 = dil_getiter(&c->replies.list);
-    dil_setiter(&c->replies.list, NULL);
-
-    if (reply == reply2) {
-        FreeReply(reply);
-    }
-
-    return ret;
 }
+
+void adbusI_finishReply(adbus_ConnReply* reply)
+{
+    reply->incallback = 0;
+    FreeReply(reply);
+}
+
 

@@ -47,7 +47,7 @@
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef __GNUC__
+#if defined __GNUC__
     ADBUS_INLINE long adbusI_InterlockedIncrement(long volatile* addend)
     { return __sync_add_and_fetch(addend, 1); }
 
@@ -57,64 +57,34 @@
     ADBUS_INLINE void* adbusI_InterlockedExchangePointer(void* volatile* xch, void* new_value)
     { return __sync_lock_test_and_set(xch, new_value); }
 
-#elif defined _MSC_VER && _MSC_VER < 1300 && defined _M_IX86
-#error Apparently MSVC++ 6.0 generates rubbish when optimizations are on
+#elif defined _WIN32
 
-#elif defined _MSC_VER && defined _WIN32 && !defined _WIN32_WCE
+#   define WIN32_LEAN_AND_MEAN
+#   define NOMINMAX
+#   include <windows.h>
+#   undef interface
 
-extern "C" {
-    long __cdecl _InterlockedIncrement(volatile long *);
-    long __cdecl _InterlockedDecrement(volatile long *);
-}
-#  pragma intrinsic (_InterlockedIncrement)
-#  pragma intrinsic (_InterlockedDecrement)
+    ADBUS_INLINE long adbusI_InterlockedIncrement(long volatile* addend)
+    { return InterlockedIncrement(addend); }
 
-ADBUS_INLINE long adbus_InterlockedIncrement(long volatile* addend)
-{ return _InterlockedIncrement(addend); }
+    ADBUS_INLINE long adbusI_InterlockedDecrement(long volatile* addend)
+    { return InterlockedDecrement(addend); }
 
-ADBUS_INLINE long adbus_InterlockedDecrement(long volatile* addend)
-{ return _InterlockedDecrement(addend); }
+#   ifdef _MSC_VER
+#   pragma warning(push)
+#   pragma warning(disable: 4311) 
+#   pragma warning(disable: 4312) 
+#   endif
 
-#elif defined _MSC_VER && defined _WIN32 && defined _WIN32_WCE
+    ADBUS_INLINE void* adbusI_InterlockedExchangePointer(void* volatile* xch, void* new_value)
+    { return InterlockedExchangePointer(xch, new_value); }
 
-#if _WIN32_WCE < 0x600 && defined(_X86_)
-/* For X86 Windows CE build we need to include winbase.h to be able
- * to catch the inline functions which overwrite the regular 
- * definitions inside of coredll.dll. Though one could use the 
- * original version of Increment/Decrement, the others are not
- * exported at all.
- */
-#include <winbase.h>
+#   ifdef _MSC_VER
+#   pragma warning(pop)
+#   endif
+
 #else
-
-#if _WIN32_WCE >= 0x600
-#define VOLATILE volatile
-#  if defined(_X86_)
-#    define InterlockedIncrement _InterlockedIncrement
-#    define InterlockedDecrement _InterlockedDecrement
-#  endif
-#else
-#define VOLATILE
-#endif
-
-extern "C" {
-    long __cdecl InterlockedIncrement(long VOLATILE* addend);
-    long __cdecl InterlockedDecrement(long VOLATILE * addend);
-}
-
-#if _WIN32_WCE >= 0x600 && defined(_X86_)
-#  pragma intrinsic (_InterlockedIncrement)
-#  pragma intrinsic (_InterlockedDecrement)
-#endif
-
-ADBUS_INLINE long adbus_InterlockedIncrement(long volatile* addend)
-{ return _InterlockedIncrement(addend); }
-
-ADBUS_INLINE long adbus_InterlockedDecrement(long volatile* addend)
-{ return _InterlockedDecrement(addend); }
-
-#endif
-
+#error Don't have any atomics
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -133,9 +103,6 @@ ADBUSI_FUNC int  adbusI_alignment(char type);
 #ifdef _GNU_SOURCE
 #   define adbusI_strndup strndup
 #   define adbusI_strdup  strdup
-#elif _MSC_VER
-#   define strndup _strndup
-#   define strdup  _strdup
 #else
     ADBUS_INLINE char* adbusI_strndup(const char* string, size_t n)
     {

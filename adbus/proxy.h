@@ -27,18 +27,28 @@
 
 #include "internal.h"
 
-ADBUSI_FUNC int adbusI_pathError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_interfaceError(adbus_CbData* d);
-ADBUSI_FUNC void adbusI_sendInterfaceError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret);
-ADBUSI_FUNC int adbusI_methodError(adbus_CbData* d);
-ADBUSI_FUNC void adbusI_sendMethodError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret);
-ADBUSI_FUNC int adbusI_propertyError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propWriteError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propReadError(adbus_CbData* d);
-ADBUSI_FUNC int adbusI_propTypeError(adbus_CbData* d);
+/* ------------------------------------------------------------------------- */
 
-enum
+enum adbusI_CallType
 {
-    ADBUSI_PARSE_ERROR  = -2,
-    ADBUSI_ERROR        = -1
+    METHOD_CALL,
+    GET_PROP_CALL,
+    SET_PROP_CALL,
 };
+
+typedef enum adbusI_CallType adbusI_CallType;
+
+struct adbus_Proxy
+{
+    /** \privatesection */
+    adbus_State*        state;
+    adbus_Connection*   connection;
+    adbus_MsgFactory*   message;
+    d_String            service;
+    d_String            path;
+    d_String            interface;
+    adbusI_CallType     type;
+    adbus_BufVariant    variant;
+};
+
+

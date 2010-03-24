@@ -102,11 +102,12 @@ static int FixHeaders(adbus_Remote* r, adbusI_ServerParser* p)
     adbus_Message* m;
     char* data;
     size_t size;
-    adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
+    adbusI_ExtendedHeader* h;
     adbus_Iterator i;
     adbus_IterArray a;
 
     UnpackBuffer(p, &m, &data, &size);
+    h = (adbusI_ExtendedHeader*) data;
     h->endianness = adbusI_nativeEndianness();
 
     /* Flip the header data */

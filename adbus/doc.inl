@@ -121,7 +121,7 @@
  *      // Do connection setup
  *  }
  *
- *  static adbus_ssize_t SendMessage(void* user, adbus_Message* m)
+ *  static int SendMessage(void* user, adbus_Message* m)
  *  { return send(*(adbus_Socket*) user, m->data, m->size, 0); }
  *
  *  # define RECV_SIZE 64 * 1024
@@ -150,7 +150,7 @@
  *      while (1) {
  *          // Get the next chunk of data
  *          char* dest = adbus_buf_recvbuf(buffer, RECV_SIZE);
- *          adbus_ssize_t recvd = recv(socket, buffer, RECV_SIZE, 0);
+ *          int recvd = recv(socket, buffer, RECV_SIZE, 0);
  *          adbus_buf_recvd(buffer, RECV_SIZE, recvd);
  *
  *          if (recvd < 0)

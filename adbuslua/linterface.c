@@ -236,8 +236,8 @@ static int UnpackMethod(
     struct Member* mdata = NEW(struct Member);
     mdata->L = L;
 
-    d_String args; ZERO(&args);
-    d_String rets; ZERO(&rets);
+    d_String args; ZERO(args);
+    d_String rets; ZERO(rets);
 
     UnpackReturns(L, mbr, table, &rets);
     if (ds_size(&rets) > 0) {

@@ -87,7 +87,8 @@ int main() {
 #include <string.h>
 
 #ifdef _MSC_VER 
-#   pragma warning(disable:4127) // conditional expression is constant
+#   pragma warning(disable:4127) /* conditional expression is constant */
+#   pragma warning(disable:4090) /* different 'const' qualifiers - msvc bugs up with free(const char**) */
 #endif
 
 typedef uint32_t khint_t;
@@ -317,7 +318,7 @@ DMEM_INLINE khint_t __ac_X31_hash_stringsz(dh_strsz_t s)
 #define dh_size(h) ((h)->size)
 #define dh_n_buckets(h) ((h)->n_buckets)
 
-/* More conenient interfaces */
+/* More convenient interfaces */
 
 #define DHASH_SET_INIT_UINT32(name)                                     \
     DHASH_INIT(name, uint32_t, char, 0, dh_uint32_hash_func, dh_uint32_hash_equal)
@@ -331,7 +332,7 @@ DMEM_INLINE khint_t __ac_X31_hash_stringsz(dh_strsz_t s)
 #define DHASH_MAP_INIT_UINT64(name, khval_t)                            \
     DHASH_INIT(name, uint64_t, khval_t, 1, dh_uint64_hash_func, dh_uint64_hash_equal)
 
-typedef const char *dh_cstr_t;
+typedef char const * dh_cstr_t;
 #define DHASH_SET_INIT_STR(name)                                        \
     DHASH_INIT(name, dh_cstr_t, char, 0, dh_str_hash_func, dh_str_hash_equal)
 

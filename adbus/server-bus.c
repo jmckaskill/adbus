@@ -212,7 +212,7 @@ static int SendToServer(void* d, adbus_Message* m)
     return (int) m->size;
 }
 
-void adbusI_serv_initbus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server* server)
+void adbusI_serv_initBus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server* server)
 {
     /* Setup the org.freedesktop.DBus interface */
     adbus_Member *m, *changedsig, *acquiredsig, *lostsig;
@@ -310,7 +310,7 @@ void adbusI_serv_initbus(adbusI_BusServer* bus, adbus_Interface* i, adbus_Server
 }
 
 /* -------------------------------------------------------------------------- */
-void adbusI_serv_freebus(adbusI_BusServer* bus)
+void adbusI_serv_freeBus(adbusI_BusServer* bus)
 {
     adbus_sig_free(bus->nameOwnerChanged);
     adbus_sig_free(bus->nameAcquired);

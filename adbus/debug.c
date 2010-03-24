@@ -29,6 +29,13 @@
 
 /* -------------------------------------------------------------------------- */
 
+adbus_LogCallback sLogFunction;
+
+void adbus_set_logger(adbus_LogCallback cb)
+{ sLogFunction = cb; }
+
+/* -------------------------------------------------------------------------- */
+
 static void PrintStringField(
         d_String* str,
         const char* field,
@@ -42,10 +49,13 @@ static int LogField(d_String* str, adbus_Iterator* i);
 static int LogArray(d_String* str, adbus_Iterator* i)
 {
     adbus_IterArray a;
+    adbus_Bool first = 1;
+    adbus_Bool map;
+
     if (adbus_iter_beginarray(i, &a))
         return -1;
-    adbus_Bool first = 1;
-    adbus_Bool map = (*i->sig == ADBUS_DICTENTRY_BEGIN);
+
+    map = (*i->sig == ADBUS_DICTENTRY_BEGIN);
     ds_cat(str, map ? "{" : "[");
 
     while (adbus_iter_inarray(i, &a)) {
@@ -63,9 +73,9 @@ static int LogArray(d_String* str, adbus_Iterator* i)
 
 static int LogStruct(d_String* str, adbus_Iterator* i)
 {
+    adbus_Bool first = 1;
     if (adbus_iter_beginstruct(i))
         return -1;
-    adbus_Bool first = 1;
     ds_cat_f(str, "(");
     while (*i->sig != ADBUS_STRUCT_END) {
         if (!first)
@@ -223,25 +233,28 @@ static int MsgSummary(d_String* str, const adbus_Message* m)
     PrintStringField(str, m->error, "Error");
     PrintStringField(str, m->signature, "Signature");
 
-    int argnum = 0;
-    adbus_Iterator i;
-    adbus_iter_args(&i, m);
-    while (i.sig && *i.sig) {
-        ds_cat_f(str, "Argument %2d     ", argnum++);
-        if (LogField(str, &i))
-            return -1;
-        ds_cat_char(str, '\n');
+    {
+        int argnum = 0;
+        adbus_Iterator i;
+        adbus_iter_args(&i, m);
+        while (i.sig && *i.sig) {
+            ds_cat_f(str, "Argument %2d     ", argnum++);
+            if (LogField(str, &i))
+                return -1;
+            ds_cat_char(str, '\n');
+        }
     }
+
     return 0;
 }
 
 void adbusI_logmsg(const char* header, const adbus_Message* msg)
 {
     d_String str;
-    ZERO(&str);
-    ds_cat_f("%s ", &str, header);
+    ZERO(str);
+    ds_cat_f(&str, "%s ", header);
     MsgSummary(&str, msg);
-    adbusI_klog(&str);
+    sLogFunction(ds_cstr(&str), ds_size(&str));
     ds_free(&str);
 }
 
@@ -293,10 +306,10 @@ static void BindString(d_String* s, const adbus_Bind* b)
 void adbusI_logbind(const char* header, const adbus_Bind* b)
 {
     d_String str;
-    ZERO(&str);
+    ZERO(str);
+    ds_cat_f(&str, "%s ", header);
     BindString(&str, b);
-    adbusI_addheader(&str, "%-10s ", header);
-    adbusI_klog(&str);
+    sLogFunction(ds_cstr(&str), ds_size(&str));
     ds_free(&str);
 }
 
@@ -304,6 +317,7 @@ void adbusI_logbind(const char* header, const adbus_Bind* b)
 
 static void MatchString(d_String* s, const adbus_Match* m)
 {
+    size_t i;
     if (m->addMatchToBusDaemon)
         ds_cat_f(s, "Add to bus\n");
     if (m->callback)
@@ -325,7 +339,7 @@ static void MatchString(d_String* s, const adbus_Match* m)
     Append(s, "Member", m->member, m->memberSize);
     Append(s, "Error", m->error, m->errorSize);
 
-    for (size_t i = 0; i < m->argumentsSize; ++i) {
+    for (i = 0; i < m->argumentsSize; ++i) {
         adbus_Argument* arg = &m->arguments[i];
         if (arg->value) {
             if (arg->size >= 0) {
@@ -340,10 +354,10 @@ static void MatchString(d_String* s, const adbus_Match* m)
 void adbusI_logmatch(const char* header, const adbus_Match* m)
 {
     d_String str;
-    ZERO(&str);
+    ZERO(str);
     ds_cat_f(&str, "%s ", header);
     MatchString(&str, m);
-    Log(&str);
+    sLogFunction(ds_cstr(&str), ds_size(&str));
     ds_free(&str);
 }
 
@@ -366,10 +380,10 @@ static void ReplyString(d_String* s, const adbus_Reply* r)
 void adbusI_logreply(const char* header, const adbus_Reply* r)
 {
     d_String str;
-    ZERO(&str);
+    ZERO(str);
     ds_cat_f(&str, "%s ", header);
     ReplyString(&str, r);
-    Log(&str);
+    sLogFunction(ds_cstr(&str), ds_size(&str));
     ds_free(&str);
 }
 
@@ -377,4 +391,11 @@ void adbusI_logreply(const char* header, const adbus_Reply* r)
 
 void adbusI_log(const char* format, ...)
 {
+    d_String str;
+    va_list ap;
+    ZERO(str);
+    va_start(ap, format);
+    ds_set_vf(&str, format, ap);
+    sLogFunction(ds_cstr(&str), ds_size(&str));
+    ds_free(&str);
 }

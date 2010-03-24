@@ -23,9 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#define ADBUS_LIBRARY
-#include "misc.h"
-#include "dmem/vector.h"
+#include "buffer.h"
 
 /** \struct adbus_Buffer
  *
@@ -163,15 +161,7 @@
  *  \endcode
  */
 
-DVECTOR_INIT(char, char);
-
-struct adbus_Buffer
-{
-    /** \privatesection */
-    d_Vector(char)  b;
-    char            sig[256];
-    const char*     sigp;
-};
+/* ------------------------------------------------------------------------- */
 
 /** Creates a new buffer.
  *  \relates adbus_Buffer 
@@ -292,10 +282,11 @@ void adbus_buf_setsig(adbus_Buffer* b, const char* sig, int size)
  */
 void adbus_buf_appendsig(adbus_Buffer* b, const char* sig, int size)
 {
+    size_t existing = strlen(b->sig);
+
     if (size < 0)
         size = strlen(sig);
 
-    size_t existing = strlen(b->sig);
     if (existing + size + 1 > sizeof(b->sig)) {
         assert(0);
         return;
@@ -405,17 +396,18 @@ char* adbus_buf_recvbuf(adbus_Buffer* b, size_t len)
  *
  *  \sa adbus_buf_recvbuf
  */
-void adbus_buf_recvd(adbus_Buffer* b, size_t len, adbus_ssize_t recvd)
+void adbus_buf_recvd(adbus_Buffer* b, size_t len, int recvd)
 {
     size_t rx = recvd > 0 ? recvd : 0;
     dv_pop(char, &b->b, len - rx);
 }
 
-INLINE void Align(adbus_Buffer* b, int alignment)
+ADBUS_INLINE void Align(adbus_Buffer* b, int alignment)
 {
-    int append = ADBUSI_ALIGN(dv_size(&b->b), alignment) - dv_size(&b->b);
+    int i;
+    int append = ADBUS_ALIGN(dv_size(&b->b), alignment) - dv_size(&b->b);
     char* dest = dv_push(char, &b->b, append);
-    for (int i = 0; i < append; i++) {
+    for (i = 0; i < append; i++) {
         dest[i] = '\0';
     }
 }
@@ -423,7 +415,7 @@ INLINE void Align(adbus_Buffer* b, int alignment)
 void adbus_buf_align(adbus_Buffer* b, int alignment)
 { Align(b, alignment); }
 
-INLINE void AlignField(adbus_Buffer* b, char field)
+ADBUS_INLINE void AlignField(adbus_Buffer* b, char field)
 {
     switch (field)
     {
@@ -460,7 +452,7 @@ INLINE void AlignField(adbus_Buffer* b, char field)
     }
 }
 
-INLINE uintptr_t AlignValue(uintptr_t value, char field)
+ADBUS_INLINE uintptr_t AlignValue(uintptr_t value, char field)
 {
     switch (field)
     {
@@ -471,7 +463,7 @@ INLINE uintptr_t AlignValue(uintptr_t value, char field)
 
         case 'n': // i16
         case 'q': // u16
-            return ADBUSI_ALIGN(value, 2);
+            return ADBUS_ALIGN(value, 2);
 
         case 'b': // bool
         case 'i': // i32
@@ -479,14 +471,14 @@ INLINE uintptr_t AlignValue(uintptr_t value, char field)
         case 's': // string
         case 'o': // object path
         case 'a': // array
-            return ADBUSI_ALIGN(value, 4);
+            return ADBUS_ALIGN(value, 4);
 
         case 'x': // i64
         case 't': // u64
         case 'd': // double
         case '(': // struct
         case '{': // dict entry
-            return ADBUSI_ALIGN(value, 8);
+            return ADBUS_ALIGN(value, 8);
 
         default:
             assert(0);
@@ -497,31 +489,34 @@ INLINE uintptr_t AlignValue(uintptr_t value, char field)
 void adbus_buf_alignfield(adbus_Buffer* b, char field)
 { AlignField(b, field); }
 
-INLINE void Append8(adbus_Buffer* b, uint8_t v)
+ADBUS_INLINE void Append8(adbus_Buffer* b, uint8_t v)
 {
     uint8_t* dest = (uint8_t*) dv_push(char, &b->b, 1);
     *dest = v;
 }
 
 
-INLINE void Append16(adbus_Buffer* b, uint16_t v)
+ADBUS_INLINE void Append16(adbus_Buffer* b, uint16_t v)
 {
+    uint16_t* dest;
     Align(b, 2);
-    uint16_t* dest = (uint16_t*) dv_push(char, &b->b, 2);
+    dest = (uint16_t*) dv_push(char, &b->b, 2);
     *dest = v;
 }
 
-INLINE void Append32(adbus_Buffer* b, uint32_t v)
+ADBUS_INLINE void Append32(adbus_Buffer* b, uint32_t v)
 {
+    uint32_t* dest;
     Align(b, 4);
-    uint32_t* dest = (uint32_t*) dv_push(char, &b->b, 4);
+    dest = (uint32_t*) dv_push(char, &b->b, 4);
     *dest = v;
 }
 
-INLINE void Append64(adbus_Buffer* b, uint64_t v)
+ADBUS_INLINE void Append64(adbus_Buffer* b, uint64_t v)
 {
+    uint64_t* dest;
     Align(b, 8);
-    uint64_t* dest = (uint64_t*) dv_push(char, &b->b, 8);
+    dest = (uint64_t*) dv_push(char, &b->b, 8);
     *dest = v;
 }
 
@@ -583,20 +578,22 @@ void adbus_buf_double(adbus_Buffer* b, double v)  { SIG(b, 'd'); Append64(b, *(u
  */
 void adbus_buf_string(adbus_Buffer* b, const char* str, int size)
 {
+    char* dest;
     SIG(b, 's');
     if (size < 0)
         size = strlen(str);
     assert((size_t) size <= UINT32_MAX);
     Append32(b, (uint32_t) size);
-    char* dest = dv_push(char, &b->b, size + 1);
+    dest = dv_push(char, &b->b, size + 1);
     memcpy(dest, str, size);
     dest[size] = '\0';
 }
 
 void adbus_buf_string_vf(adbus_Buffer* b, const char* format, va_list ap)
 {
-    d_String str = {};
-    ds_set_vf(format, ap);
+    d_String str;
+    ZERO(str);
+    ds_set_vf(&str, format, ap);
     adbus_buf_string(b, ds_cstr(&str), ds_size(&str));
     ds_free(&str);
 }
@@ -613,12 +610,13 @@ void adbus_buf_string_f(adbus_Buffer* b, const char* format, ...)
  */
 void adbus_buf_objectpath(adbus_Buffer* b, const char* str, int size)
 {
+    char* dest;
     SIG(b, 'o');
     if (size < 0)
         size = strlen(str);
     assert((size_t) size <= UINT32_MAX);
     Append32(b, (uint32_t) size);
-    char* dest = dv_push(char, &b->b, size + 1);
+    dest = dv_push(char, &b->b, size + 1);
     memcpy(dest, str, size);
     dest[size] = '\0';
 }
@@ -628,12 +626,13 @@ void adbus_buf_objectpath(adbus_Buffer* b, const char* str, int size)
  */
 void adbus_buf_signature(adbus_Buffer* b, const char* str, int size)
 {
+    char* dest;
     SIG(b, 'g');
     if (size < 0)
         size = strlen(str);
     assert(size < UINT8_MAX);
     Append8(b, (uint8_t) size);
-    char* dest = dv_push(char, &b->b, size + 1);
+    dest = dv_push(char, &b->b, size + 1);
     memcpy(dest, str, size);
     dest[size] = '\0';
 }
@@ -643,12 +642,13 @@ void adbus_buf_signature(adbus_Buffer* b, const char* str, int size)
  */
 void adbus_buf_beginvariant(adbus_Buffer* b, adbus_BufVariant* v, const char* sig, int size)
 {
+    char* dest;
     SIG(b, 'v');
     if (size < 0)
         size = strlen(sig);
     assert(size < UINT8_MAX);
     Append8(b, (uint8_t) size);
-    char* dest = dv_push(char, &b->b, size + 1);
+    dest = dv_push(char, &b->b, size + 1);
     memcpy(dest, sig, size);
     dest[size] = '\0';
     v->oldsig = b->sigp;

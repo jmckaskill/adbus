@@ -34,7 +34,7 @@
 #endif
 
 #define NEW(type) ((type*) calloc(1, sizeof(type)))
-#define ZERO(p) memset(p, 0, sizeof(*p))
+#define ZERO(v) memset(&v, 0, sizeof(v));
 #define UNUSED(x) ((void) (x))
 
 IFUNC int adbusluaI_check_fields(lua_State* L, int table, const char** valid);
