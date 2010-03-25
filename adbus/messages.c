@@ -301,35 +301,6 @@ int adbusI_interfaceError(adbus_CbData* d)
             d->msg->member);
 }
 
-static void SetupError(const adbus_Message* msg, adbus_MsgFactory* ret, const char* error)
-{
-    adbus_msg_reset(ret);
-    adbus_msg_settype(ret, ADBUS_MSG_ERROR);
-    adbus_msg_setflags(ret, ADBUS_MSG_NO_REPLY);
-
-    adbus_msg_setreply(ret, msg->serial);
-    adbus_msg_seterror(ret, error, -1);
-
-    if (msg->destination) {
-        adbus_msg_setdestination(ret, msg->destination, msg->destinationSize);
-    }
-}
-
-void adbusI_sendInterfaceError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
-{
-    SetupError(msg, ret, "nz.co.foobar.adbus.InvalidInterface");
-
-    adbus_msg_setsig(ret, "s", 1);
-    adbus_msg_string_f(
-            ret,
-            "The path '%s' does not export the interface '%s'.",
-            msg->path,
-            msg->interface,
-            msg->member);
-
-    adbus_msg_send(ret, c);
-}
-
 /* ------------------------------------------------------------------------- */
 
 int adbusI_methodError(adbus_CbData* d)
@@ -350,30 +321,6 @@ int adbusI_methodError(adbus_CbData* d)
                 d->msg->path,
                 d->msg->member);
     }
-}
-
-void adbusI_sendMethodError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
-{
-    SetupError(msg, ret, "nz.co.foobar.adbus.InvalidMethod");
-
-    adbus_msg_setsig(ret, "s", 1);
-
-    if (msg->interface) {
-        adbus_msg_string_f(
-                ret,
-                "The path '%s' does not export the method '%s.%s'.",
-                msg->path,
-                msg->interface,
-                msg->member);
-    } else {
-        adbus_msg_string_f(
-                ret,
-                "The path '%s' does not export the method '%s'.",
-                msg->path,
-                msg->member);
-    }
-
-    adbus_msg_send(ret, c);
 }
 
 /* ------------------------------------------------------------------------- */

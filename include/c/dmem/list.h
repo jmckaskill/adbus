@@ -20,14 +20,11 @@
     for (i = (head)->next; i != NULL; i = i->field.next)
 
 #define DLIST_INIT(name, type)                                          \
+    typedef type* dl_##name##_p;                                        \
     typedef struct {                                                    \
         type* next;                                                     \
         type* prev;                                                     \
     } dl_##name##_t;                                                    \
-    DMEM_INLINE void dl_init_##name(dl_##name##_t* head)                \
-    {                                                                   \
-        head->next = head->prev = NULL;                                 \
-    }                                                                   \
     DMEM_INLINE type* dl_type_##name(dl_##name##_t* h, ptrdiff_t off)   \
     {                                                                   \
         char* ctype = ((char*) h) - off;                                \
@@ -37,6 +34,10 @@
     {                                                                   \
         char* chandle = ((char*) v) + off;                              \
         return (dl_##name##_t*) chandle;                                \
+    }                                                                   \
+    DMEM_INLINE void dl_init_##name(dl_##name##_t* head)                \
+    {                                                                   \
+        head->next = head->prev = NULL;                                 \
     }                                                                   \
     DMEM_INLINE void dl_remove_##name(type* v, dl_##name##_t* h)        \
     {                                                                   \
@@ -107,7 +108,7 @@
 #define dil_getiter(head)                       ((head)->u.iter)
 
 #define DIL_FOREACH(name, i, head, field)                               \
-    for (i = (head)->next, dil_setiter(head, i->field.next);            \
+    for (i = (head)->next;                                              \
          i && (dil_setiter(head, i->field.next), i);                    \
          i = dil_getiter(head))
 

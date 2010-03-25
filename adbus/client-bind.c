@@ -408,8 +408,9 @@ void adbusI_freeObjectTree(adbusI_ObjectTree* t)
 
 /* -------------------------------------------------------------------------- */
 
-adbus_Member* adbusI_getMethod(adbus_Connection* c, adbus_CbData* d, adbus_ConnBind** bind)
+int adbusI_dispatchMethod(adbus_Connection* c, adbus_CbData* d)
 {
+    adbus_ConnBind* bind;
     adbus_Member* member;
 
     if (d->msg->interface) {
@@ -422,11 +423,10 @@ adbus_Member* adbusI_getMethod(adbus_Connection* c, adbus_CbData* d, adbus_ConnB
                 d->msg->pathSize,
                 d->msg->interface,
                 (int) d->msg->interfaceSize,
-                bind);
+                &bind);
 
         if (!interface) {
-            adbusI_sendInterfaceError(c, d->msg, c->errorMessage);
-            return NULL;
+            return adbusI_interfaceError(d);
         }
 
         member = adbus_iface_method(
@@ -444,16 +444,15 @@ adbus_Member* adbusI_getMethod(adbus_Connection* c, adbus_CbData* d, adbus_ConnB
                 d->msg->pathSize,
                 d->msg->member,
                 (int) d->msg->memberSize,
-                bind);
+                &bind);
 
     }
 
     if (!member) {
-        adbusI_sendMethodError(c, d->msg, c->errorMessage);
-        return NULL;
+        return adbusI_methodError(d);
     }
 
-    return member;
+    return adbus_mbr_call(member, bind, d);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -886,14 +886,11 @@ namespace adbus
         uint32_t serial() const
         { return adbus_conn_serial(m_C); }
 
-        int parse()
-        { return adbus_conn_parse(m_C); }
+        int parse(const char* data, size_t size)
+        { return adbus_conn_parse(m_C, data, size); }
 
-        int parseStep()
-        { return adbus_conn_parse(m_C); }
-
-        void setBuffer(adbus_Buffer* buf)
-        { adbus_conn_setbuffer(m_C, buf); }
+        int step()
+        { return adbus_conn_continue(m_C); }
 
         int dispatch(adbus_Message* msg)
         { return adbus_conn_dispatch(m_C, msg); }
@@ -988,6 +985,12 @@ namespace adbus
         : m_Callback(NULL), m_CUser(NULL), m_Error(NULL), m_EUser(NULL)
         { 
             m_Proxy = adbus_proxy_new(o->state()); 
+        }
+
+        Proxy(adbus_State* state) 
+        : m_Callback(NULL), m_CUser(NULL), m_Error(NULL), m_EUser(NULL)
+        { 
+            m_Proxy = adbus_proxy_new(state); 
         }
 
         ~Proxy()

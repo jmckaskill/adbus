@@ -29,9 +29,7 @@
 
 ADBUSI_FUNC int adbusI_pathError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_interfaceError(adbus_CbData* d);
-ADBUSI_FUNC void adbusI_sendInterfaceError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret);
 ADBUSI_FUNC int adbusI_methodError(adbus_CbData* d);
-ADBUSI_FUNC void adbusI_sendMethodError(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret);
 ADBUSI_FUNC int adbusI_propertyError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_propWriteError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_propReadError(adbus_CbData* d);

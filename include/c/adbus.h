@@ -439,7 +439,7 @@ ADBUS_API int adbus_conn_dispatch(
         adbus_Message*          message);
 
 /* returns 0 on continue, 1 on finish, -1 on error */
-ADBUS_API int adbus_conn_parsestep(
+ADBUS_API int adbus_conn_continue(
         adbus_Connection*       connection);
 
 ADBUS_API int adbus_conn_parsecb(

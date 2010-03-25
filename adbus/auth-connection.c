@@ -57,7 +57,9 @@ int adbus_aconn_parse(adbus_AuthConnection* c)
         if (!c->authenticated)
             return 0;
 
-        c->authCallback(c->user);
+        if (c->authCallback) {
+            c->authCallback(c->user);
+        }
 
         if (c->connectToBus) {
             adbus_conn_connect(c->connection, c->connectCallback, c->user);

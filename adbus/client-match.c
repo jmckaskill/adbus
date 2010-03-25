@@ -383,7 +383,7 @@ static adbus_Bool TrackedMatches(adbusI_TrackedRemote* r, const char* msg, size_
     return memcmp(msg, r->unique.str, msgsz) == 0;
 }
 
-int adbusI_dispatchMatch(adbus_ConnMatch* match, adbus_CbData* d)
+int adbusI_dispatchMatch(adbus_ConnMatch* m, adbus_CbData* d)
 {
     if (!adbusI_matchesMessage(&m->m, d->msg))
         return 0;
@@ -394,12 +394,12 @@ int adbusI_dispatchMatch(adbus_ConnMatch* match, adbus_CbData* d)
     if (!TrackedMatches(m->destination, d->msg->destination, d->msg->destinationSize))
         return 0;
 
-    d->user1 = match->m.cuser;
+    d->user1 = m->m.cuser;
 
-    if (match->m.proxy) {
-        return match->m.proxy(match->m.puser, match->m.callback, d);
+    if (m->m.proxy) {
+        return m->m.proxy(m->m.puser, m->m.callback, d);
     } else {
-        return adbus_dispatch(match->m.callback, d);
+        return adbus_dispatch(m->m.callback, d);
     }
 }
 

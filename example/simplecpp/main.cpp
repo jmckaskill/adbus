@@ -33,9 +33,17 @@
 #   include <sys/socket.h>
 #endif
 
-static int Send(void* d, adbus_Message* m)
+static int SendMsg(void* d, adbus_Message* m)
 { return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
 
+static int Send(void* d, const char* b, size_t sz)
+{ return (int) send(*(adbus_Socket*) d, b, sz, 0); }
+
+static uint8_t Rand(void* d)
+{ return (uint8_t) rand(); }
+
+static int Recv(void* d, char* buf, size_t sz)
+{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
 
 class Quitter : public adbus::State
 {
@@ -60,39 +68,46 @@ static adbus::Interface<Quitter>* Interface()
     return i;
 }
 
-#define RECV_SIZE 64 * 1024
+static adbus_ConnectionCallbacks cbs;
+static adbus_AuthConnection c;
+static adbus_State* state;
+
+static void Connected(void*)
+{
+    state = adbus_state_new();
+
+    adbus::Proxy bus(state);
+    bus.init(c.connection, "org.freedesktop.DBus", "/");
+    bus.call("RequestName", "nz.co.foobar.adbus.SimpleCppTest", uint32_t(0));
+
+}
 
 int main()
 {
-    adbus_Buffer* buf = adbus_buf_new();
     adbus_Socket s = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (s == ADBUS_SOCK_INVALID || adbus_sock_cauth(s, buf))
+    if (s == ADBUS_SOCK_INVALID)
         abort();
 
-    adbus_ConnectionCallbacks cbs = {};
-    cbs.send_message = &Send;
-    adbus::Connection c(&cbs, &s);
-    c.setBuffer(buf);
+    cbs.send_message    = &SendMsg;
+    cbs.recv_data       = &Recv;
+
+    c.connection        = adbus_conn_new(&cbs, &s);
+    c.auth              = adbus_cauth_new(&Send, &Rand, &s);
+    c.recvCallback      = &Recv;
+    c.user              = &s;
+    c.connectToBus      = 1;
+    c.connectCallback   = &Connected;
 
     Quitter q;
-    q.bind(c, "/", Interface(), &q);
+    q.bind(c.connection, "/", Interface(), &q);
 
-    // Once we are all setup, we connect to the bus
-    c.connectToBus();
-    adbus::State state;
-    adbus::Proxy bus(&state);
-    bus.init(c, "org.freedesktop.DBus", "/");
-    bus.call("RequestName", "nz.co.foobar.adbus.SimpleCppTest", uint32_t(0));
+    adbus_cauth_external(c.auth);
+    adbus_aconn_connect(&c);
 
     while(!q.m_Quit) {
-        char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
-        int recvd = recv(s, dest, RECV_SIZE, 0);
-        adbus_buf_recvd(buf, RECV_SIZE, recvd);
-        if (recvd < 0)
+        if (adbus_aconn_parse(&c)) {
             abort();
-
-        if (c.parse())
-            abort();
+        }
     }
 
     return 0;

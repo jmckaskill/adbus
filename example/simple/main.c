@@ -34,6 +34,18 @@
 
 #undef interface
 
+static int SendMsg(void* d, adbus_Message* m)
+{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
+
+static int Send(void* d, const char* buf, size_t sz)
+{ return (int) send(*(adbus_Socket*) d, buf, sz, 0); }
+
+static int Recv(void* d, char* buf, size_t sz)
+{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
+
+static uint8_t Rand(void* d)
+{ return (uint8_t) rand(); }
+
 static int quit = 0;
 
 static int Quit(adbus_CbData* data)
@@ -43,23 +55,26 @@ static int Quit(adbus_CbData* data)
     return 0;
 }
 
-static int Send(void* d, adbus_Message* m)
-{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
-
-#define RECV_SIZE 64 * 1024
+static adbus_ConnectionCallbacks cbs;
+static adbus_AuthConnection c;
+static adbus_State* state;
 
 int main(void)
 {
-    adbus_Buffer* buf = adbus_buf_new();
-    adbus_Socket s = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (s == ADBUS_SOCK_INVALID || adbus_sock_cauth(s, buf))
+    adbus_Socket sock = adbus_sock_connect(ADBUS_SESSION_BUS);
+    if (sock == ADBUS_SOCK_INVALID)
         abort();
 
-    adbus_ConnectionCallbacks cbs = {};
-    cbs.send_message = &Send;
+    state               = adbus_state_new();
 
-    adbus_Connection* c = adbus_conn_new(&cbs, &s);
-    adbus_conn_setbuffer(c, buf);
+    cbs.send_message    = &SendMsg;
+    cbs.recv_data       = &Recv;
+
+    c.connection        = adbus_conn_new(&cbs, &sock);
+    c.auth              = adbus_cauth_new(&Send, &Rand, &sock);
+    c.recvCallback      = &Recv;
+    c.user              = &sock;
+    c.connectToBus      = 1;
 
     adbus_Interface* i = adbus_iface_new("nz.co.foobar.adbus.SimpleTest", -1);
     adbus_Member* mbr = adbus_iface_addmethod(i, "Quit", -1);
@@ -69,24 +84,19 @@ int main(void)
     adbus_bind_init(&b);
     b.interface = i;
     b.path      = "/";
-    adbus_conn_bind(c, &b);
+    adbus_state_bind(state, c.connection, &b);
+    adbus_iface_deref(i);
 
-    adbus_conn_connect(c, NULL, NULL);
+    adbus_aconn_connect(&c);
 
     while(!quit) {
-        char* dest = adbus_buf_recvbuf(buf, RECV_SIZE);
-        int recvd = recv(s, dest, RECV_SIZE, 0);
-        adbus_buf_recvd(buf, RECV_SIZE, recvd);
-        if (recvd < 0)
+        if (adbus_aconn_parse(&c)) {
             abort();
-
-        if (adbus_conn_parse(c))
-            abort();
+        }
     }
 
-    adbus_buf_free(buf);
-    adbus_iface_free(i);
-    adbus_conn_free(c);
+    adbus_conn_free(c.connection);
+    adbus_auth_free(c.auth);
 
     return 0;
 }

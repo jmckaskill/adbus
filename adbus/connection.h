@@ -32,19 +32,20 @@
 #include "client-reply.h"
 #include "tracker.h"
 
-struct adbusI_ConnStack
+DLIST_INIT(ConnMsg, adbusI_ConnMsg)
+
+struct adbusI_ConnMsg
 {
-    adbus_Buffer*               buf;
+    d_List(ConnMsg)             hl;
+    int                         ref;
     adbus_Message               msg;
+    adbus_Buffer*               buf;
+    adbus_MsgFactory*           ret;
     adbus_Bool                  matchStarted;
     adbus_Bool                  matchFinished;
     adbus_Bool                  msgFinished;
-    size_t                      used;
-    adbus_Bool                  active;
 };
 
-DVECTOR_INIT(ConnStack, adbusI_ConnStack)
-DVECTOR_INIT(MsgFactory, adbus_MsgFactory*)
 
 struct adbus_Connection
 {
@@ -61,15 +62,12 @@ struct adbus_Connection
     adbus_Interface*            introspectable;
     adbus_Interface*            properties;
 
-    adbus_Message               parseMessage;
-    adbus_Buffer*               parseBuffer;
-    adbus_Bool                  dispatchMatch;
-    adbus_MsgFactory*           errorMessage;
-    d_Vector(ConnStack)         stack;
-    size_t                      stackSize;
+    adbus_MsgFactory*           dispatchReturn;
+    adbusI_ConnMsg*             next;
+    d_List(ConnMsg)             extra;
 
-    d_Vector(MsgFactory)        returnMessages;
-    size_t                      returnSize;
+    adbusI_ConnMsg*             current;
+    adbusI_ConnMsg              toprocess;
 
     adbusI_ConnBusData          connect;
     adbusI_ObjectTree           binds;

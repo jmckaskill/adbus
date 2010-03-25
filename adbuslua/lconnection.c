@@ -67,9 +67,6 @@ static int NewConnection(lua_State* L)
     c->L            = L;
     c->connection   = adbus_conn_new(&cb, c);
     c->message      = adbus_msg_new();
-    c->buf          = adbus_buf_new();
-
-    adbus_conn_setbuffer(c->connection, c->buf);
 
     lua_newtable(L);
     c->errors = luaL_ref(L, LUA_REGISTRYINDEX);
@@ -90,7 +87,6 @@ static int CloseConnection(lua_State* L)
 
     adbus_conn_free(c->connection);
     adbus_msg_free(c->message);
-    adbus_buf_free(c->buf);
     luaL_unref(L, LUA_REGISTRYINDEX, c->sender);
     luaL_unref(L, LUA_REGISTRYINDEX, c->connect);
     luaL_unref(L, LUA_REGISTRYINDEX, c->errors);
@@ -114,8 +110,7 @@ static int Parse(lua_State* L)
     lua_rawgeti(L, LUA_REGISTRYINDEX, c->errors);
     int errlist = lua_gettop(L);
 
-    adbus_buf_append(c->buf, data, size);
-    if (adbus_conn_parse(c->connection))
+    if (adbus_conn_parse(c->connection, data, size))
         return luaL_error(L, "Parse error");
 
     if (lua_objlen(L, errlist) > 0)

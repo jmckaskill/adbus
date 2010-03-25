@@ -36,10 +36,23 @@
 #endif
 
 
-static int replies = 0;
-
-static int Send(void* d, adbus_Message* m)
+static int SendMsg(void* d, adbus_Message* m)
 { return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
+
+static int Send(void* d, const char* buf, size_t sz)
+{ return (int) send(*(adbus_Socket*) d, buf, sz, 0); }
+
+static int Recv(void* d, char* buf, size_t sz)
+{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
+
+static uint8_t Rand(void* d)
+{ return (uint8_t) rand(); }
+
+#define REPEAT 1000000
+static int replies = REPEAT;
+static adbus_ConnectionCallbacks cbs;
+static adbus_AuthConnection c;
+static adbus_State* state;
 
 static int Reply(adbus_CbData* d)
 {
@@ -57,18 +70,36 @@ static int Error(adbus_CbData* d)
     return 0;
 }
 
-#define RECV_SIZE 1024 * 32
-#define REPEAT 1000
+static void Connected(void* u)
+{
+    int i;
+    adbus_Proxy* proxy;
+
+    (void) u;
+
+    state = adbus_state_new();
+
+    proxy = adbus_proxy_new(state);
+    adbus_proxy_init(proxy, c.connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
+
+    for (i = 0; i < replies; ++i) {
+        adbus_Call f;
+
+        adbus_call_method(proxy, &f, "Ping", -1);
+        f.callback = &Reply;
+        f.error = &Error;
+
+        adbus_msg_setsig(f.msg, "s", -1);
+        adbus_msg_string(f.msg, "str", -1);
+
+        adbus_call_send(proxy, &f);
+    }
+}
+
 int main()
 {
-    adbus_Connection* connection;
-    adbus_Buffer* buffer;
-    adbus_ConnectionCallbacks cbs;
     adbus_Socket sock;
-    adbus_State* state;
-    adbus_Proxy* proxy;
     uint64_t ns;
-    int i;
 
 #ifdef _WIN32
     LARGE_INTEGER start, end, freq;
@@ -84,51 +115,32 @@ int main()
     gettimeofday(&start, NULL);
 #endif
 
-    buffer = adbus_buf_new();
-    sock = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (sock == ADBUS_SOCK_INVALID || adbus_sock_cauth(sock, buffer))
+    sock = adbus_sock_connect(ADBUS_DEFAULT_BUS);
+    if (sock == ADBUS_SOCK_INVALID)
         abort();
 
-    memset(&cbs, 0, sizeof(cbs));
-    cbs.send_message = &Send;
+    cbs.send_message    = &SendMsg;
+    cbs.recv_data       = &Recv;
 
-    connection = adbus_conn_new(&cbs, &sock);
-    adbus_conn_setbuffer(connection, buffer);
-    adbus_conn_connect(connection, NULL, NULL);
+    c.connection        = adbus_conn_new(&cbs, &sock);
+    c.auth              = adbus_cauth_new(&Send, &Rand, &sock);
+    c.recvCallback      = &Recv;
+    c.user              = &sock;
+    c.connectToBus      = 1;
+    c.connectCallback   = &Connected;
 
-    state = adbus_state_new();
-    proxy = adbus_proxy_new(state);
-    adbus_proxy_init(proxy, connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
-
-    for (i = 0; i < REPEAT; ++i) {
-        adbus_Call f;
-        adbus_call_method(proxy, &f, "Ping", -1);
-        f.callback = &Reply;
-        f.error = &Error;
-
-        adbus_msg_setsig(f.msg, "s", -1);
-        adbus_msg_string(f.msg, "str", -1);
-
-        replies++;
-        adbus_call_send(proxy, &f);
-    }
+    adbus_cauth_external(c.auth);
+    adbus_aconn_connect(&c);
 
     while(replies > 0) {
-        char* dest = adbus_buf_recvbuf(buffer, RECV_SIZE);
-        int recvd = recv(sock, dest, RECV_SIZE, 0);
-        adbus_buf_recvd(buffer, RECV_SIZE, recvd);
-
-        if (recvd < 0)
+        if (adbus_aconn_parse(&c)) {
             abort();
-
-        if (adbus_conn_parse(connection))
-            abort();
+        }
     }
 
-    adbus_proxy_free(proxy);
     adbus_state_free(state);
-    adbus_conn_free(connection);
-    adbus_buf_free(buffer);
+    adbus_conn_free(c.connection);
+    adbus_auth_free(c.auth);
 
 #ifdef _WIN32
     QueryPerformanceCounter(&end);
@@ -138,6 +150,7 @@ int main()
     timersub(&end, &start, &diff);
     ns = (diff.tv_sec * 1000000 + diff.tv_usec) * 1000 / REPEAT;
 #endif
+
     fprintf(stderr, "Time %d ns\n", (int) ns);
 
     return 0;

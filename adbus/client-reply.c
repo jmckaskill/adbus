@@ -371,9 +371,9 @@ int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
 
         if (cb) {
             if (reply->proxy) {
-                ret = reply->proxy(reply->puser, cb, &d);
+                ret = reply->proxy(reply->puser, cb, d);
             } else {
-                ret = adbus_dispatch(cb, &d);
+                ret = adbus_dispatch(cb, d);
             }
         }
 

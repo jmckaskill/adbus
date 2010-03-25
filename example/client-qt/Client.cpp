@@ -39,15 +39,15 @@ QtClient::QtClient(QObject* parent)
 {
     adbus_ConnectionCallbacks cbs = {};
     cbs.send_message = &SendMsg;
+    cbs.recv_data = &Receive;
 
     memset(&m_C, 0, sizeof(m_C));
     m_C.connection      = adbus_conn_new(&cbs, this);
-    m_C.buffer          = adbus_buf_new();
     m_C.auth            = adbus_cauth_new(&Send, &Rand, this);
+    m_C.recvCallback    = &Receive;
     m_C.authCallback    = &Authenticated;
-    m_C.authUser        = this;
     m_C.connectCallback = &Connected;
-    m_C.connectUser     = this;
+    m_C.user            = this;
 
     adbus_cauth_external(m_C.auth);
 }
@@ -61,7 +61,12 @@ QtClient::~QtClient()
     }
     adbus_conn_free(m_C.connection);
     adbus_auth_free(m_C.auth);
-    adbus_buf_free(m_C.buffer);
+}
+
+int QtClient::Receive(void* d, char* buf, size_t sz)
+{
+    QtClient* c = (QtClient*) d;
+    return c->m_Socket ? c->m_Socket->read(buf, sz) : -1;
 }
 
 int QtClient::SendMsg(void* d, adbus_Message* m)
@@ -155,15 +160,9 @@ void QtClient::socketConnected()
 
 void QtClient::socketReadyRead()
 {
-    qint64 read;
-    do {
-        char* dest = adbus_buf_recvbuf(m_C.buffer, RECV_SIZE);
-        read = m_Socket->read(dest, RECV_SIZE);
-        adbus_buf_recvd(m_C.buffer, RECV_SIZE, read);
-    } while (read == RECV_SIZE);
-
-    if (adbus_aconn_parse(&m_C) || read < 0)
+    if (adbus_aconn_parse(&m_C)) {
         disconnect();
+    }
 }
 
 void QtClient::Authenticated(void* u)

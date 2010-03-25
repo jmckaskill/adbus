@@ -105,9 +105,10 @@ namespace adbus {
         void disconnect();
 
     private:
-        static int      SendMsg(void* d, adbus_Message* m);
-        static int      Send(void* d, const char* b, size_t sz);
-        static uint8_t  Rand(void* d);
+        static int      SendMsg(void* u, adbus_Message* m);
+        static int      Send(void* u, const char* b, size_t sz);
+        static uint8_t  Rand(void* u);
+        static int      Receive(void* u, char* buf, size_t sz);
         static void     Connected(void* u);
         static void     Authenticated(void* u);
         

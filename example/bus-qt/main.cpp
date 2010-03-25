@@ -34,8 +34,6 @@ int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
 
-    adbus_set_logger(&Log);
-
     //TcpServer* s = new TcpServer;
     //if (!s->listen(QHostAddress::LocalHost, 12345))
     LocalServer* s = new LocalServer;

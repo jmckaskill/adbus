@@ -417,6 +417,7 @@ void adbus_auth_free(adbus_Auth* a)
     if (a) {
         ds_free(&a->id);
         ds_free(&a->okCmd);
+        adbus_buf_free(a->buf);
         free(a);
     }
 }
@@ -434,6 +435,7 @@ adbus_Auth* adbus_sauth_new(
         void*               data)
 {
     adbus_Auth* a   = NEW(adbus_Auth);
+    a->buf          = adbus_buf_new();
     a->server       = 1;
     a->external     = AUTH_NOT_SUPPORTED;
     a->send         = send;
@@ -488,6 +490,7 @@ adbus_Auth* adbus_cauth_new(
         void*               data)
 {
     adbus_Auth* a   = NEW(adbus_Auth);
+    a->buf          = adbus_buf_new();
     a->server       = 0;
     a->external     = AUTH_NOT_SUPPORTED;
     a->send         = send;
@@ -788,7 +791,7 @@ int adbus_auth_parse(adbus_Auth* a, const char* data, size_t sz, adbus_Bool* fin
 
     adbus_buf_append(a->buf, data, sz);
 
-    while (1) {
+    while (!ret) {
         size_t len;
         const char* line = adbus_buf_line(a->buf, &len);
 
