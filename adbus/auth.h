@@ -51,27 +51,8 @@ struct adbus_Auth
     d_String                id;
     d_String                okCmd;
     adbus_Bool              okSent;
+    adbus_Buffer*           buf;
+    adbus_Bool              successful;
 };
 
-ADBUS_API void adbus_auth_free(adbus_Auth* a);
 
-ADBUS_API adbus_Auth* adbus_sauth_new(
-        adbus_SendCallback  send,
-        adbus_RandCallback  rand,
-        void*               data);
-
-ADBUS_API void adbus_sauth_setuuid(adbus_Auth* a, const char* uuid);
-
-ADBUS_API void adbus_sauth_external(
-        adbus_Auth*             a,
-        adbus_ExternalCallback  cb);
-
-ADBUS_API adbus_Auth* adbus_cauth_new(
-        adbus_SendCallback  send,
-        adbus_RandCallback  rand,
-        void*               data);
-
-ADBUS_API void adbus_cauth_external(adbus_Auth* a);
-ADBUS_API int adbus_cauth_start(adbus_Auth* a);
-ADBUS_API int adbus_auth_line(adbus_Auth* a, const char* line, size_t len);
-ADBUS_API int adbus_auth_parse(adbus_Auth* a, adbus_Buffer* buf);

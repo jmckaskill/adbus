@@ -182,6 +182,7 @@ typedef uint32_t                        adbus_Bool;
 #   define ADBUS_SOCK_INVALID -1
 #endif
 
+typedef int             (*adbus_RecvCallback)(void*, char*, size_t);
 typedef int             (*adbus_SendCallback)(void*, const char*, size_t);
 typedef uint8_t         (*adbus_RandCallback)(void*);
 typedef int             (*adbus_MsgCallback)(adbus_CbData* d);
@@ -324,24 +325,23 @@ ADBUS_API int adbus_cauth_start(adbus_Auth* a);
 
 ADBUS_API void adbus_auth_free(adbus_Auth* a);
 
-/* Returns -1 on error, 1 on completion, and 0 on continue */
-ADBUS_API int adbus_auth_parse(adbus_Auth* a, adbus_Buffer* buf);
-ADBUS_API int adbus_auth_line(adbus_Auth* a, const char* line, size_t len);
+/* Returns data consumed or -1 on error */
+ADBUS_API int adbus_auth_parse(adbus_Auth* a, const char* data, size_t sz, adbus_Bool* finished);
 
 
 struct adbus_AuthConnection
 {
-    adbus_Buffer*       buffer;
     adbus_Auth*         auth;
     adbus_Connection*   connection;
+
+    void*               user;
+
     adbus_Bool          authenticated;
-
-    adbus_Callback      authCallback;
-    void*               authUser;
-
     adbus_Bool          connectToBus;
+
+    adbus_RecvCallback  recvCallback;
+    adbus_Callback      authCallback;
     adbus_Callback      connectCallback;
-    void*               connectUser;
 };
 
 ADBUS_API int adbus_aconn_connect(adbus_AuthConnection* c);
@@ -386,6 +386,7 @@ struct adbus_ConnectionCallbacks
 {
     adbus_Callback                release;
     adbus_SendMsgCallback         send_message;
+    adbus_RecvCallback            recv_data;
     adbus_ProxyCallback           proxy;
     adbus_ShouldProxyCallback     should_proxy;
     adbus_GetProxyCallback        get_proxy;
@@ -441,12 +442,13 @@ ADBUS_API int adbus_conn_dispatch(
 ADBUS_API int adbus_conn_parsestep(
         adbus_Connection*       connection);
 
-ADBUS_API int adbus_conn_parse(
+ADBUS_API int adbus_conn_parsecb(
         adbus_Connection*       connection);
 
-ADBUS_API void adbus_conn_setbuffer(
+ADBUS_API int adbus_conn_parse(
         adbus_Connection*       connection,
-        adbus_Buffer*           buffer);
+        const char*             data,
+        size_t                  size);
 
 ADBUS_API void adbus_conn_connect(
         adbus_Connection*       connection,

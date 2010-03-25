@@ -686,17 +686,12 @@ end:
 }
 
 /* -------------------------------------------------------------------------- */
-/** Parses a line received from the remote.
- *  \relates adbus_Auth
- *  
- *  This is mainly used if you want to filter the received auth lines.
- *  Otherwise its easier to use adbus_auth_parse().
- *
+/*  Parses a line received from the remote.
  *  \return 1 on success
  *  \return 0 on continue
  *  \return -1 on error
  */
-int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
+static int ProcessLine(adbus_Auth* a, const char* line, size_t len)
 {
     const char *end, *cmdb, *cmde;
     size_t cmdsz;
@@ -774,24 +769,48 @@ int adbus_auth_line(adbus_Auth* a, const char* line, size_t len)
 }
 
 /* -------------------------------------------------------------------------- */
-/** Consumes auth lines from the supplied buffer
+/** Consumes the provided data 
  *  \relates adbus_Auth
  *
- *  \return 1 on success
- *  \return 0 on continue
  *  \return -1 on error
+ *  \return how much data was used (this will be \a sz if more data is needed)
  */
-int adbus_auth_parse(adbus_Auth* a, adbus_Buffer* buf)
+int adbus_auth_parse(adbus_Auth* a, const char* data, size_t sz, adbus_Bool* finished)
 {
-    size_t len;
     int ret = 0;
-    const char* line = adbus_buf_line(buf, &len);
-    while (line && !ret) {
-        ret = adbus_auth_line(a, line, len);
-        adbus_buf_remove(buf, 0, len);
-        line = adbus_buf_line(buf, &len);
+
+    if (a->successful) {
+        *finished = 1;
+        return 0;
     }
-    return ret;
+
+    *finished = 0;
+
+    adbus_buf_append(a->buf, data, sz);
+
+    while (1) {
+        size_t len;
+        const char* line = adbus_buf_line(a->buf, &len);
+
+        /* Need more data */
+        if (!line) {
+            return sz;
+        }
+
+        ret = ProcessLine(a, line, len);
+        adbus_buf_remove(a->buf, 0, len);
+    }
+
+    if (ret < 0) {
+        /* Error */
+        return -1;
+
+    } else {
+        /* Success */
+        a->successful = 1;
+        *finished = 1;
+        return sz - adbus_buf_size(a->buf);
+    }
 }
 
 

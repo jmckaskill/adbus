@@ -68,6 +68,7 @@ typedef struct adbusI_ObjectNode adbusI_ObjectNode;
 typedef struct adbusI_ConnBusData adbusI_ConnBusData;
 typedef struct adbusI_StateData adbusI_StateData;
 typedef struct adbusI_StateConn adbusI_StateConn;
+typedef struct adbusI_ConnStack adbusI_ConnStack;
 
 #include "debug.h"
 #include "misc.h"

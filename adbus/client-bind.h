@@ -76,7 +76,7 @@ ADBUSI_FUNC void adbusI_derefObjectNode(adbusI_ObjectNode* n);
 ADBUSI_FUNC adbusI_ObjectNode* adbusI_getObjectNode(adbus_Connection* c, dh_strsz_t path);
 ADBUSI_FUNC void adbusI_freeObjectTree(adbusI_ObjectTree* t);
 
-ADBUSI_FUNC adbus_Member* adbusI_getMethod(adbus_Connection* c, adbus_CbData* d, adbus_ConnBind** bind);
+ADBUSI_FUNC int adbusI_dispatchMethod(adbus_Connection* c, adbus_CbData* d);
 
 ADBUSI_FUNC int adbusI_introspect(adbus_CbData* d);
 

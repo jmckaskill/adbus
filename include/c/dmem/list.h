@@ -92,6 +92,7 @@
  * DIL_FOREACH(SomeName, i, &list, lh) {
  *    dowork(i);
  *    dil_remove(SomeName, i);
+ *    free(i);
  * }
  */
 
@@ -102,23 +103,29 @@
 #define dil_insert_before(name, head, v, h)     dil_insert_before_##name(head, v, h)
 #define dil_insert_after(name, head, v, h)      dil_insert_after_##name(head, v, h)
 #define dil_isempty(head)                       ((head)->next == NULL)
-#define dil_setiter(head, v)                    ((head)->iter = v)
-#define dil_getiter(head)                       ((head)->iter)
+#define dil_setiter(head, v)                    ((head)->u.iter = v)
+#define dil_getiter(head)                       ((head)->u.iter)
 
 #define DIL_FOREACH(name, i, head, field)                               \
-    for ((head)->iter = NULL, i = (head)->next;                         \
-         (head)->iter = (i ? i->field.next : NULL), i != NULL;          \
-         i = (head)->iter)
+    for (i = (head)->next, dil_setiter(head, i->field.next);            \
+         i && (dil_setiter(head, i->field.next), i);                    \
+         i = dil_getiter(head))
 
 #define DILIST_INIT(name, type)                                         \
-    typedef struct {                                                    \
+    typedef struct dil_##name##_t dil_##name##_t;                       \
+    union dil_##name##_u {                                              \
+        type**         pheaditer;   /* used in the nodes */             \
+        type*          iter;       /* used in the head */               \
+    };                                                                  \
+    struct dil_##name##_t {                                             \
         type* next;                                                     \
         type* prev;                                                     \
-        type* iter;                                                     \
-    } dil_##name##_t;                                                   \
+        union dil_##name##_u u;                                         \
+    };                                                                  \
     DMEM_INLINE void dil_init_##name(dil_##name##_t* head)              \
     {                                                                   \
-        head->next = head->prev = head->iter = NULL;                    \
+        head->next = head->prev = NULL;                                 \
+        head->u.iter = NULL;                                            \
     }                                                                   \
     DMEM_INLINE type* dil_type_##name(dil_##name##_t* h, ptrdiff_t off) \
     {                                                                   \
@@ -132,21 +139,23 @@
     }                                                                   \
     DMEM_INLINE void dil_clear_##name(dil_##name##_t* head)             \
     {                                                                   \
-        head->next = head->prev = head->iter = NULL;                    \
+        head->next = head->prev = NULL;                                 \
+        head->u.iter = NULL;                                            \
     }                                                                   \
     DMEM_INLINE void dil_remove_##name(type* v, dil_##name##_t* h)      \
     {                                                                   \
         ptrdiff_t off = ((char*) h) - ((char*) v);                      \
-        type** iter = (type**) h->iter;                                 \
-        if (iter && *iter == v)                                         \
-            *iter = NULL;                                               \
+        /* If we are currently the value of the iter then push it on to next*/ \
+        type** piter = h->u.pheaditer;                                  \
+        if (piter && *piter == v)                                       \
+            *piter = h->next;                                           \
         if (h->next)                                                    \
             dil_handle_##name(h->next, off)->prev = h->prev;            \
         if (h->prev)                                                    \
             dil_handle_##name(h->prev, off)->next = h->next;            \
         h->next = NULL;                                                 \
         h->prev = NULL;                                                 \
-        h->iter = NULL;                                                 \
+        h->u.iter = NULL;                                               \
     }                                                                   \
     DMEM_INLINE void dil_insert_before_##name(                          \
             dil_##name##_t*  head,                                      \
@@ -156,7 +165,7 @@
         ptrdiff_t off = ((char*) h) - ((char*) v);                      \
         h->prev = head->prev;                                           \
         h->next = dil_type_##name(head, off);                           \
-        h->iter = (type*) &head->iter;                                  \
+        h->u.pheaditer = &head->u.iter;                                 \
         head->prev = v;                                                 \
         if (h->prev)                                                    \
             dil_handle_##name(h->prev, off)->next = v;                  \
@@ -169,7 +178,7 @@
         ptrdiff_t off = ((char*) h) - ((char*) v);                      \
         h->prev = dil_type_##name(head, off);                           \
         h->next = head->next;                                           \
-        h->iter = (type*) &head->iter;                                  \
+        h->u.pheaditer = &head->u.iter;                                 \
         head->next = v;                                                 \
         if (h->next)                                                    \
             dil_handle_##name(h->next, off)->prev = v;                  \

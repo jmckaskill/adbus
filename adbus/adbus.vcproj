@@ -233,6 +233,10 @@
 			</File>
 		</Filter>
 		<File
+			RelativePath=".\auth-connection.c"
+			>
+		</File>
+		<File
 			RelativePath=".\auth.c"
 			>
 		</File>

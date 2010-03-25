@@ -282,11 +282,11 @@ static void FreeReply(adbus_ConnReply* r)
 void adbusI_freeReplies(adbus_Connection* c)
 {
     adbus_ConnReply* r;
-    dh_clear(Reply, &c->replies.lookup);
     DIL_FOREACH (Reply, r, &c->replies.list, hl) {
         r->set = NULL;
         FreeReply(r);
     }
+    dh_free(Reply, &c->replies.lookup);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -315,7 +315,7 @@ void adbus_conn_removereply(
 
 #define BUS "org.freedesktop.DBus"
 
-adbus_ConnReply* adbusI_getReply(adbus_Connection* c, adbus_CbData* d)
+int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
 {
     dh_Iter ii;
     uint32_t serial;
@@ -324,16 +324,19 @@ adbus_ConnReply* adbusI_getReply(adbus_Connection* c, adbus_CbData* d)
     size_t sendsz, uniqsz;
 
     if (!d->msg->replySerial)
-        return NULL;
+        return 0;
 
     /* Lookup the reply */
 
     serial = *d->msg->replySerial;
     ii = dh_get(Reply, &c->replies.lookup, serial);
     if (ii == dh_end(&c->replies.lookup))
-        return NULL;
+        return 0;
 
     reply = dh_val(&c->replies.lookup, ii);
+
+    if (reply->incallback)
+        return 0;
 
     /* We only allow replies from the expected remote, bus server, or null for
      * security reasons
@@ -351,23 +354,37 @@ adbus_ConnReply* adbusI_getReply(adbus_Connection* c, adbus_CbData* d)
          * reply->set is still set, but we do it now, since we know ii and the
          * callback may invalidate ii.
          */
+        int ret = 0;
+        adbus_MsgCallback cb;
+
         dh_del(Reply, &c->replies.lookup, ii);
         reply->set = NULL;
-
         reply->incallback = 1;
 
-        return reply;
+        if (d->msg->type == ADBUS_MSG_RETURN) {
+            cb = reply->callback;
+            d->user1 = reply->cuser;
+        } else {
+            cb = reply->error;
+            d->user1 = reply->euser;
+        }
+
+        if (cb) {
+            if (reply->proxy) {
+                ret = reply->proxy(reply->puser, cb, &d);
+            } else {
+                ret = adbus_dispatch(cb, &d);
+            }
+        }
+
+        reply->incallback = 0;
+        FreeReply(reply);
+        return ret;
     }
     else 
     {
-        return NULL;
+        return 0;
     }
-}
-
-void adbusI_finishReply(adbus_ConnReply* reply)
-{
-    reply->incallback = 0;
-    FreeReply(reply);
 }
 
 

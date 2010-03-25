@@ -31,7 +31,6 @@
 int adbus_aconn_connect(adbus_AuthConnection* c)
 {
     c->authenticated = 0;
-    adbus_conn_setbuffer(c->connection, c->buffer);
     if (c->auth->send(c->auth->data, "\0", 1) != 1)
         return -1;
 
@@ -43,26 +42,31 @@ int adbus_aconn_connect(adbus_AuthConnection* c)
 int adbus_aconn_parse(adbus_AuthConnection* c)
 {
     if (!c->authenticated) {
-        int ret = adbus_auth_parse(c->auth, c->buffer);
 
-        if (ret <= 0) {
+        int recvd, used;
+        char buf[256];
+
+        recvd = c->recvCallback(c->user, buf, 256);
+        if (recvd < 0)
             return -1;
-        } else if (ret == 0) {
+
+        used = adbus_auth_parse(c->auth, buf, recvd, &c->authenticated);
+        if (used < 0)
+            return -1;
+
+        if (!c->authenticated)
             return 0;
-        } else {
-            if (c->authCallback) {
-                c->authCallback(c->authUser);
-            }
 
-            if (c->connectToBus) {
-                adbus_conn_connect(c->connection, c->connectCallback, c->connectUser);
-            }
+        c->authCallback(c->user);
 
-            return adbus_conn_parse(c->connection);
+        if (c->connectToBus) {
+            adbus_conn_connect(c->connection, c->connectCallback, c->user);
         }
-    } else {
-        return adbus_conn_parse(c->connection);
+
+        if (adbus_conn_parse(c->connection, buf + used, recvd - used))
+            return -1;
     }
 
+    return adbus_conn_parsecb(c->connection);
 }
 

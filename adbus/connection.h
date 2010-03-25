@@ -32,7 +32,18 @@
 #include "client-reply.h"
 #include "tracker.h"
 
+struct adbusI_ConnStack
+{
+    adbus_Buffer*               buf;
+    adbus_Message               msg;
+    adbus_Bool                  matchStarted;
+    adbus_Bool                  matchFinished;
+    adbus_Bool                  msgFinished;
+    size_t                      used;
+    adbus_Bool                  active;
+};
 
+DVECTOR_INIT(ConnStack, adbusI_ConnStack)
 DVECTOR_INIT(MsgFactory, adbus_MsgFactory*)
 
 struct adbus_Connection
@@ -54,8 +65,11 @@ struct adbus_Connection
     adbus_Buffer*               parseBuffer;
     adbus_Bool                  dispatchMatch;
     adbus_MsgFactory*           errorMessage;
+    d_Vector(ConnStack)         stack;
+    size_t                      stackSize;
+
     d_Vector(MsgFactory)        returnMessages;
-    size_t                      depth;
+    size_t                      returnSize;
 
     adbusI_ConnBusData          connect;
     adbusI_ObjectTree           binds;

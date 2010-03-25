@@ -400,243 +400,270 @@ uint32_t adbus_conn_serial(adbus_Connection* c)
  * Parsing and dispatch
  * --------------------------------------------------------------------------
  */
-static void SendReply(adbus_Connection* c, adbus_Message* msg, adbus_MsgFactory* ret)
+
+static void SetupReturn(adbus_Connection* c, adbus_CbData *d)
 {
-    if (ret) {
-        if (adbus_msg_type(ret) == ADBUS_MSG_INVALID) {
-            adbus_msg_settype(ret, ADBUS_MSG_RETURN);
+    if (d->msg->flags & ADBUS_MSG_NO_REPLY) {
+        d->ret = NULL;
+    } else {
+        c->returnSize++;
+        if (c->returnSize > dv_size(&c->returnMessages)) {
+            adbus_MsgFactory** pmsg = dv_push(MsgFactory, &c->returnMessages, 1);
+            *pmsg = adbus_msg_new();
         }
 
-        if (msg->sender) {
-            adbus_msg_setdestination(ret, msg->sender, msg->senderSize);
-        }
-
-        adbus_msg_setreply(ret, msg->serial);
-        adbus_msg_setflags(ret, adbus_msg_flags(ret) | ADBUS_MSG_NO_REPLY);
-        adbus_msg_send(ret, c);
+        d->ret = dv_a(&c->returnMessages, c->returnSize - 1);
+        adbus_msg_reset(d->ret);
     }
 }
 
-static int DispatchStep(
-        adbus_Connection* c,
-        adbus_Message*    msg)
+static void FinishReturn(adbus_Connection* c, adbus_CbData* d)
+{
+    if ((d->msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
+        c->returnSize--; 
+
+        if (d->ret) {
+            if (adbus_msg_type(d->ret) == ADBUS_MSG_INVALID) {
+                adbus_msg_settype(d->ret, ADBUS_MSG_RETURN);
+            }
+
+            if (d->msg->sender) {
+                adbus_msg_setdestination(d->ret, d->msg->sender, d->msg->senderSize);
+            }
+
+            adbus_msg_setreply(d->ret, d->msg->serial);
+            adbus_msg_setflags(d->ret, adbus_msg_flags(d->ret) | ADBUS_MSG_NO_REPLY);
+            adbus_msg_send(d->ret, c);
+          
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+
+static int DispatchMessage_(adbus_Connection* c, adbusI_ConnStack* entry)
 {
     adbus_CbData d;
-    adbus_Bool called = 0;
-    int err = 0;
-
-    c->depth++;
-    if (c->depth > dv_size(&c->returnMessages)) {
-        adbus_MsgFactory** pmsg = dv_push(MsgFactory, &c->returnMessages, 1);
-        *pmsg = adbus_msg_new();
-    }
 
     ZERO(d);
-    d.connection    = c;
-    d.msg           = msg;
+    d.connection = c;
+    d.msg = &entry->msg;
 
-    if (!c->dispatchMatch) {
-        ADBUSI_LOG_MSG("Received", msg);
+    while (!entry->matchFinished) {
 
-        switch (msg->type) 
-        {
-        case ADBUS_MSG_METHOD:
-            {
-                adbus_ConnBind* bind;
-                adbus_Member* mbr = adbusI_getMethod(c, &d, &bind);
-                if (mbr) {
-                    called = 1;
+        adbus_ConnMatch* match = entry->matchStarted 
+                               ? dil_getiter(&c->matches.list) 
+                               : c->matches.list.next;
 
-                    if ((msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
-                        d.ret = dv_a(&c->returnMessages, c->depth - 1);
-                        adbus_msg_reset(d.ret);
-                    }
+        if (!match)
+            break;
 
-                    if (adbus_mbr_call(mbr, bind, &d)) {
-                        goto err;
-                    }
+        dil_setiter(&c->matches.list, match->hl.next);
+        if (adbusI_dispatchMatch(match, &d))
+            return -1;
+    }
 
-                    SendReply(c, msg, d.ret);
-                }
+    entry->matchFinished = 1;
+    
+    if (!entry->msgFinished) {
+        if (d.msg->type == ADBUS_MSG_ERROR || d.msg->type == ADBUS_MSG_RETURN) {
+            if (adbusI_dispatchReply(c, &d)) {
+                return -1;
             }
-            break;
-        case ADBUS_MSG_RETURN:
-        case ADBUS_MSG_ERROR:
-            {
-                adbus_ConnReply* reply = adbusI_getReply(c, &d);
-                if (reply) {
-                    adbus_MsgCallback cb;
-                    called = 1;
 
-                    if (msg->type == ADBUS_MSG_RETURN) {
-                        d.user1 = reply->cuser;
-                        cb = reply->callback;
-                    } else {
-                        d.user1 = reply->euser;
-                        cb = reply->error;
-                    }
-
-                    if (cb) {
-                        if (reply->proxy) {
-                            err = reply->proxy(reply->puser, cb, &d);
-                        } else {
-                            err = adbus_dispatch(cb, &d);
-                        }
-                    }
-
-                    adbusI_finishReply(reply);
-
-                    if (err) {
-                        goto err;
-                    }
-                }
+        } else if (d.msg->type == ADBUS_MSG_METHOD) {
+            SetupReturn(c, &d);
+            if (adbusI_dispatchMethod(c, &d)) {
+                return -1;
             }
-            break;
-        default:
-            break;
+            FinishReturn(c, &d);
         }
     }
 
-    d.ret = NULL;
-    c->dispatchMatch = 1;
-
-    if (called) {
-        goto cont;
-    }
-
-    /* Dispatch matches */
-    {
-        adbus_ConnMatch* match = adbusI_getNextMatch(c, &d);
-
-        if (match) {
-            d.user1 = match->m.cuser;
-
-            if (match->m.proxy) {
-                err = match->m.proxy(match->m.puser, match->m.callback, &d);
-            } else {
-                err = adbus_dispatch(match->m.callback, &d);
-            }
-
-            if (err) {
-                goto err;
-            }
-
-            goto cont;
-        }
-    }
-
-    /* We've finished processing this message */
-    c->depth--;
-    c->dispatchMatch = 0;
-    return 1;
-
-cont:
-    c->depth--;
-    return 0;
-
-err:
-    c->depth--;
-    return -1;
-}
-
-/* -------------------------------------------------------------------------- */
-
-/** Dispatch a pre-parsed message
- *  \relates adbus_Connection
- */
-int adbus_conn_dispatch(
-        adbus_Connection* c,
-        adbus_Message*    message)
-{
-    int ret = 0;
-    assert(c->parseBuffer == NULL);
-
-    while (ret == 0)
-        ret = DispatchStep(c, message);
-
-    if (ret < 0)
-        return -1;
+    entry->msgFinished = 1;
 
     return 0;
 }
 
 /* -------------------------------------------------------------------------- */
 
-int adbus_conn_parsestep(
-        adbus_Connection*   c)
+static int DispatchBuffer(adbus_Connection* c, adbusI_ConnStack* entry)
 {
-    int ret;
-    adbus_Message m;
-    adbus_Buffer* b = c->parseBuffer;
+    assert(!entry->active);
+    entry->active = 1;
 
-    if (!c->parseMessage.data) {
-        char* data = adbus_buf_data(b);
-        size_t size = adbus_buf_size(b);
-        size_t msgsize = adbus_parse_size(data, size);
+    while (entry->used < adbus_buf_size(entry->buf)) {
+        /* Parse the next message */
 
-        if (msgsize == 0 || msgsize > size) {
+        char* data = adbus_buf_data(entry->buf);
+        size_t size = adbus_buf_size(entry->buf);
+        size_t msgsize = adbus_parse_size(data + entry->used, size - entry->used);
+
+        if (msgsize == 0 || msgsize > size - entry->used) {
             /* Need more data */
-            return 1;
+            break;
         }
-        if (adbus_parse(&c->parseMessage, data, msgsize)) {
+
+        /* Only shift the data to realign on an 8 byte boundary if we really have to */
+        if ((entry->used % 8) != 0) {
+            adbus_buf_remove(entry->buf, 0, entry->used);
+            entry->used = 0;
+        } else {
+            entry->used += msgsize;
+        }
+
+        if (adbus_parse(&entry->msg, data + entry->used, msgsize)) {
+            return -1;
+        }
+
+        entry->matchStarted = 0;
+        entry->matchFinished = 0;
+        entry->msgFinished = 0;
+
+        if (DispatchMessage_(c, entry)) {
             return -1;
         }
     }
 
-    m = c->parseMessage;
-    ret = DispatchStep(c, &m);
-
-    if (ret < 0) {
-        /* Error with dispatch */
-        return -1;
-
-    } else if (ret == 0) {
-        /* More callbacks to call */
-        return 0;
-
-    } else {
-        /* We have finished dispatching this message */
-        adbus_buf_remove(b, 0, m.size);
-        c->parseMessage.data = NULL;
-
-        /* More data to parse next time around */
-        if (adbus_buf_size(b) > 0)
-            return 0;
-
-        return 1;
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-
-/** Consume messages from the supplied buffer.
- *  \relates adbus_Connection
- *
- *  This will remove all complete messages from the beginning of the buffer,
- *  but it will leave incomplete messages in the buffer. These should be
- *  appended to once more data comes in and then recall this function.
- */
-int adbus_conn_parse(
-        adbus_Connection*   c)
-{
-    int ret = 0;
-
-    while (ret == 0)
-        ret = adbus_conn_parsestep(c);
-
-    if (ret < 0)
-        return -1;
+    assert(entry->active);
+    entry->active = 0;
 
     return 0;
 }
 
 /* -------------------------------------------------------------------------- */
 
-void adbus_conn_setbuffer(
-        adbus_Connection*   c,
-        adbus_Buffer*       buffer)
+static adbusI_ConnStack* CurrentStackEntry(adbus_Connection* c)
+{ return (c->stackSize > 0) ? &dv_a(&c->stack, c->stackSize - 1) : NULL; }
+
+static adbusI_ConnStack* PushStackEntry(adbus_Connection* c)
 {
-    c->parseBuffer = buffer;
+    adbusI_ConnStack* entry;
+
+    c->stackSize++;
+
+    if (c->stackSize >= dv_size(&c->stack)) {
+        entry = dv_push(ConnStack, &c->stack, 1);
+        entry->buf = adbus_buf_new();
+        entry->active = 0;
+    } else {
+        entry = &dv_a(&c->stack, c->stackSize - 1);
+        adbus_buf_reset(entry->buf);
+    }
+
+    memset(&entry->msg, 0, sizeof(entry->msg));
+    entry->used = 0;
+
+    return entry;
+}
+
+static void PopStackEntry(adbus_Connection* c)
+{ c->stackSize--; }
+
+
+int adbus_conn_continue(adbus_Connection* c)
+{
+    adbusI_ConnStack* entry = CurrentStackEntry(c);
+
+    if (!entry)
+        return 0;
+
+    /* Finish off the message in the current stack entry */
+    if (entry->msg.data && DispatchMessage_(c, entry)) {
+        return -1;
+    }
+
+    /* Move the rest of the data to a new stack entry and parse. We can't parse
+     * the rest of the data using the existing stack since that is still being
+     * used by an outer call. 
+     */
+    if (adbus_buf_size(entry->buf) > entry->used) {
+
+        char* data = adbus_buf_data(entry->buf);
+        size_t datasz = adbus_buf_size(entry->buf);
+        adbusI_ConnStack* newentry = PushStackEntry(c);
+
+        adbus_buf_append(newentry->buf, data + entry->used, datasz - entry->used);
+        adbus_buf_remove(entry->buf, entry->used, datasz - entry->used);
+
+        if (DispatchBuffer(c, entry)) {
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+
+int adbus_conn_parse(adbus_Connection* c, const char* data, size_t size)
+{
+    adbusI_ConnStack* entry = CurrentStackEntry(c);
+    adbusI_ConnStack* newentry = PushStackEntry(c);
+
+    /* Move the existing data to a new stack entry, append our new data and
+     * parse. We can't parse the data using the existing stack since that is
+     * still being used by an outer call.
+     */
+    if (entry && adbus_buf_size(entry->buf) > entry->used) {
+
+        char* data = adbus_buf_data(entry->buf);
+        size_t datasz = adbus_buf_size(entry->buf);
+
+        adbus_buf_append(newentry->buf, data + entry->used, datasz - entry->used);
+        adbus_buf_remove(entry->buf, entry->used, datasz - entry->used);
+    }
+
+    /* Append our new data */
+    adbus_buf_append(newentry->buf, data, size);
+
+    if (!entry->msgFinished && DispatchMessage_(c, entry))
+        return -1;
+
+    if (DispatchBuffer(c, newentry))
+        return -1;
+
+    PopStackEntry(c);
+    return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+
+#define RECV_SIZE (64*1024)
+int adbus_conn_parsecb(adbus_Connection* c)
+{
+    adbusI_ConnStack* entry = CurrentStackEntry(c);
+    adbusI_ConnStack* newentry = PushStackEntry(c);
+    int read = RECV_SIZE;
+
+    /* Move the existing data to a new stack entry, append our new data and
+     * parse. We can't parse the data using the existing stack since that is
+     * still being used by an outer call.
+     */
+    if (entry && adbus_buf_size(entry->buf) > entry->used) {
+
+        char* data = adbus_buf_data(entry->buf);
+        size_t datasz = adbus_buf_size(entry->buf);
+
+        adbus_buf_append(newentry->buf, data + entry->used, datasz - entry->used);
+        adbus_buf_remove(entry->buf, entry->used, datasz - entry->used);
+    }
+
+    /* Append our new data */
+    while (read == RECV_SIZE) {
+        char* dest = adbus_buf_recvbuf(entry->buf, RECV_SIZE);
+        read = c->callbacks.recv_data(c->user, dest, RECV_SIZE);
+        adbus_buf_recvd(entry->buf, read, RECV_SIZE);
+    }
+
+    if (!entry->msgFinished && DispatchMessage_(c, entry))
+        return -1;
+
+    if (DispatchBuffer(c, newentry))
+        return -1;
+
+    PopStackEntry(c);
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
