@@ -211,16 +211,26 @@ void Remote::OnEvent(HANDLE event)
                 }
                 break;
             } else if (m_Auth) {
-                int ret = adbus_auth_parse(m_Auth, m_Buffer);
-                if (ret < 0) {
+                adbus_Bool finished;
+                char* data = adbus_buf_data(m_Buffer);
+                size_t size = adbus_buf_size(m_Buffer);
+
+                int used = adbus_auth_parse(m_Auth, data, size, &finished);
+
+                if (used < 0) {
                     return Disconnect();
-                } else if (ret == 0) {
-                    break;
-                } else if (ret > 0) {
+                }
+
+                adbus_buf_remove(m_Buffer, 0, used);
+
+                if (finished) {
                     adbus_auth_free(m_Auth);
                     m_Auth = NULL;
                     m_Remote = adbus_serv_connect(m_Server->DBusServer(), &SendMsg, this);
+                } else {
+                    break;
                 }
+
             } else {
                 char* d = adbus_buf_data(m_Buffer);
                 if (*d != '\0') {

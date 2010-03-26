@@ -172,7 +172,10 @@ void Remote::readyRead()
                 adbus_auth_free(m_Auth);
                 m_Auth = NULL;
                 m_Remote = adbus_serv_connect(m_Server, &SendMsg, this);
+            } else {
+                break;
             }
+
         } else {
             char* d = adbus_buf_data(m_Buffer);
             if (*d != '\0')

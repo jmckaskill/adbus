@@ -292,8 +292,7 @@ ADBUS_API adbus_Socket adbus_sock_connect_s(
         int             size);
 
 ADBUS_API int adbus_sock_cauth(
-        adbus_Socket    sock,
-        adbus_Buffer*  buffer);
+        adbus_Socket    sock);
 
 ADBUS_API adbus_Socket adbus_sock_bind(
         adbus_BusType   type);

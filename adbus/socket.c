@@ -589,3 +589,38 @@ adbus_Socket adbus_sock_bind_s(
     return sfd;
 }
 
+static uint8_t Rand(void* u)
+{ (void) u; return (uint8_t) rand(); }
+
+static int Send(void* u, const char* buf, size_t sz)
+{ return send(*(adbus_Socket*) u, buf, sz, 0); }
+
+int adbus_sock_cauth(adbus_Socket sock)
+{
+    adbus_Auth* auth = adbus_cauth_new(&Send, &Rand, &sock);
+
+    if (send(sock, "\0", 1, 0) != 1)
+        goto err;
+
+    while (1) {
+        adbus_Bool finished;
+        char buf[256];
+        int recvd = recv(sock, buf, 256, 0);
+        int used = adbus_auth_parse(auth, buf, recvd, &finished);
+
+        if (finished)
+            break;
+
+        if (used != recvd)
+            goto err;
+    }
+
+    adbus_auth_free(auth);
+    return 0;
+    
+err:
+    adbus_auth_free(auth);
+    return -1;
+}
+
+

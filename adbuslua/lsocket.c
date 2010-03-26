@@ -70,16 +70,12 @@ static int NewSocket(lua_State* L)
         return luaL_error(L, "Failure to connect");
 
 
-    adbus_Buffer* buf = adbus_buf_new();
-    if (adbus_sock_cauth(*s, buf)) {
-        adbus_buf_free(buf);
+
+    if (adbus_sock_cauth(*s)) {
         return luaL_error(L, "Failure to auth");
     }
 
-    lua_pushlstring(L, adbus_buf_data(buf), adbus_buf_size(buf));
-    adbus_buf_free(buf);
-
-    return 2;
+    return 1;
 }
 
 /* ------------------------------------------------------------------------- */

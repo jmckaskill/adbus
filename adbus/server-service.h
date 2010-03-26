@@ -31,7 +31,6 @@ struct adbusI_ServiceOwner
 {
     adbus_Remote*           remote;
     adbus_Bool              allowReplacement;
-    adbus_Bool              reserved;
 };
 
 DVECTOR_INIT(ServiceOwner, adbusI_ServiceOwner)

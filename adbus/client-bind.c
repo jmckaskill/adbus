@@ -267,6 +267,7 @@ adbusI_ObjectNode* adbusI_getObjectNode(adbus_Connection* c, dh_strsz_t path)
         adbusI_parentPath(path, &parent);
         if (parent.str) {
             node->parent = adbusI_getObjectNode(c, parent);
+            dl_insert_after(ObjectNode, &node->parent->children, node, &node->hl);
             adbusI_refObjectNode(node->parent);
         }
 

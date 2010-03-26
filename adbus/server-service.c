@@ -136,15 +136,15 @@ int adbusI_releaseService(
         adbus_Remote*           r,
         const char*             name)
 {
-    adbusI_ServiceOwner* owner;
     adbusI_ServiceQueue* queue;
+    adbus_Remote* owner;
 
     dh_Iter ii = dh_get(ServiceQueue, &s->services.queues, name);
     if (ii == dh_end(&s->services.queues))
         return ADBUS_SERVICE_RELEASE_INVALID_NAME;
 
     queue = dh_val(&s->services.queues, ii);
-    owner = &dv_a(&queue->v, 0);
+    owner = dv_a(&queue->v, 0).remote;
 
     /* Remove the queue from the remote */
     dv_remove(ServiceQueue, &r->services, *ENTRY == queue);
@@ -158,7 +158,7 @@ int adbusI_releaseService(
             return ADBUS_SERVICE_RELEASE_NOT_OWNER;
     }
 
-    if (owner->remote == r) {
+    if (owner == r) {
 
         if (dv_size(&queue->v) > 0) {
             /* Switch to the new owner */

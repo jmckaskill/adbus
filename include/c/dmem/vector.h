@@ -152,8 +152,14 @@
         }                                                                   \
     } while (0)
 
+DMEM_INLINE uintptr_t dv_a_check(size_t sz, size_t i)
+{
+    assert(sz > i);
+    return 0;
+}
+
 #define dv_size(pvec)       ((pvec)->size)
-#define dv_a(pvec, index)   ((pvec)->data[index])
+#define dv_a(pvec, index)   ((dv_a_check((pvec)->size, index) + (pvec)->data)[index])
 #define dv_data(pvec)       ((pvec)->data)
 
 #endif /* DMEM_VECTOR_H */
