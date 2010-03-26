@@ -37,13 +37,13 @@
 #endif
 
 static int SendMsg(void* d, adbus_Message* m)
-{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
+{ return (int) send(*(adbus_Socket*) d, m->data, (int) m->size, 0); }
 
 static int Send(void* d, const char* buf, size_t sz)
-{ return (int) send(*(adbus_Socket*) d, buf, sz, 0); }
+{ return (int) send(*(adbus_Socket*) d, buf, (int) sz, 0); }
 
 static int Recv(void* d, char* buf, size_t sz)
-{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
+{ return (int) recv(*(adbus_Socket*) d, buf, (int) sz, 0); }
 
 static uint8_t Rand(void* d)
 { return (uint8_t) rand(); }

@@ -169,46 +169,6 @@
 	</References>
 	<Files>
 		<Filter
-			Name="dmem"
-			>
-			<File
-				RelativePath="..\include\c\dmem\common.h"
-				>
-			</File>
-			<File
-				RelativePath="..\include\c\dmem\hash.h"
-				>
-			</File>
-			<File
-				RelativePath="..\dmem\istring.c"
-				>
-			</File>
-			<File
-				RelativePath="..\include\c\dmem\istring.h"
-				>
-			</File>
-			<File
-				RelativePath="..\include\c\dmem\list.h"
-				>
-			</File>
-			<File
-				RelativePath="..\include\c\dmem\queue.h"
-				>
-			</File>
-			<File
-				RelativePath="..\dmem\string.c"
-				>
-			</File>
-			<File
-				RelativePath="..\include\c\dmem\string.h"
-				>
-			</File>
-			<File
-				RelativePath="..\include\c\dmem\vector.h"
-				>
-			</File>
-		</Filter>
-		<Filter
 			Name="includes"
 			>
 			<File

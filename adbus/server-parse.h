@@ -27,45 +27,8 @@
 
 #include "internal.h"
 
-/* For parsing buffers, the routine is:
- * 1. BEGIN: Copy over basic header - enough to know how big the message is.
- *      a) This sets native, headerSize and msgSize.
- *
- * 2. HEADER
- *      a) Copy over header fields
- *      b) Endian swap header fields
- *      c) Reset endian byte to native
- *      d) Iterate over the header fields removing any sender fields
- *      e) Append correct sender field
- *      f) Update header field length
- *      g) Update headerSize and msgSize 
- *
- * 3. DATA: Copy over the data
- *      a) Copy over arguments
- *      b) Dispatch message
- */
-
-enum adbusI_ServerParseState
-{
-    PARSE_DISPATCH,
-    PARSE_BEGIN,
-    PARSE_HEADER,
-    PARSE_DATA
-};
-
-typedef enum adbusI_ServerParseState adbusI_ServerParseState;
-
-struct adbusI_ServerParser
-{
-    adbusI_ServerParseState state;
-    adbus_Buffer*           buffer;
-    adbus_Bool              native;
-    size_t                  headerSize;
-    size_t                  msgSize;
-};
-
-ADBUSI_FUNC void adbusI_remote_initParser(adbusI_ServerParser* p);
-ADBUSI_FUNC void adbusI_remote_freeParser(adbusI_ServerParser* p);
+ADBUSI_FUNC void adbusI_remote_initParser(adbus_Remote* r);
+ADBUSI_FUNC void adbusI_remote_freeParser(adbus_Remote* r);
 
 ADBUS_API int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m);
 ADBUS_API int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* buf);

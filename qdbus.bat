@@ -1,4 +1,4 @@
-rem @echo off
+@echo off
 
 set DBUS_SESSION_BUS_ADDRESS=
 set LUA_PATH=%~dp0include\lua\?.lua;%~dp0include\lua\?\init.lua

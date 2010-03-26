@@ -43,7 +43,7 @@ struct adbus_Remote
     void*                   user;
 
     adbusI_ServerMatchList  matches;
-    adbusI_ServerParser     parser;
+    adbus_Buffer*           parseBuffer;
 
     /* The first message on connecting a new remote needs to be a method call
      * to "Hello" on the bus, if not we kick the connection

@@ -218,7 +218,7 @@ size_t adbus_parse_size(const char* data, size_t size)
     if (size < sizeof(adbusI_ExtendedHeader))
         return 0;
 
-    hsize = sizeof(adbusI_Header) + Get32(h->endianness, &h->headerFieldLength);
+    hsize = sizeof(adbusI_ExtendedHeader) + Get32(h->endianness, &h->headerFieldLength);
     return ADBUS_ALIGN(hsize, 8) + Get32(h->endianness, &h->length);
 }
 

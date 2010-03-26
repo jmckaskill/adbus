@@ -39,7 +39,7 @@ adbus_Remote* adbusI_serv_createRemote(
     r->user         = user;
     r->haveHello    = !needhello;
 
-    adbusI_remote_initParser(&r->parser);
+    adbusI_remote_initParser(r);
 
     if (unique) {
         ds_set(&r->unique, unique);
@@ -76,7 +76,7 @@ void adbus_remote_disconnect(adbus_Remote* r)
 
         dl_remove(Remote, r, &r->hl);
         adbusI_serv_freeMatches(&r->matches);
-        adbusI_remote_freeParser(&r->parser);
+        adbusI_remote_freeParser(r);
 
         while (dv_size(&r->services) > 0) {
             adbusI_releaseService(s, r, dv_a(&r->services, 0)->name);

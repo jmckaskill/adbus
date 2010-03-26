@@ -294,19 +294,6 @@ void adbus_buf_appendsig(adbus_Buffer* b, const char* sig, int size)
     memcpy(&b->sig[existing], sig, size + 1);
 }
 
-/** Reserves a specified min amount of room in the buffer.
- *
- *  \relates adbus_Buffer
- *
- *  This should only be used as a hint when the amount of room needed is known
- *  before adding the data. To actually reserve room at the end of the buffer to then right directly
- *  into use adbus_buf_recvbuf and adbus_buf_recvd.
- *
- *  \sa adbus_buf_recvbuf, adbus_buf_recvd
- */
-void adbus_buf_reserve(adbus_Buffer* b, size_t sz)
-{ dv_reserve(char, &b->b, sz); }
-
 /** Removes a chunk of data from the buffer
  *  \relates adbus_Buffer
  */
