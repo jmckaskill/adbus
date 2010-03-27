@@ -312,6 +312,7 @@ void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
 /* -------------------------------------------------------------------------- */
 void adbusI_serv_freeBus(adbus_Server* s)
 {
+    adbus_remote_disconnect(s->bus.remote);
     adbus_sig_free(s->bus.nameOwnerChanged);
     adbus_sig_free(s->bus.nameAcquired);
     adbus_sig_free(s->bus.nameLost);

@@ -366,6 +366,7 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
  */
 int adbus_msg_send(adbus_MsgFactory* m, adbus_Connection* c)
 {
+    int ret;
     adbus_Message msg;
     ZERO(msg);
     if (adbus_msg_serial(m) < 0) {
@@ -375,7 +376,9 @@ int adbus_msg_send(adbus_MsgFactory* m, adbus_Connection* c)
     if (adbus_msg_build(m, &msg))
         return -1;
 
-    return adbus_conn_send(c, &msg);
+    ret = adbus_conn_send(c, &msg);
+    adbus_freeargs(&msg);
+    return ret;
 }
 
 /* ------------------------------------------------------------------------- */

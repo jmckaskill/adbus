@@ -215,6 +215,9 @@ char* adbus_buf_release(adbus_Buffer* b)
     return dv_release(char, &b->b); 
 }
 
+size_t adbus_buf_reserved(adbus_Buffer* b)
+{ return dv_reserved(&b->b); }
+
 /** Clears the internal buffer.
  *
  *  \relates adbus_Buffer

@@ -447,6 +447,9 @@ static void FreeMember(adbus_Member* m)
         }
         dv_free(String, &m->returns);
 
+        ds_free(&m->argsig);
+        ds_free(&m->retsig);
+
         free(m->propertyType);
         free((char*) m->name.str);
 
@@ -729,6 +732,10 @@ int adbus_mbr_call(
 {
     if (!mbr->methodCallback) {
         return adbusI_methodError(d);
+    }
+
+    if (ds_cmp_n(&mbr->argsig, d->msg->signature, d->msg->signatureSize) != 0) {
+        return adbus_error_argument(d);
     }
 
     adbus_iface_ref(mbr->interface);

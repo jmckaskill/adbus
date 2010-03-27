@@ -203,6 +203,7 @@ adbus_Proxy* adbus_proxy_new(adbus_State* state)
     adbus_Proxy* p  = NEW(adbus_Proxy);
     p->state        = state;
     p->message      = adbus_msg_new();
+    p->refConnection = 1;
 
     return p;
 }
@@ -215,7 +216,10 @@ adbus_Proxy* adbus_proxy_new(adbus_State* state)
 void adbus_proxy_free(adbus_Proxy* p)
 {
     if (p) {
-        adbus_conn_deref(p->connection);
+        if (p->refConnection) {
+            adbus_conn_deref(p->connection);
+        }
+
         adbus_msg_free(p->message);
         ds_free(&p->service);
         ds_free(&p->path);
@@ -243,7 +247,10 @@ void adbus_proxy_init(
         psize = strlen(path);
 
     p->connection = connection;
-    adbus_conn_ref(p->connection);
+
+    if (p->refConnection) {
+        adbus_conn_ref(p->connection);
+    }
 
     ds_set_n(&p->service, service, ssize);
     ds_set_n(&p->path, path, psize);

@@ -27,9 +27,34 @@ struct dv_base_t
 extern "C" {
 #endif
 
-void dv_clear_base(dv_base_t* v);
-void dv_expand_base(dv_base_t* v, size_t typesz, size_t incr);
-void dv_shrink_base(dv_base_t* v, size_t typesz, size_t decr);
+#define DMEM_VECTOR_CHECK 0
+
+#if DMEM_VECTOR_CHECK
+    void dv_free_base(dv_base_t* v);
+    void dv_clear_base(dv_base_t* v);
+    void dv_expand_base(dv_base_t* v, size_t typesz, size_t incr);
+    void dv_shrink_base(dv_base_t* v, size_t typesz, size_t decr);
+#else
+    DMEM_INLINE void dv_free_base(dv_base_t* v)
+    { if (v) free(v->data); }
+    DMEM_INLINE void dv_clear_base(dv_base_t* v)
+    { v->size = 0; }
+    DMEM_INLINE void dv_shrink_base(dv_base_t* v, size_t typesz, size_t decr)
+    { v->size -= decr; }
+    DMEM_INLINE void dv_expand_base(dv_base_t* v, size_t typesz, size_t incr)
+    {
+        v->size += incr;
+        if (v->alloc >= v->size)
+            return;
+
+        v->alloc = ((v->alloc) + 16) * 3 / 2;
+
+        if (v->alloc < v->size)
+            v->alloc = v->size;
+
+        v->data = realloc(v->data, v->alloc * typesz);
+    }
+#endif
 
 #ifdef __cplusplus
 }
@@ -47,11 +72,7 @@ void dv_shrink_base(dv_base_t* v, size_t typesz, size_t decr);
         memset(v, 0, sizeof(dv_##name##_t));                                \
     }                                                                       \
     DMEM_INLINE void dv_free_##name(dv_##name##_t* v)                       \
-    {                                                                       \
-        if (v) {                                                            \
-            free(v->data);                                                  \
-        }                                                                   \
-    }                                                                       \
+    { dv_free_base((dv_base_t*) v); }                                       \
     DMEM_INLINE void dv_clear_##name(dv_##name##_t* v)                      \
     { dv_clear_base((dv_base_t*) v); }                                      \
     DMEM_INLINE type* dv_release_##name(dv_##name##_t* v)                   \
@@ -137,7 +158,7 @@ void dv_shrink_base(dv_base_t* v, size_t typesz, size_t decr);
         }                                                                   \
     } while (0)
 
-DMEM_INLINE uintptr_t dv_a_check(size_t sz, size_t i)
+DMEM_INLINE size_t dv_a_check(size_t sz, size_t i)
 {
     assert(sz > i);
     return 0;
@@ -146,6 +167,7 @@ DMEM_INLINE uintptr_t dv_a_check(size_t sz, size_t i)
 #define dv_size(pvec)       ((pvec)->size)
 #define dv_a(pvec, index)   ((dv_a_check((pvec)->size, index) + (pvec)->data)[index])
 #define dv_data(pvec)       ((pvec)->data)
+#define dv_reserved(pvec)   ((pvec)->alloc)
 
 #endif /* DMEM_VECTOR_H */
 

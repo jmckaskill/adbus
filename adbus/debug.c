@@ -168,17 +168,17 @@ static int LogField(d_String* str, adbus_Iterator* i)
     case ADBUS_STRING:
         if (adbus_iter_string(i, &string, &size))
             return -1;
-        ds_cat_f(str, "\"%*s\"", size, string);
+        ds_cat_f(str, "\"%*s\"", (int) size, string);
         break;
     case ADBUS_OBJECT_PATH:
         if (adbus_iter_objectpath(i, &string, &size))
             return -1;
-        ds_cat_f(str, "\"%*s\"", size, string);
+        ds_cat_f(str, "\"%*s\"", (int) size, string);
         break;
     case ADBUS_SIGNATURE:
         if (adbus_iter_signature(i, &string, &size))
             return -1;
-        ds_cat_f(str, "\"%*s\"", size, string);
+        ds_cat_f(str, "\"%*s\"", (int) size, string);
         break;
     case ADBUS_DICTENTRY_BEGIN:
         if (LogField(str, i))
@@ -291,16 +291,16 @@ static void BindString(d_String* s, const adbus_Bind* b)
 {
     Append(s, "Path", b->path, b->pathSize);
     if (b->interface) {
-        ds_cat_f(s, "%-15s %p %s\n", "Interface", b->interface, b->interface->name.str);
+        ds_cat_f(s, "%-15s %p %s\n", "Interface", (void*) b->interface, b->interface->name.str);
     } else {
-        ds_cat_f(s, "%-15s %p\n", "Interface", b->interface);
+        ds_cat_f(s, "%-15s %p\n", "Interface", (void*) b->interface);
     }
 
-    ds_cat_f(s, "%-15s %p %p\n", "Callback", NULL, NULL, b->cuser2);
+    ds_cat_f(s, "%-15s %p\n", "User2", b->cuser2);
     if (b->release[0])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 0", b->release[0], b->ruser[0]);
+        ds_cat_f(s, "%-15s %p %p\n", "Release 0", (void*) (uintptr_t) b->release[0], b->ruser[0]);
     if (b->release[1])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 1", b->release[1], b->ruser[1]);
+        ds_cat_f(s, "%-15s %p %p\n", "Release 1", (void*) (uintptr_t) b->release[1], b->ruser[1]);
 }
 
 void adbusI_logbind(const char* header, const adbus_Bind* b)
@@ -321,11 +321,11 @@ static void MatchString(d_String* s, const adbus_Match* m)
     if (m->addMatchToBusDaemon)
         ds_cat_f(s, "Add to bus\n");
     if (m->callback)
-        ds_cat_f(s, "%-15s %p %p\n", "Callback", m->callback, m->cuser);
+        ds_cat_f(s, "%-15s %p %p\n", "Callback", (void*) (uintptr_t) m->callback, m->cuser);
     if (m->release[0])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 0", m->release[0], m->ruser[0]);
+        ds_cat_f(s, "%-15s %p %p\n", "Release 0", (void*) (uintptr_t) m->release[0], m->ruser[0]);
     if (m->release[1])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 1", m->release[1], m->ruser[1]);
+        ds_cat_f(s, "%-15s %p %p\n", "Release 1", (void*) (uintptr_t) m->release[1], m->ruser[1]);
 
     if (m->type)
         ds_cat_f(s, "%-15s %s\n", "Type", TypeString(m->type));
@@ -343,9 +343,9 @@ static void MatchString(d_String* s, const adbus_Match* m)
         adbus_Argument* arg = &m->arguments[i];
         if (arg->value) {
             if (arg->size >= 0) {
-                ds_cat_f(s, "Argument %-2d     \"%*s\"\n", i, arg->size, arg->value);
+                ds_cat_f(s, "Argument %-2d     \"%*s\"\n", (int) i, (int) arg->size, arg->value);
             } else {
-                ds_cat_f(s, "Argument %-2d     \"%s\"\n", i, arg->value);
+                ds_cat_f(s, "Argument %-2d     \"%s\"\n", (int) i, arg->value);
             }
         }
     }
@@ -368,13 +368,13 @@ static void ReplyString(d_String* s, const adbus_Reply* r)
     ds_cat_f(s, "%-15s %u\n", "Serial", (unsigned int) r->serial);
     Append(s, "Remote", r->remote, r->remoteSize);
     if (r->callback)
-        ds_cat_f(s, "%-15s %p %p\n", "Callback", r->callback, r->cuser);
+        ds_cat_f(s, "%-15s %p %p\n", "Callback", (void*) (uintptr_t) r->callback, r->cuser);
     if (r->error)
-        ds_cat_f(s, "%-15s %p %p\n", "Error", r->error, r->euser);
+        ds_cat_f(s, "%-15s %p %p\n", "Error", (void*) (uintptr_t) r->error, r->euser);
     if (r->release[0])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 0", r->release[0], r->ruser[0]);
+        ds_cat_f(s, "%-15s %p %p\n", "Release 0", (void*) (uintptr_t) r->release[0], r->ruser[0]);
     if (r->release[1])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 1", r->release[1], r->ruser[1]);
+        ds_cat_f(s, "%-15s %p %p\n", "Release 1", (void*) (uintptr_t) r->release[1], r->ruser[1]);
 }
 
 void adbusI_logreply(const char* header, const adbus_Reply* r)

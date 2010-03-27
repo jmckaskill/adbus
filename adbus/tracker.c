@@ -94,6 +94,7 @@ adbusI_TrackedRemote* adbusI_getTrackedRemote(
     } else {
         adbusI_TrackedRemote* t = NEW(adbusI_TrackedRemote);
         t->ref                  = 1;
+        t->tracker              = &c->tracker;
 
         dh_val(&c->tracker.lookup, ti) = t;
 
@@ -164,7 +165,16 @@ static void FreeTrackedRemote(adbusI_TrackedRemote* t)
 
 void adbusI_derefTrackedRemote(adbusI_TrackedRemote* t)
 {
-    if (--t->ref == 0) {
+    if (t && --t->ref == 0) {
+
+        if (t->tracker) {
+            dh_Iter ii = dh_get(Tracked, &t->tracker->lookup, t->unique);
+            if (ii != dh_end(&t->tracker->lookup)) {
+                dh_del(Tracked, &t->tracker->lookup, ii);
+            }
+            t->tracker = NULL;
+        }
+
         assert(t->unique.str && !t->service.str);
         FreeTrackedRemote(t);
     }

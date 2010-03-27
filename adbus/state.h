@@ -66,6 +66,7 @@ DILIST_INIT(StateConn, adbusI_StateConn)
 struct adbusI_StateConn
 {
     d_IList(StateConn)      hl;
+    adbus_Bool              refConnection;
     adbus_Connection*       connection;
     d_IList(StateData)      binds;
     d_IList(StateData)      matches;
@@ -78,6 +79,7 @@ struct adbusI_StateConn
 
 struct adbus_State
 {
+    adbus_Bool              refConnection;
     d_IList(StateConn)      connections;
 };
 

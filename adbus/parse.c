@@ -340,7 +340,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
             case ADBUSI_HEADER_SIGNATURE:
                 if (    i.sig[0] != 'g' 
                     ||  i.sig[1] != '\0'
-                    ||  adbus_iter_signature(&i, &m->signature, NULL))
+                    ||  adbus_iter_signature(&i, &m->signature, &m->signatureSize))
                 {
                     return -1;
                 }

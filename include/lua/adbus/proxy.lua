@@ -34,37 +34,36 @@ require 'string'
 -------------------------------------------------------------------------------
 
 _M.proxy = _M.proxy or {}
-proxy = _M.proxy
 
 local proxy_mt = {}
 local call
 local process_introspection
 
 --- Gets the connection object associated with the proxy
-function proxy.connection(self)
+function _M.proxy.connection(self)
     return rawget(self, "_p").connection
 end
 
 --- Gets the path of the remote object
-function proxy.path(self)
+function _M.proxy.path(self)
     return rawget(self, "_p").path
 end
 
 --- Gets the name of the remote
-function proxy.service(self)
+function _M.proxy.service(self)
     return rawget(self, "_p").service
 end
 
 --- Gets the interface associated with the proxy if it was specified
 --- originally
-function proxy.interface(self)
+function _M.proxy.interface(self)
     return rawget(self, "_p").interface
 end
 
-function proxy.node(self, path)
-    local c = proxy.connection(self)
-    local s = proxy.service(self)
-    local p = proxy.path(self)
+function _M.proxy.node(self, path)
+    local c = _M.proxy.connection(self)
+    local s = _M.proxy.service(self)
+    local p = _M.proxy.path(self)
     if p ~= '/' then p = p .. '/' end
     return c:proxy(s, p .. path)
 end
@@ -77,11 +76,11 @@ local function lassert(nil_check, name, msg, ...)
     end
 end
 
-function proxy.call(self, t)
-    local c = proxy.connection(self)
-    t.path = proxy.path(self)
-    t.destination = proxy.service(self)
-    t.interface = t.interface or proxy.interface(self)
+function _M.proxy.call(self, t)
+    local c = _M.proxy.connection(self)
+    t.path = _M.proxy.path(self)
+    t.destination = _M.proxy.service(self)
+    t.interface = t.interface or _M.proxy.interface(self)
     if t.reply == nil or t.reply then
         return lassert(c:call(t))
     else
@@ -89,7 +88,7 @@ function proxy.call(self, t)
     end
 end
 
-function proxy.member_type(self, member)
+function _M.proxy.member_type(self, member)
     if type(rawget(self, member)) == "function" then
         return "method"
     elseif rawget(self, "_p").signals[member] then
@@ -105,34 +104,29 @@ end
 
 --- Connects a signal
 --
--- \param       t.member    Name of the signal
--- \param       t.proxy     Proxy object
--- \param       t.callback  Callback function
--- \param[opt]  t.object    Value to be given as first arg to the callback
--- \param[opt]  t.unpack_message    Whether to unpack the message when calling
---                                  the callback (default true)
+-- \param       member    Name of the signal
+-- \param       callback  Callback function
 --
 -- \return  match which can be used with proxy.disconnect to disconnect the
 --          signal
 --
 -- The callback function's arguments are the same as for the
 -- connection.add_match's callback.
-function proxy.connect(self, t)
+function _M.proxy.connect(self, member, callback)
     local matches    = rawget(self, "_p").signal_matches
-    local connection = proxy.connection(self)
+    local connection = _M.proxy.connection(self)
     local sigs       = rawget(self, "_p").signals
-    local interface  = sigs[t.member]
+    local interface  = sigs[member]
     assert(interface, "Invalid signal name")
 
     local match = {
-        add_match_to_bus_daemon = true,
+        add_to_bus      = true,
         type            = "signal",
-        path            = proxy.path(self),
-        sender          = proxy.service(self),
+        path            = _M.proxy.path(self),
+        sender          = _M.proxy.service(self),
         interface       = interface,
-        unpack_message  = t.unpack_message,
-        object          = t.object,
-        callback        = t.callback,
+        callback        = callback,
+        member          = member,
     }
 
     local m = connection:add_match(match)
@@ -147,8 +141,8 @@ end
 -- \param[opt]  match       The match returned from a call to proxy.connect
 --
 -- If the match is not specified this will disconnect all signals.
-function proxy.disconnect(self, match)
-    local connection = proxy.connection(self)
+function _M.proxy.disconnect(self, match)
+    local connection = _M.proxy.connection(self)
     if not match then
         local p = rawget(self, "_p")
         for match in pairs(p.signal_matches) do
@@ -193,7 +187,7 @@ function proxy_mt:__newindex(key, value)
     setmetatable(data, data)
 
     if DEBUG then
-        print(table.show(value, proxy.path(self) .. "." .. key))
+        print(table.show(value, _M.proxy.path(self) .. "." .. key))
     end
 
     return self:_call{
@@ -207,15 +201,10 @@ function proxy_mt:__newindex(key, value)
 end
 
 function proxy_mt:__tostring()
-    return proxy.help(self)
+    return _M.proxy.help(self)
 end
 
--------------------------------------------------------------------------------
--- Private API
--------------------------------------------------------------------------------
-
--- Constructor called from connection.proxy
-function proxy._new(connection, service, path, interface)
+function _M.proxy.new(connection, service, path, interface)
     if path == nil or service == nil then
         error("Proxies require an explicit service and path")
     end
@@ -242,20 +231,24 @@ function proxy._new(connection, service, path, interface)
         }
     end)
 
-    rawset(self, "_help", proxy.help)
-    rawset(self, "_path", proxy.path)
-    rawset(self, "_connection", proxy.connection)
-    rawset(self, "_service", proxy.service)
-    rawset(self, "_connect", proxy.connect)
-    rawset(self, "_disconnect", proxy.disconnect)
-    rawset(self, "_call", proxy.call)
-    rawset(self, "_node", proxy.node)
-    rawset(self, "_member_type", proxy.member_type)
+    rawset(self, "_help", _M.proxy.help)
+    rawset(self, "_path", _M.proxy.path)
+    rawset(self, "_connection", _M.proxy.connection)
+    rawset(self, "_service", _M.proxy.service)
+    rawset(self, "_connect", _M.proxy.connect)
+    rawset(self, "_disconnect", _M.proxy.disconnect)
+    rawset(self, "_call", _M.proxy.call)
+    rawset(self, "_node", _M.proxy.node)
+    rawset(self, "_member_type", _M.proxy.member_type)
 
     process_introspection(self, self:_introspect())
 
     return self
 end
+
+-------------------------------------------------------------------------------
+-- Private API
+-------------------------------------------------------------------------------
 
 -- Introspection XML processing
 local function process_method(self, interface, member)
@@ -302,16 +295,16 @@ local function process_property(self, interface, member)
 end
 
 local function process_node(self, node)
-    local c = proxy.connection(self)
+    local c = _M.proxy.connection(self)
     local nodes = rawget(self, "_p").nodes
-    local path = proxy.path(self)
+    local path = _M.proxy.path(self)
     nodes[node.name] = true
 end
 
 
 process_introspection = function(self, introspection)
     local x         = xml.eval(introspection)
-    local interface = proxy.interface(self)
+    local interface = _M.proxy.interface(self)
 
     for _,node in ipairs(x) do
         if node:tag() == "interface" and (interface == nil or node.name == interface) then

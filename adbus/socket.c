@@ -69,7 +69,8 @@ static void ParseFields(struct Fields* f, char* bstr, size_t size)
     if (!p)
         return;
 
-    f->proto = adbusI_strndup(bstr, p - bstr);
+    f->proto = bstr;
+    *p = '\0';
     bstr = p + 1;
 
     while (bstr < estr) {
@@ -130,8 +131,13 @@ static adbus_Socket ConnectTcp(struct Fields* f)
 
     for (rp = result; rp != NULL; rp = rp->ai_next) {
         sfd = socket(rp->ai_family,
+#ifdef SOCK_CLOEXEC
+                     rp->ai_socktype | SOCK_CLOEXEC,
+#else
                      rp->ai_socktype,
+#endif
                      rp->ai_protocol);
+
         if (sfd == ADBUS_SOCK_INVALID)
             continue;
 
@@ -174,8 +180,13 @@ static adbus_Socket BindTcp(struct Fields* f)
 
     for (rp = result; rp != NULL; rp = rp->ai_next) {
         sfd = socket(rp->ai_family,
+#ifdef SOCK_CLOEXEC
+                     rp->ai_socktype | SOCK_CLOEXEC,
+#else
                      rp->ai_socktype,
+#endif
                      rp->ai_protocol);
+
         if (sfd == ADBUS_SOCK_INVALID)
             continue;
 
@@ -193,7 +204,7 @@ static adbus_Socket BindTcp(struct Fields* f)
 
 /* ------------------------------------------------------------------------- */
 
-#ifndef _WIN32
+#ifdef AF_UNIX 
 #define UNIX_PATH_MAX 108
 static adbus_Socket ConnectAbstract(struct Fields* f)
 {
@@ -207,7 +218,15 @@ static adbus_Socket ConnectAbstract(struct Fields* f)
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path+1, f->abstract, psize);
 
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    sfd = socket(
+            AF_UNIX,
+#ifdef SOCK_CLOEXEC
+            SOCK_STREAM | SOCK_CLOEXEC,
+#else
+            SOCK_STREAM,
+#endif
+            0);
+
     err = connect(sfd,
                   (const struct sockaddr*) &sa,
                   sizeof(sa.sun_family) + psize + 1);
@@ -231,7 +250,15 @@ static adbus_Socket BindAbstract(struct Fields* f)
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path+1, f->abstract, psize);
 
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    sfd = socket(
+            AF_UNIX,
+#ifdef SOCK_CLOEXEC
+            SOCK_STREAM | SOCK_CLOEXEC,
+#else
+            SOCK_STREAM,
+#endif
+            0);
+
     err = bind(sfd,
                (const struct sockaddr*) &sa,
                sizeof(sa.sun_family) + psize + 1);
@@ -255,7 +282,15 @@ static adbus_Socket ConnectUnix(struct Fields* f)
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path, f->path, psize);
 
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    sfd = socket(
+            AF_UNIX,
+#ifdef SOCK_CLOEXEC
+            SOCK_STREAM | SOCK_CLOEXEC,
+#else
+            SOCK_STREAM,
+#endif
+            0);
+
     err = connect(sfd,
                   (const struct sockaddr*) &sa,
                   sizeof(sa.sun_family) + psize);
@@ -279,7 +314,15 @@ static adbus_Socket BindUnix(struct Fields* f)
     sa.sun_family = AF_UNIX;
     strncat(sa.sun_path, f->path, psize);
 
-    sfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    sfd = socket(
+            AF_UNIX,
+#ifdef SOCK_CLOEXEC
+            SOCK_STREAM | SOCK_CLOEXEC,
+#else       
+            SOCK_STREAM,
+#endif
+            0);
+
     err = bind(sfd,
                (const struct sockaddr*) &sa,
                sizeof(sa.sun_family) + psize);
@@ -362,7 +405,7 @@ static adbus_Bool EnvironmentString(adbus_Bool connect, adbus_BusType type, char
 
     } else if (type == ADBUS_SYSTEM_BUS) {
         return CopyEnv("DBUS_SYSTEM_BUS_ADDRESS", buf, sz)
-#ifndef _WIN32
+#ifdef AF_UNIX
             || CopyString("unix:path=/var/run/dbus/system_bus_socket", buf, sz)
 #endif
             || CopyString("autostart:", buf, sz);
@@ -511,19 +554,17 @@ adbus_Socket adbus_sock_connect_s(
 
     ParseFields(&f, str, size);
 
-#ifdef _WIN32
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
         sfd = ConnectTcp(&f);
-    }
-#else
-    if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
-        sfd = ConnectTcp(&f);
+
+#ifdef AF_UNIX
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.path) {
         sfd = ConnectUnix(&f);
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.abstract) {
         sfd = ConnectAbstract(&f);
-    }
 #endif
+
+    }
 
     free(str);
 
@@ -570,57 +611,200 @@ adbus_Socket adbus_sock_bind_s(
 
     ParseFields(&f, str, size);
 
-#ifdef _WIN32
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
         sfd = BindTcp(&f);
-    }
-#else
-    if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
-        sfd = BindTcp(&f);
+
+#ifdef AF_UNIX
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.path) {
         sfd = BindUnix(&f);
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.abstract) {
         sfd = BindAbstract(&f);
-    }
 #endif
+
+    }
 
     free(str);
 
     return sfd;
 }
 
-static uint8_t Rand(void* u)
-{ (void) u; return (uint8_t) rand(); }
+/* ------------------------------------------------------------------------- */
 
-static int Send(void* u, const char* buf, size_t sz)
-{ return send(*(adbus_Socket*) u, buf, sz, 0); }
-
-int adbus_sock_cauth(adbus_Socket sock)
+struct SocketData
 {
-    adbus_Auth* auth = adbus_cauth_new(&Send, &Rand, &sock);
+    adbus_Socket sock;
+    adbus_Connection* connection;
+    adbus_Bool yield;
+    adbus_Bool connected;
+    adbus_Buffer* txbuf;
+};
 
-    if (send(sock, "\0", 1, 0) != 1)
-        goto err;
-
-    while (1) {
-        adbus_Bool finished;
-        char buf[256];
-        int recvd = recv(sock, buf, 256, 0);
-        int used = adbus_auth_parse(auth, buf, recvd, &finished);
-
-        if (finished)
-            break;
-
-        if (used != recvd)
-            goto err;
+static void FlushTxBuffer(struct SocketData* s)
+{
+    size_t sz = adbus_buf_size(s->txbuf);
+    if (sz > 0) {
+        int sent = send(s->sock, adbus_buf_data(s->txbuf), sz, 0); 
+        if (sent > 0) {
+            adbus_buf_remove(s->txbuf, 0, sent);
+        }
     }
-
-    adbus_auth_free(auth);
-    return 0;
-    
-err:
-    adbus_auth_free(auth);
-    return -1;
 }
 
+static int SendMsg(void* d, adbus_Message* m)
+{ 
+    struct SocketData* s = (struct SocketData*) d;
+    adbus_buf_append(s->txbuf, m->data, m->size);
+    if (adbus_buf_size(s->txbuf) > 16 * 1024) {
+        FlushTxBuffer(s);
+    }
+    return (int) m->size;
+}
+
+static int Send(void* d, const char* buf, size_t sz)
+{ 
+    struct SocketData* s = (struct SocketData*) d;
+    return (int) send(s->sock, buf, sz, 0); 
+}
+
+static int Recv(void* d, char* buf, size_t sz)
+{
+    struct SocketData* s = (struct SocketData*) d;
+    int recvd = (int) recv(s->sock, buf, sz, 0); 
+    return (recvd == 0) ? -1 : recvd;
+}
+
+static uint8_t Rand(void* d)
+{ return (uint8_t) rand(); }
+
+static void Close(void* d)
+{
+    struct SocketData* s = (struct SocketData*) d;
+    FlushTxBuffer(s);
+#ifdef _WIN32
+    closesocket(s->sock); 
+#else
+    close(s->sock);
+#endif
+    adbus_buf_free(s->txbuf);
+    free(s);
+}
+
+static int Block(void* d, adbus_BlockType type, int timeoutms)
+{
+    struct SocketData* s = (struct SocketData*) d;
+    (void) timeoutms;
+
+    if (type == ADBUS_BLOCK) {
+        adbus_Bool outeryield = s->yield;
+        s->yield = 0;
+        while (!s->yield) {
+            FlushTxBuffer(s);
+            if (adbus_conn_parsecb(s->connection)) {
+                return -1;
+            }
+        }
+        s->yield = outeryield;
+
+    } else if (type == ADBUS_UNBLOCK) {
+        s->yield = 1;
+
+    } else if (type == ADBUS_WAIT_FOR_CONNECTED) {
+        while (!s->connected) {
+            FlushTxBuffer(s);
+            if (adbus_conn_parsecb(s->connection)) {
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static void Connected(void* d)
+{ 
+    struct SocketData* s = (struct SocketData*) d;
+    s->connected = 1;
+}
+
+adbus_Connection* adbus_sock_busconnect_s(
+        const char*     envstr,
+        int             size,
+        adbus_Socket*   sockret)
+{
+    struct SocketData* d = NEW(struct SocketData);
+    adbus_ConnectionCallbacks cbs;
+    adbus_Auth* auth = NULL;
+    adbus_Bool authenticated = 0;
+    int recvd = 0, used = 0;
+    char buf[256];
+
+    d->txbuf = adbus_buf_new();
+    d->sock = adbus_sock_connect_s(envstr, size);
+    if (d->sock == ADBUS_SOCK_INVALID)
+        goto err;
+
+    auth = adbus_cauth_new(&Send, &Rand, d);
+    adbus_cauth_external(auth);
+
+    ZERO(cbs);
+    cbs.send_message    = &SendMsg;
+    cbs.recv_data       = &Recv;
+    cbs.release         = &Close;
+    cbs.block           = &Block;
+
+    d->connection = adbus_conn_new(&cbs, d);
+
+    if (send(d->sock, "\0", 1, 0) != 1)
+        goto err;
+
+    if (adbus_cauth_start(auth))
+        goto err;
+
+    while (!authenticated) {
+        recvd = recv(d->sock, buf, 256, 0);
+        if (recvd < 0)
+            goto err;
+
+        used = adbus_auth_parse(auth, buf, recvd, &authenticated);
+        if (used < 0)
+            goto err;
+
+    }
+
+    adbus_conn_connect(d->connection, &Connected, d);
+
+    if (adbus_conn_parse(d->connection, buf + used, recvd - used))
+        goto err;
+
+    if (sockret)
+        *sockret = d->sock;
+
+    if (adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, -1))
+        goto err;
+
+    adbus_auth_free(auth);
+    return d->connection;
+
+err:
+    adbus_auth_free(auth);
+    if (d->connection) {
+        adbus_conn_free(d->connection);
+    } else {
+        Close(d);
+    }
+    return NULL;
+}
+
+/* ------------------------------------------------------------------------- */
+
+adbus_Connection* adbus_sock_busconnect(
+        adbus_BusType   type,
+        adbus_Socket*   psock)
+{
+    char buf[255];
+    if (adbus_connect_address(type, buf, sizeof(buf)))
+        return NULL;
+
+    return adbus_sock_busconnect_s(buf, -1, psock);
+}
 

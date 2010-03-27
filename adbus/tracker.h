@@ -95,6 +95,7 @@ struct adbusI_TrackedRemote
     int                     ref;
     dh_strsz_t              service;
     dh_strsz_t              unique;
+    adbusI_RemoteTracker*   tracker;
 };
 
 ADBUSI_FUNC void adbusI_derefTrackedRemote(adbusI_TrackedRemote* r);

@@ -29,7 +29,6 @@ require 'string'
 require 'xml'
 
 _M.proxy = _M.proxy or {}
-proxy = _M.proxy
 
 local function data_string(d, widths, linesep)
     local ret = ""
@@ -68,12 +67,12 @@ local function normalise_columns(d)
     end
 end
 
-function proxy.help(self)
+function _M.proxy.help(self)
     local ret = ""
     local introspection = self:_introspect()
 
     local x = xml.eval(introspection)
-    local interface = proxy.interface(self)
+    local interface = _M.proxy.interface(self)
 
     local interfaces = {}
 
@@ -130,7 +129,7 @@ function proxy.help(self)
 
     local d = {
         {"Service", "Path", ""}, 
-        {proxy.service(self), proxy.path(self)}, 
+        {_M.proxy.service(self), _M.proxy.path(self)}, 
         {}, 
         {}
     }

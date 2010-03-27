@@ -24,27 +24,7 @@
  */
 
 #include <adbus.h>
-#include <string.h>
 #include <stdio.h>
-#ifdef _WIN32
-#   include <windows.h>
-#else
-#   include <sys/socket.h>
-#endif
-
-#undef interface
-
-static int SendMsg(void* d, adbus_Message* m)
-{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
-
-static int Send(void* d, const char* buf, size_t sz)
-{ return (int) send(*(adbus_Socket*) d, buf, sz, 0); }
-
-static int Recv(void* d, char* buf, size_t sz)
-{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
-
-static uint8_t Rand(void* d)
-{ return (uint8_t) rand(); }
 
 static int quit = 0;
 
@@ -55,48 +35,68 @@ static int Quit(adbus_CbData* data)
     return 0;
 }
 
-static adbus_ConnectionCallbacks cbs;
-static adbus_AuthConnection c;
-static adbus_State* state;
-
-int main(void)
+static adbus_Interface* CreateInterface()
 {
-    adbus_Socket sock = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (sock == ADBUS_SOCK_INVALID)
-        abort();
-
-    state               = adbus_state_new();
-
-    cbs.send_message    = &SendMsg;
-    cbs.recv_data       = &Recv;
-
-    c.connection        = adbus_conn_new(&cbs, &sock);
-    c.auth              = adbus_cauth_new(&Send, &Rand, &sock);
-    c.recvCallback      = &Recv;
-    c.user              = &sock;
-    c.connectToBus      = 1;
-
     adbus_Interface* i = adbus_iface_new("nz.co.foobar.adbus.SimpleTest", -1);
+
     adbus_Member* mbr = adbus_iface_addmethod(i, "Quit", -1);
     adbus_mbr_setmethod(mbr, &Quit, NULL);
 
-    adbus_Bind b;
-    adbus_bind_init(&b);
-    b.interface = i;
-    b.path      = "/";
-    adbus_state_bind(state, c.connection, &b);
-    adbus_iface_deref(i);
+    return i;
+}
 
-    adbus_aconn_connect(&c);
+int main(int argc, char* argv[])
+{
+    adbus_State* state = adbus_state_new();
+    adbus_Proxy* proxy = adbus_proxy_new(state);
+    adbus_Interface* iface = CreateInterface();
+    adbus_Connection* conn;
+
+    if (argc > 1) {
+        fprintf(stderr, "Connecting to %s\n", argv[1]);
+        conn = adbus_sock_busconnect_s(argv[1], -1, NULL);
+    } else {
+        fprintf(stderr, "Connecting to the default bus\n");
+        conn = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
+    }
+
+    if (conn == NULL) {
+        fprintf(stderr, "Failed to connect\n");
+        return 1;
+    }
+
+    {
+        adbus_Bind b;
+
+        adbus_bind_init(&b);
+        b.interface = iface;
+        b.path      = "/";
+        adbus_state_bind(state, conn, &b);
+    }
+
+    {
+        adbus_Call f;
+
+        adbus_proxy_init(proxy, conn, "org.freedesktop.DBus", -1, "/", -1);
+        adbus_call_method(proxy, &f, "RequestName", -1);
+
+        adbus_msg_setsig(f.msg, "su", -1);
+        adbus_msg_string(f.msg, "nz.co.foobar.adbus.TestService", -1);
+        adbus_msg_u32(f.msg, 0);
+
+        adbus_call_send(proxy, &f);
+    }
 
     while(!quit) {
-        if (adbus_aconn_parse(&c)) {
-            abort();
+        if (adbus_conn_parsecb(conn)) {
+            return 2;
         }
     }
 
-    adbus_conn_free(c.connection);
-    adbus_auth_free(c.auth);
+    adbus_state_free(state);
+    adbus_conn_free(conn);
+    adbus_iface_free(iface);
+    adbus_proxy_free(proxy);
 
     return 0;
 }

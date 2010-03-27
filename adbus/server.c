@@ -80,8 +80,9 @@ adbus_Server* adbus_serv_new(adbus_Interface* bus)
 void adbus_serv_free(adbus_Server* s)
 {
     if (s) {
-        adbusI_serv_freeBus(s);
+        adbusI_releaseService(s, s->bus.remote, "org.freedesktop.DBus");
         adbusI_freeServiceQueue(s);
+        adbusI_serv_freeBus(s);
         assert(dl_isempty(&s->remotes.async));
         assert(dl_isempty(&s->remotes.sync));
         free(s);
@@ -99,6 +100,8 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
 {
     adbus_Remote* r;
     adbus_Remote* direct = NULL;
+
+    ADBUSI_LOG_MSG("Dispatch", m);
 
     if (m->destination) {
         direct = adbusI_lookupRemote(s, m->destination);

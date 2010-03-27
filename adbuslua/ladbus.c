@@ -46,22 +46,6 @@ static adbus_Bool IsValidKey(const char* valid[], const char* key)
     return 0;
 }
 
-int adbusluaI_check_fields(lua_State* L, int table, const char* valid[])
-{
-    lua_pushnil(L);
-    while (lua_next(L, table) != 0) {
-        if (lua_type(L, -2) != LUA_TSTRING) {
-            return -1;
-        }
-
-        if (!IsValidKey(valid, lua_tostring(L, -2)))
-            return -1;
-
-        lua_pop(L, 1); // pop value - leave key
-    }
-    return 0;
-}
-
 int adbusluaI_check_fields_numbers(lua_State* L, int table, const char* valid[])
 {
     lua_pushnil(L);
@@ -135,22 +119,6 @@ int adbusluaI_stringField(lua_State* L, int table, const char* field, const char
     }
 }
 
-int adbusluaI_functionField(lua_State* L, int table, const char* field, int* function)
-{
-    lua_getfield(L, table, field);
-    if (lua_isfunction(L, -1)) {
-        *function = luaL_ref(L, LUA_REGISTRYINDEX);
-        return 0;
-    } else if (lua_isnil(L, -1)) {
-        lua_pop(L, 1);
-        return 0;
-    } else {
-        lua_pop(L, 1);
-        lua_pushfstring(L, "Error in '%s' field - expected a function", field);
-        return -1;
-    }
-}
-
 /* ------------------------------------------------------------------------- */
 
 static int ConnectAddress(lua_State* L)
@@ -173,6 +141,19 @@ static int BindAddress(lua_State* L)
     return 1;
 }
 
+static void Log(const char* str, size_t sz)
+{ fprintf(stderr, "%.*s\n", (int) sz, str); }
+
+static int EnableDebug(lua_State* L)
+{
+    if (lua_isnil(L, 1) || lua_toboolean(L, 1)) {
+        adbus_set_logger(&Log);
+    } else {
+        adbus_set_logger(NULL);
+    }
+    return 0;
+}
+
 /* ------------------------------------------------------------------------- */
 
 static void Setup(lua_State* L, int module, const char* name)
@@ -185,6 +166,7 @@ static void Setup(lua_State* L, int module, const char* name)
 static const luaL_Reg reg[] = {
     {"connect_address", &ConnectAddress},
     {"bind_address", &BindAddress},
+    {"enable_debug", &EnableDebug},
     {NULL, NULL}
 };
 
@@ -202,7 +184,6 @@ int luaopen_adbuslua_core(lua_State* L)
 
     adbusluaI_reg_connection(L);    Setup(L, module, "connection");
     adbusluaI_reg_interface(L);     Setup(L, module, "interface");
-    adbusluaI_reg_socket(L);        Setup(L, module, "socket");
     adbusluaI_reg_object(L);        Setup(L, module, "object");
 
     assert(lua_gettop(L) == module);

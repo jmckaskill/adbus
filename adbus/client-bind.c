@@ -314,7 +314,7 @@ static void FreeObjectNode(adbusI_ObjectNode* n)
 
 void adbusI_derefObjectNode(adbusI_ObjectNode* n)
 {
-    if (--n->ref == 0) {
+    if (n && --n->ref == 0) {
         assert(dh_size(&n->binds) == 2);
 
         /* Remove builtin interfaces */
@@ -381,6 +381,7 @@ void adbusI_freeObjectTree(adbusI_ObjectTree* t)
 
             /* Detach all object node links and free just the node */
             n->tree = NULL;
+            dh_clear(Bind, &n->binds);
             dl_clear(ObjectNode, &n->children);
             n->parent = NULL;
             FreeObjectNode(n);

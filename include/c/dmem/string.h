@@ -14,6 +14,11 @@
 extern "C" {
 #endif
 
+#ifdef __GNUC__
+#   define DMEM_PRINTF(FORMAT_ARG, VARG_BEGIN) __attribute__ ((format (printf, FORMAT_ARG, VARG_BEGIN)))
+#else
+#   define DMEM_PRINTF(FORMAT_ARG, VARG_BEGIN)
+#endif
 
 #ifdef __cplusplus
 #   define DS_BOOL    bool 
@@ -69,9 +74,9 @@ DMEM_INLINE size_t ds_size(const d_String* s)
 
 /* ------------------------------------------------------------------------- */
 
-int ds_insert_vf(d_String* s, size_t index, const char* format, va_list ap);
+int ds_insert_vf(d_String* s, size_t index, const char* format, va_list ap) DMEM_PRINTF(3, 0);
 
-DMEM_INLINE int ds_insert_f(d_String* s, size_t index, const char* format, ...)
+DMEM_INLINE DMEM_PRINTF(3, 4) int ds_insert_f(d_String* s, size_t index, const char* format, ...)
 {
     int ret;
     va_list ap;
@@ -84,10 +89,10 @@ DMEM_INLINE int ds_insert_f(d_String* s, size_t index, const char* format, ...)
 
 /* ------------------------------------------------------------------------- */
 
-DMEM_INLINE int ds_cat_vf(d_String* s, const char* format, va_list ap)
+DMEM_INLINE DMEM_PRINTF(2, 0) int ds_cat_vf(d_String* s, const char* format, va_list ap)
 { return ds_insert_vf(s, ds_size(s), format, ap); }
 
-DMEM_INLINE int ds_cat_f(d_String* s, const char* format, ...)
+DMEM_INLINE DMEM_PRINTF(2, 3) int ds_cat_f(d_String* s, const char* format, ...)
 {
     int ret;
     va_list ap;
@@ -100,13 +105,13 @@ DMEM_INLINE int ds_cat_f(d_String* s, const char* format, ...)
 
 /* ------------------------------------------------------------------------- */
 
-DMEM_INLINE int ds_set_vf(d_String* s, const char* format, va_list ap)
+DMEM_INLINE DMEM_PRINTF(2, 0) int ds_set_vf(d_String* s, const char* format, va_list ap)
 {
     ds_clear(s);
     return ds_insert_vf(s, 0, format, ap);
 }
 
-DMEM_INLINE int ds_set_f(d_String* s, const char* format, ...)
+DMEM_INLINE DMEM_PRINTF(2, 3) int ds_set_f(d_String* s, const char* format, ...)
 {
     int ret;
     va_list ap;

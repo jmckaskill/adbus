@@ -417,9 +417,9 @@ void adbusI_matchString(d_String* s, const adbus_Match* m)
         adbus_Argument* arg = &m->arguments[i];
         if (arg->value) {
             if (arg->size >= 0) {
-                ds_cat_f(s, "arg%d='%*s',", i, arg->size, arg->value);
+                ds_cat_f(s, "arg%d='%*s',", (int) i, (int) arg->size, arg->value);
             } else {
-                ds_cat_f(s, "arg%d='%s',", i, arg->value);
+                ds_cat_f(s, "arg%d='%s',", (int) i, arg->value);
             }
         }
     }

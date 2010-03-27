@@ -396,7 +396,9 @@ void adbus_state_addreply(
  */
 adbus_State* adbus_state_new(void)
 {
-    return NEW(adbus_State);
+    adbus_State* s = NEW(adbus_State);
+    s->refConnection = 1;
+    return s;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -414,10 +416,14 @@ static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connecti
 
     conn = NEW(adbusI_StateConn);
     conn->connection = c;
+    conn->refConnection = s->refConnection;
     dil_insert_after(StateConn, &s->connections, conn, &conn->hl);
     adbus_conn_getproxy(c, NULL, &conn->proxy, &conn->puser);
     adbus_conn_getproxy(c, &conn->relproxy, NULL, &conn->relpuser);
-    adbus_conn_ref(c);
+
+    if (s->refConnection) {
+        adbus_conn_ref(c);
+    }
 
     d->conn = conn;
 }
@@ -443,7 +449,10 @@ static void ResetConn(void* user)
     }
     assert(dil_isempty(&c->replies));
 
-    adbus_conn_deref(c->connection);
+    if (c->refConnection) {
+        adbus_conn_deref(c->connection);
+    }
+
     free(c);
 }
 

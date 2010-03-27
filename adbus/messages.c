@@ -190,11 +190,16 @@ int adbus_errorf(
     va_list ap;
 
     ZERO(msg);
-    va_start(ap, errorMsgFormat);
-    ds_cat_vf(&msg, errorMsgFormat, ap);
-    va_end(ap);
 
-    adbus_error(d, errorName, -1, ds_cstr(&msg), ds_size(&msg));
+    if (errorMsgFormat) {
+        va_start(ap, errorMsgFormat);
+        ds_cat_vf(&msg, errorMsgFormat, ap);
+        va_end(ap);
+
+        adbus_error(d, errorName, -1, ds_cstr(&msg), ds_size(&msg));
+    } else {
+        adbus_error(d, errorName, -1, NULL, 0);
+    }
 
     ds_free(&msg);
 

@@ -24,39 +24,10 @@
  */
 
 #include <adbus.h>
-#ifdef _WIN32
-#   include <windows.h>
-#else
-#   include <sys/socket.h>
-#endif
-
-#include <stdio.h>
-
-#undef interface
-
-static int SendMsg(void* d, adbus_Message* m)
-{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
-
-static int Send(void* d, const char* buf, size_t sz)
-{ return (int) send(*(adbus_Socket*) d, buf, sz, 0); }
-
-static int Recv(void* d, char* buf, size_t sz)
-{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
-
-static uint8_t Rand(void* d)
-{ return (uint8_t) rand(); }
-
-static void Log(const char* str, size_t sz)
-{ fwrite(str, 1, sz, stderr); }
-
-static int quit = 0;
-static adbus_ConnectionCallbacks cbs;
-static adbus_AuthConnection c;
-static adbus_State* state;
 
 static int Quit(adbus_CbData* d)
 {
-    quit = 1;
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, -1);
     return 0;
 }
 
@@ -68,87 +39,69 @@ static int Ping(adbus_CbData* d)
     if (d->ret) {
         adbus_msg_string(d->ret, ping, -1);
     }
+
     return 0;
 }
 
-static void Connected(void* u)
+static adbus_Interface* CreateInterface()
 {
-    adbus_Proxy* proxy = adbus_proxy_new(state);
-    adbus_Call f;
+    adbus_Interface* iface = adbus_iface_new("nz.co.foobar.adbus.PingTest", -1);
 
-    (void) u;
+    adbus_Member* mbr = adbus_iface_addmethod(iface, "Quit", -1);
+    adbus_mbr_setmethod(mbr, &Quit, NULL);
 
-    adbus_proxy_init(proxy, c.connection, "org.freedesktop.DBus", -1, "/", -1);
+    mbr = adbus_iface_addmethod(iface, "Ping", -1);
+    adbus_mbr_setmethod(mbr, &Ping, NULL);
+    adbus_mbr_argsig(mbr, "s", -1);
+    adbus_mbr_retsig(mbr, "s", -1);
 
-    adbus_call_method(proxy, &f, "RequestName", -1);
-    adbus_msg_setsig(f.msg, "su", -1);
-    adbus_msg_string(f.msg, "nz.co.foobar.adbus.PingServer", -1);
-    adbus_msg_u32(f.msg, 0);
-    adbus_call_send(proxy, &f);
-
-    adbus_proxy_free(proxy);
+    return iface;
 }
 
 int main()
 {
-    adbus_Socket sock;
+    adbus_Connection* connection;
+    adbus_State* state;
+    adbus_Proxy* proxy;
 
-#ifdef _WIN32
-    WSADATA wsadata;
-    int err = WSAStartup(MAKEWORD(2, 2), &wsadata);
-    if (err)
-        abort();
-#endif
-
-    sock = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (sock == ADBUS_SOCK_INVALID)
+    connection = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
+    if (!connection)
         abort();
 
     state = adbus_state_new();
+    proxy = adbus_proxy_new(state);
 
-    cbs.send_message    = &SendMsg;
-    cbs.recv_data       = &Recv;
-
-    c.connection        = adbus_conn_new(&cbs, &sock);
-    c.auth              = adbus_cauth_new(&Send, &Rand, &sock);
-    c.recvCallback      = &Recv;
-    c.user              = &sock;
-    c.connectToBus      = 1;
-    c.connectCallback   = &Connected;
-
+    /* Bind our interface to '/' */
     {
-        adbus_Member* mbr;
         adbus_Bind b;
-
         adbus_bind_init(&b);
-        b.interface = adbus_iface_new("nz.co.foobar.adbus.PingTest", -1);
+        b.interface = CreateInterface();
+        b.path      = "/";
+        adbus_state_bind(state, connection, &b);
 
-        mbr = adbus_iface_addmethod(b.interface, "Quit", -1);
-        adbus_mbr_setmethod(mbr, &Quit, NULL);
-
-        mbr = adbus_iface_addmethod(b.interface, "Ping", -1);
-        adbus_mbr_setmethod(mbr, &Ping, NULL);
-        adbus_mbr_argsig(mbr, "s", -1);
-        adbus_mbr_retsig(mbr, "s", -1);
-
-        b.path = "/";
-
-        adbus_state_bind(state, c.connection, &b);
         adbus_iface_deref(b.interface);
     }
 
-    adbus_cauth_external(c.auth);
-    adbus_aconn_connect(&c);
+    /* Register for nz.co.foobar.adbus.PingServer */
+    {
+        adbus_Call f;
 
-    while(!quit) {
-        if (adbus_aconn_parse(&c)) {
-            abort();
-        }
+        adbus_proxy_init(proxy, connection, "org.freedesktop.DBus", -1, "/", -1);
+        adbus_call_method(proxy, &f, "RequestName", -1);
+
+        adbus_msg_setsig(f.msg, "su", -1);
+        adbus_msg_string(f.msg, "nz.co.foobar.adbus.PingServer", -1);
+        adbus_msg_u32(f.msg, 0);
+
+        adbus_call_send(proxy, &f);
     }
 
+    /* Block for the quit method */
+    adbus_conn_block(connection, ADBUS_BLOCK, -1);
+
+    adbus_proxy_free(proxy);
     adbus_state_free(state);
-    adbus_auth_free(c.auth);
-    adbus_conn_free(c.connection);
+    adbus_conn_free(connection);
 
     return 0;
 }

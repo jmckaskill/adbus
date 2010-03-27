@@ -23,37 +23,32 @@
  * ----------------------------------------------------------------------------
  */
 
-#define _BSD_SOURCE
-#include "dmem/string.h"
-
+#include "timer.h"
 #include <adbus.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-#   include <windows.h>
-#else
-#   include <sys/socket.h>
-#   include <sys/time.h>
-#endif
 
-static int SendMsg(void* d, adbus_Message* m)
-{ return (int) send(*(adbus_Socket*) d, m->data, (int) m->size, 0); }
-
-static int Send(void* d, const char* buf, size_t sz)
-{ return (int) send(*(adbus_Socket*) d, buf, (int) sz, 0); }
-
-static int Recv(void* d, char* buf, size_t sz)
-{ return (int) recv(*(adbus_Socket*) d, buf, (int) sz, 0); }
-
-static uint8_t Rand(void* d)
-{ return (uint8_t) rand(); }
-
-#define REPEAT 1000
+#define REPEAT 100000
 static int replies = REPEAT;
-static adbus_ConnectionCallbacks cbs;
-static adbus_AuthConnection c;
-static adbus_State* state;
+
 static adbus_Proxy* proxy;
+
+static int Reply(adbus_CbData* d);
+static int Error(adbus_CbData* d);
+
+static void SendPing()
+{
+    adbus_Call f;
+
+    adbus_call_method(proxy, &f, "Ping", -1);
+    f.callback  = &Reply;
+    f.error     = &Error;
+    
+    adbus_msg_setsig(f.msg, "s", -1);
+    adbus_msg_string(f.msg, "str", -1);
+
+    adbus_call_send(proxy, &f);
+}
 
 static int Reply(adbus_CbData* d)
 {
@@ -61,89 +56,49 @@ static int Reply(adbus_CbData* d)
     adbus_check_end(d);
 
     if (--replies > 0) {
-        adbus_Call f;
-
-        adbus_call_method(proxy, &f, "Ping", -1);
-        f.callback = &Reply;
-        
-        adbus_msg_setsig(f.msg, "s", -1);
-        adbus_msg_string(f.msg, "str", -1);
-
-        adbus_call_send(proxy, &f);
+        SendPing();
+    } else {
+        adbus_conn_block(d->connection, ADBUS_UNBLOCK, -1);
     }
+
     return 0;
 }
 
-static void Connected(void* u)
+static int Error(adbus_CbData* d)
 {
-    (void) u;
-    state = adbus_state_new();
-    proxy = adbus_proxy_new(state);
-    adbus_proxy_init(proxy, c.connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
-
-    {
-        adbus_Call f;
-
-        adbus_call_method(proxy, &f, "Ping", -1);
-        f.callback = &Reply;
-
-        adbus_msg_setsig(f.msg, "s", -1);
-        adbus_msg_string(f.msg, "str", -1);
-
-        adbus_call_send(proxy, &f);
-    }
+    fprintf(stderr, "Error %s %s\n", d->msg->sender, d->msg->error);
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, -1);
+    return 0;
 }
 
 
 
 int main()
 {
-    adbus_Socket sock;
-    uint64_t ns;
+    struct Timer t;
+    adbus_Connection* connection;
+    adbus_State* state;
 
-#ifdef _WIN32
-    LARGE_INTEGER start, end, freq;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&start);
-#else
-    struct timeval start, end, diff;
-    gettimeofday(&start, NULL);
-#endif
+    StartTimer(&t);
 
-    sock = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (sock == ADBUS_SOCK_INVALID)
+    connection = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
+    if (!connection)
         abort();
+
+    state = adbus_state_new();
+    proxy = adbus_proxy_new(state);
+    adbus_proxy_init(proxy, connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
+
+    SendPing();
     
-    cbs.send_message    = &SendMsg;
-    cbs.recv_data       = &Recv;
-
-    c.connection        = adbus_conn_new(&cbs, &sock);
-    c.auth              = adbus_cauth_new(&Send, &Rand, &sock);
-    c.recvCallback      = &Recv;
-    c.user              = &sock;
-    c.connectToBus      = 1;
-    c.connectCallback   = &Connected;
-
-    while(replies > 0) {
-        if (adbus_aconn_parse(&c)) {
-            abort();
-        }
-    }
+    /* Wait for the pings to finish */
+    adbus_conn_block(connection, ADBUS_BLOCK, -1);
 
     adbus_proxy_free(proxy);
     adbus_state_free(state);
-    adbus_conn_free(c.connection);
-    adbus_auth_free(c.auth);
+    adbus_conn_free(connection);
 
-#ifdef _WIN32
-    QueryPerformanceCounter(&end);
-    ns = ((end.QuadPart - start.QuadPart) * 1000000000 / REPEAT) / freq.QuadPart;
-#else
-    gettimeofday(&end, NULL);
-    timersub(&end, &start, &diff);
-    ns = (diff.tv_sec * 1000000 + diff.tv_usec) * 1000 / REPEAT;
-#endif
-    fprintf(stderr, "Time %d ns\n", (int) ns);
+    fprintf(stderr, "Time %d ns\n", StopTimer(&t, REPEAT));
 
     return 0;
 }

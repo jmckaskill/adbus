@@ -73,6 +73,7 @@ void adbus_sig_free(adbus_Signal* s)
 {
     if (s) {
         adbus_sig_reset(s);
+        adbus_msg_free(s->message);
         dv_free(Bind, &s->binds);
         adbus_iface_deref(s->member->interface);
         free(s);
@@ -87,7 +88,7 @@ void adbus_sig_free(adbus_Signal* s)
 void adbus_sig_reset(adbus_Signal* s)
 {
     size_t i;
-    adbus_msg_free(s->message);
+    adbus_msg_reset(s->message);
     for (i = 0; i < dv_size(&s->binds); i++) {
         free(dv_a(&s->binds, i).path);
     }

@@ -42,7 +42,7 @@ TcpServer::TcpServer(adbus_Interface* iface, QObject* parent)
 TcpServer::~TcpServer()
 {
     adbus_serv_free(m_DBusServer);
-    delete m_Server;
+    m_Server->deleteLater();
 }
 
 bool TcpServer::listen(const QHostAddress& address, quint16 port)
@@ -73,7 +73,7 @@ LocalServer::LocalServer(adbus_Interface* iface, QObject* parent)
 LocalServer::~LocalServer()
 {
     adbus_serv_free(m_DBusServer);
-    delete m_Server;
+    m_Server->deleteLater();
 }
 
 bool LocalServer::listen(const QString& name)
@@ -109,8 +109,8 @@ void Remote::Init(QIODevice* socket, adbus_Server* server)
     m_Socket = socket;
     m_Server = server;
     m_Buffer = adbus_buf_new();
-    connect(m_Socket, SIGNAL(disconnected()), SLOT(deleteLater()));
-    connect(m_Socket, SIGNAL(readyRead()), SLOT(readyRead()));
+    connect(m_Socket, SIGNAL(disconnected()), this, SLOT(deleteLater()));
+    connect(m_Socket, SIGNAL(readyRead()), this, SLOT(readyRead()));
 }
 
 Remote::~Remote()
@@ -118,7 +118,7 @@ Remote::~Remote()
     adbus_buf_free(m_Buffer);
     adbus_auth_free(m_Auth);
     adbus_remote_disconnect(m_Remote);
-    delete m_Socket;
+    m_Socket->deleteLater();
 }
 
 int Remote::SendMsg(void* d, adbus_Message* m)

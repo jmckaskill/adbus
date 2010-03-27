@@ -48,7 +48,7 @@ void adbusI_remote_freeParser(adbus_Remote* r)
 /* Manually unpack even for native endianness since value might not be 4 byte
  * aligned
  */
-static uint32_t Get32(char endianness, uint32_t* value)
+static uint32_t Get32(char endianness, const uint32_t* value)
 {
     uint8_t* p = (uint8_t*) value;
     if (endianness == 'l') {
@@ -117,7 +117,7 @@ static int ServerParse(adbus_Remote* r, adbus_Buffer* b, adbus_Message* m, const
         adbus_IterVariant v;
         const char** pstr;
         size_t* psize;
-        char *fieldBegin, *fieldEnd;
+        const char *fieldBegin, *fieldEnd;
 
         if (adbus_iter_beginstruct(&i))
             return -1;
@@ -177,7 +177,7 @@ static int ServerParse(adbus_Remote* r, adbus_Buffer* b, adbus_Message* m, const
             case ADBUSI_HEADER_SIGNATURE:
                 if (    i.sig[0] != 'g' 
                     ||  i.sig[1] != '\0'
-                    ||  adbus_iter_signature(&i, &m->signature, NULL))
+                    ||  adbus_iter_signature(&i, &m->signature, &m->signatureSize))
                 {
                     return -1;
                 }
@@ -323,7 +323,12 @@ int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
         if (ret < 0)
             return -1;
 
-        if (!ret && adbusI_serv_dispatch(r->server, r, &m))
+        if (!ret)
+            ret = adbusI_serv_dispatch(r->server, r, &m);
+
+        adbus_freeargs(&m);
+
+        if (ret < 0)
             return -1;
 
         data += msgsize;

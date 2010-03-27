@@ -39,10 +39,15 @@ LDFLAGS_ex_qtdbus_pong  += $(LD_QT)
 : example/ping/client.o adbus.so |> !ld |> ex_ping_client
 : example/ping/client-async.o adbus.so |> !ld |> ex_ping_client_async
 : example/ping/server.o adbus.so |> !ld |> ex_ping_server
+
+: example/bus-epoll/*.o adbus.so |> !ld |> ex_bus_epoll
+
 : example/bus-qt/*.o adbus.so |> !ldpp |> ex_bus_qt
 : example/client-qt/*.o adbus.so |> !ldpp |> ex_client_qt
+
 : example/simple/*.o adbus.so |> !ld |> ex_simple
 : example/simplecpp/*.o adbus.so |> !ldpp |> ex_simplecpp
+
 #: example/simpleqt/*.o libQtDBus.so adbus.so |> !ldpp |> ex_simpleqt
 #: example/qt-dbus/pingpong/ping_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_ping
 #: example/qt-dbus/pingpong/pong_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_pong

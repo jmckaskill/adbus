@@ -32,46 +32,27 @@ require 'string'
 -- Proxy API
 -------------------------------------------------------------------------------
 
-service_proxy = {}
+_M.service_proxy = {}
 
 local mt = {}
 
 --- Gets the connection object associated with the proxy
-function service_proxy.connection(self)
+function _M.service_proxy.connection(self)
     return rawget(self, "_p").connection
 end
 
 --- Gets the name of the remote
-function service_proxy.service(self)
+function _M.service_proxy.service(self)
     return rawget(self, "_p").service
 end
 
 -- Nodes
 
-function mt:__call(key)
-    local connection = service_proxy.connection(self)
-
-    return connection:proxy{
-        service = service_proxy.service(self),
-        path = key,
-    }
-end
-
-function mt:__index(key)
-    local connection = service_proxy.connection(self)
-
-    return connection:proxy{
-        service = service_proxy.service(self),
-        path = key,
-    }
-end
-
 function mt:__tostring()
-    return service_proxy.help(self)
+    return _M.service_proxy.help(self)
 end
 
--- Constructor called from connection.proxy
-function service_proxy._new(connection, service)
+function _M.service_proxy.new(connection, service)
     local self = {}
     setmetatable(self, mt)
 
@@ -80,9 +61,9 @@ function service_proxy._new(connection, service)
     p.connection        = connection
     rawset(self, "_p", p)
 
-    rawset(self, "_help", service_proxy.help)
-    rawset(self, "_connection", service_proxy.connection)
-    rawset(self, "_service", service_proxy.service)
+    rawset(self, "_help", _M.service_proxy.help)
+    rawset(self, "_connection", _M.service_proxy.connection)
+    rawset(self, "_service", _M.service_proxy.service)
 
     return self
 end
@@ -91,23 +72,27 @@ end
 local call_introspection
 
 local function process_introspection(self, xml_str, path, paths)
-    local c = service_proxy.connection(self)
-    local s = service_proxy.service(self)
+    local c = _M.service_proxy.connection(self)
+    local s = _M.service_proxy.service(self)
     local x = xml.eval(xml_str)
 
     table.insert(paths, path)
-    paths.number = paths.number - 1
+    paths.left = paths.left - 1
 
     for _,node in ipairs(x) do
         if node:tag() == "node" then
             call_introspection(self, path, node.name, paths)
         end
     end
+
+    if paths.left == 0 then
+        paths.yield = true
+    end
 end
 
 call_introspection = function(self, path, node, paths)
-    local c = service_proxy.connection(self)
-    local s = service_proxy.service(self)
+    local c = _M.service_proxy.connection(self)
+    local s = _M.service_proxy.service(self)
     local node_path = path .. (path == "/" and "" or "/") .. node
 
     c:async_call{
@@ -119,19 +104,17 @@ call_introspection = function(self, path, node, paths)
             process_introspection(self, xml, node_path, paths)
         end,
     }
-    paths.number = paths.number + 1
+    paths.left = paths.left + 1
 end
 
-function service_proxy.help(self)
-    local c = service_proxy.connection(self)
-    local s = service_proxy.service(self)
+function _M.service_proxy.help(self)
+    local c = _M.service_proxy.connection(self)
+    local s = _M.service_proxy.service(self)
 
-    local paths = {number = 0}
+    local paths = {left = 0}
     call_introspection(self, '/', '', paths)
 
-    while paths.number > 0 do
-        c:process()
-    end
+    c:process(paths)
     table.sort(paths)
     return table.concat(paths, "\n")
 end

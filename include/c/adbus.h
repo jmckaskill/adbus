@@ -173,7 +173,6 @@ typedef enum adbus_FieldType            adbus_FieldType;
 typedef enum adbus_MessageType          adbus_MessageType;
 typedef uint32_t                        adbus_Bool;
 
-
 #ifdef _WIN32
     typedef uintptr_t   adbus_Socket;
 #   define ADBUS_SOCK_INVALID ~((adbus_Socket) 0)
@@ -291,15 +290,25 @@ ADBUS_API adbus_Socket adbus_sock_connect_s(
         const char*     envstr,
         int             size);
 
-ADBUS_API int adbus_sock_cauth(
-        adbus_Socket    sock);
-
 ADBUS_API adbus_Socket adbus_sock_bind(
         adbus_BusType   type);
 
 ADBUS_API adbus_Socket adbus_sock_bind_s(
         const char*     envstr,
         int             size);
+
+ADBUS_API adbus_Connection* adbus_sock_busconnect(
+        adbus_BusType   type,
+        adbus_Socket*   psock);
+
+ADBUS_API adbus_Connection* adbus_sock_busconnect_s(
+        const char*     envstr,
+        int             size,
+        adbus_Socket*   psock);
+
+
+
+
 
 ADBUS_API adbus_Auth* adbus_sauth_new(
         adbus_SendCallback  send,
@@ -782,7 +791,7 @@ ADBUS_API adbus_Buffer* adbus_buf_new(void);
 ADBUS_API void adbus_buf_free(adbus_Buffer* b);
 ADBUS_API size_t adbus_buf_size(const adbus_Buffer* b);
 ADBUS_API char* adbus_buf_data(const adbus_Buffer* b);
-ADBUS_API void adbus_buf_reserve(adbus_Buffer* b, size_t sz);
+ADBUS_API size_t adbus_buf_reserved(adbus_Buffer* b);
 ADBUS_API char* adbus_buf_release(adbus_Buffer* b);
 ADBUS_API void adbus_buf_reset(adbus_Buffer* b);
 ADBUS_API void adbus_buf_remove(adbus_Buffer* b, size_t off, size_t num);

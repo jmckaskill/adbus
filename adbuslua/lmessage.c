@@ -844,29 +844,12 @@ static int PushMessage(
 
 int adbuslua_push_message(
         lua_State*              L,
-        const adbus_Message*    msg,
-        adbus_Bool              unpack)
+        const adbus_Message*    msg)
 {
     int top = lua_gettop(L);
-    if (unpack) {
-        if (msg->type == ADBUS_MSG_ERROR) {
-            lua_pushnil(L);
-            lua_pushstring(L, msg->error);
-        }
-
-        adbus_Iterator i;
-        adbus_iter_args(&i, msg);
-        while (*i.sig) {
-            if (PushNextField(L, &i))
-                return -1;
-        }
-
-    } else {
-        if (PushMessage(L, msg)) {
-            lua_settop(L, top);
-            return -1;
-        }
-
+    if (PushMessage(L, msg)) {
+        lua_settop(L, top);
+        return -1;
     }
     return 0;
 }

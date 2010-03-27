@@ -57,7 +57,7 @@ extern void dis_cat_n(d_IString* s, const char* str, size_t sz);
 DMEM_INLINE void dis_cat(d_IString* s, const char* str)
 { dis_cat_n(s, str, strlen(str)); }
 
-DMEM_INLINE void dis_cat_f(d_IString* s, const char* format, ...)
+DMEM_INLINE DMEM_PRINTF(2, 3) void dis_cat_f(d_IString* s, const char* format, ...)
 {
     va_list ap;
     va_start(ap, format);

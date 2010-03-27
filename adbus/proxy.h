@@ -43,6 +43,7 @@ struct adbus_Proxy
     /** \privatesection */
     adbus_State*        state;
     adbus_Connection*   connection;
+    adbus_Bool          refConnection;
     adbus_MsgFactory*   message;
     d_String            service;
     d_String            path;

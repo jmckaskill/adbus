@@ -51,7 +51,7 @@ extern "C" {
 #   define ADBUSLUA_API extern
 #endif
 
-ADBUSLUA_API int adbuslua_push_message(lua_State* L, const adbus_Message* msg, adbus_Bool unpack);
+ADBUSLUA_API int adbuslua_push_message(lua_State* L, const adbus_Message* msg);
 ADBUSLUA_API int adbuslua_push_argument(lua_State* L, adbus_Iterator* iter);
 
 ADBUSLUA_API adbus_Interface*  adbuslua_check_interface(lua_State* L, int index);

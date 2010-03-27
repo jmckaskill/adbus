@@ -37,58 +37,41 @@
 #define ZERO(v) memset(&v, 0, sizeof(v));
 #define UNUSED(x) ((void) (x))
 
-IFUNC int adbusluaI_check_fields(lua_State* L, int table, const char** valid);
 IFUNC int adbusluaI_check_fields_numbers(lua_State* L, int table, const char** valid);
 
 IFUNC int adbusluaI_boolField(lua_State* L, int table, const char* field, adbus_Bool* val);
 IFUNC int adbusluaI_intField(lua_State* L, int table, const char* field, int64_t* val);
 IFUNC int adbusluaI_stringField(lua_State* L, int table, const char* field, const char** str, int* sz);
-IFUNC int adbusluaI_functionField(lua_State* L, int table, const char* field, int* function);
 
 IFUNC void adbusluaI_reg_connection(lua_State* L);
 IFUNC void adbusluaI_reg_interface(lua_State* L);
-IFUNC void adbusluaI_reg_socket(lua_State* L);
 IFUNC void adbusluaI_reg_object(lua_State* L);
 
-IFUNC int adbusluaI_tomatch(lua_State* L, int index, adbus_Match* m, int* callback, int* object, adbus_Bool* unpack);
-IFUNC int adbusluaI_toreply(lua_State* L, int index, adbus_Reply* r, int* callback, int* object, adbus_Bool* unpack);
-
-IFUNC adbus_Interface* adbusluaI_check_interface(lua_State* L, int index);
+IFUNC adbus_Interface* adbusluaI_tointerface(lua_State* L, int index);
 
 struct Connection
 {
     adbus_Connection*       connection;
     adbus_MsgFactory*       message;
-    adbus_Buffer*           buf;
     lua_State*              L;
-    int                     sender;
-    int                     connect;
-    int                     errors;
-};
-
-struct Member
-{
-    lua_State*              L;
-    int                     method;
-    int                     getter;
-    int                     setter;
-    int                     argsig;
-    int                     retsig;
-    adbus_Bool              unpack;
+    int                     queue;
 };
 
 struct Interface
 {
     adbus_Interface*        interface;
+    adbus_Member*           member;
 };
 
 struct Object
 {
     lua_State*              L;
     struct Connection*      connection;
+    int                     connref;
     int                     callback;
     int                     object;
-    adbus_Bool              unpack;
+    int                     user;
+    int                     queue;
     adbus_ConnMatch*        match;
     adbus_ConnReply*        reply;
     adbus_ConnBind*         bind;
@@ -98,7 +81,5 @@ IFUNC int adbusluaI_callback(adbus_CbData* d);
 IFUNC int adbusluaI_method(adbus_CbData* d);
 IFUNC int adbusluaI_getproperty(adbus_CbData* d);
 IFUNC int adbusluaI_setproperty(adbus_CbData* d);
-IFUNC void adbusluaI_connect(void* u);
-IFUNC int adbusluaI_send(void* u, adbus_Message* msg);
 
 

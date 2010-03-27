@@ -26,11 +26,11 @@
 #include "connection.h"
 #include "interface.h"
 #include "message.h"
-
-#include "dmem/vector.h"
-#include "dmem/string.h"
+#include "state.h"
+#include "proxy.h"
 
 #include <assert.h>
+#include <stdio.h>
 
 /** \struct adbus_ConnectionCallbacks
  *  \brief Structure to hold callbacks registered with adbus_conn_new(). 
@@ -245,6 +245,9 @@
 
 static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c);
 
+static void Log(const char* str, size_t sz)
+{ fprintf(stderr, "%.*s\n", (int) sz, str); }
+
 /** Creates a new connection.
  *  \relates adbus_Connection
  */
@@ -258,7 +261,9 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
 
     c->ref          = 1;
     c->nextSerial   = 1;
-    c->state        = adbus_state_new();
+
+    c->state = adbus_state_new();
+    c->state->refConnection = 0;
 
     c->next         = GetNewMessage(c);
 
@@ -267,6 +272,8 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
     c->current      = &c->toprocess;
 
     c->bus = adbus_proxy_new(c->state);
+    c->bus->refConnection = 0;
+
     adbus_proxy_init(c->bus, c, "org.freedesktop.DBus", -1, "/org/freedesktop/DBus", -1);
     adbus_proxy_setinterface(c->bus, "org.freedesktop.DBus", -1);
 
@@ -298,7 +305,14 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
     adbus_mbr_argname(m, "property_name", -1);
     adbus_mbr_argname(m, "value", -1);
 
-    adbus_conn_ref(c);
+    assert(c->ref == 1);
+
+    if (!sLogFunction) {
+        const char* env = getenv("ADBUS_DEBUG");
+        if (env && strcmp(env, "1") == 0) {
+            adbus_set_logger(&Log);
+        }
+    }
 
     return c;
 }
@@ -468,7 +482,13 @@ static void FreeMessage(adbusI_ConnMsg* m)
 }
 
 static void FinishMessage(adbus_Connection* c, adbusI_ConnMsg* m)
-{ dl_insert_after(ConnMsg, &c->extra, m, &m->hl); }
+{ 
+    dl_insert_after(ConnMsg, &c->extra, m, &m->hl); 
+    adbus_freeargs(&m->msg);
+    if (adbus_buf_reserved(m->buf) > 1024) {
+        free(adbus_buf_release(m->buf));
+    }
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -479,6 +499,8 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
 
     assert(c->current == &c->toprocess && dl_isempty(&c->extra));
     assert(adbus_buf_size(c->next->buf) == 0);
+
+    ADBUSI_LOG_MSG("Received (dispatch)", m);
 
     ZERO(d);
     d.connection = c;
@@ -644,6 +666,7 @@ static int ParseNewMessages(adbus_Connection* c, adbusI_ConnMsg* next)
         if (adbus_parse(&next->msg, data, size)) {
             return -1;
         }
+        ADBUSI_LOG_MSG("Received", &next->msg);
     }
 
     return 0;
@@ -677,18 +700,18 @@ int adbus_conn_parse(adbus_Connection* c, const char* data, size_t size)
 int adbus_conn_parsecb(adbus_Connection* c)
 {
     int ret = 0;
+    int read = RECV_SIZE;
     adbusI_ConnMsg* next = c->next;
 
     /* Append our new data */
-    int read = RECV_SIZE;
     while (read == RECV_SIZE) {
         char* dest = adbus_buf_recvbuf(next->buf, RECV_SIZE);
         read = c->callbacks.recv_data(c->user, dest, RECV_SIZE);
         adbus_buf_recvd(next->buf, RECV_SIZE, read);
     }
-
+    
     if (!SplitNextMessage(c))
-        return 0;
+        return (read < 0) ? -1 : 0;
 
     if (ParseNewMessages(c, next))
         return -1;
@@ -699,7 +722,7 @@ int adbus_conn_parsecb(adbus_Connection* c)
     if (ret < 0)
         return -1;
     
-    return 0;
+    return (read < 0) ? -1 : 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -756,4 +779,10 @@ void adbus_conn_getproxy(
         if (user)
             *user = NULL;
     }
+}
+
+int adbus_conn_block(adbus_Connection* c, adbus_BlockType type, int timeoutms)
+{
+    /* This will purposely crash if the block callback is not set */
+    return c->callbacks.block(c->user, type, timeoutms);
 }
