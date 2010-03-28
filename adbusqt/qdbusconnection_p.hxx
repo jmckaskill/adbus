@@ -47,6 +47,10 @@ public:
 
     adbus_Connection* connection() {return m_Connection;}
 
+signals:
+    void connected();
+    void disconnected();
+
 private slots:
     void socketReadyRead();
     void socketConnected();
@@ -55,28 +59,28 @@ private slots:
 private:
     ~QDBusClient();
 
-    static adbus_ssize_t    SendMsg(void* u, adbus_Message* m);
-    static adbus_ssize_t    Send(void* u, const char* b, size_t sz);
+    static int              SendMsg(void* u, adbus_Message* m);
+    static int              Send(void* u, const char* b, size_t sz);
+    static int              Recv(void* u, char* buf, size_t sz);
     static uint8_t          Rand(void* u);
     static adbus_Bool       ShouldProxy(void* u);
     static void             GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallback* msgcb, void** data);
-    static int              Block(void* u, adbus_BlockType type, int timeoutms);
+    static int              Block(void* u, adbus_BlockType type, void** data, int timeoutms);
     static void             ConnectedToBus(void* u);
     static void             Free(void* u);
 
     bool connectToServer(const char* envstr);
 
-    bool                          m_ConnectToBus;
-    bool                          m_ConnectedToBus;
-    adbus_Connection*             m_Connection;
-    adbus_Auth*                   m_Auth;
-    adbus_Buffer*                 m_Buffer;
-    QIODevice*                    m_IODevice;
-    QAbstractSocket*              m_Socket;
-    QString                       m_UniqueName;
-    QThreadStorage<QDBusProxy*>   m_Proxies;
-    QSemaphore                    m_ConnectedSemaphore;
-    QThreadStorage<QEventLoop*>   m_BlockingLoops;
+    static QThreadStorage<QDBusProxy*>  m_Proxies;
+
+    bool                                m_ConnectToBus;
+    bool                                m_Connected;
+    adbus_Bool                          m_Authenticated;
+    adbus_Connection*                   m_Connection;
+    adbus_Auth*                         m_Auth;
+    adbus_Buffer*                       m_Buffer;
+    QIODevice*                          m_IODevice;
+    QString                             m_UniqueName;
 };
 
 class QDBusConnectionPrivate : public QSharedData
@@ -90,8 +94,10 @@ public:
     QDBusConnectionPrivate();
     ~QDBusConnectionPrivate();
 
-    adbus_Connection*                     connection;
-    mutable QMutex                        objectLock;
-    mutable QHash<QObject*, QDBusObject*> objects;
+    adbus_Connection*                       connection;
+    mutable QMutex                          objectLock;
+    mutable QHash<QObject*, QDBusObject*>   objects;
+
+    static adbus_MsgFactory* GetFactory();
 };
 

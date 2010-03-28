@@ -29,16 +29,33 @@
 #include <qshareddata.h>
 #include <adbus.h>
 
+
 class QDBusMessagePrivate : public QSharedData
 {
 public:
-    static adbus_MsgFactory* GetFactory(const QDBusMessage& msg) {return msg.d_ptr->msg;}
-    static int Copy(const adbus_Message* from, QDBusMessage* to);
+    static QDBusMessage FromMessage(adbus_Message* msg);
+    static adbus_MsgFactory* ToFactory(const QDBusMessage& msg);
 
-    QDBusMessagePrivate() : msg(adbus_msg_new()) {}
-    QDBusMessagePrivate(const QDBusMessagePrivate& other);
-    ~QDBusMessagePrivate() {adbus_msg_free(msg);}
+    QDBusMessagePrivate();
 
-    adbus_MsgFactory* msg;
+    int                 fromMessage(adbus_Message* msg);
+    int                 fromMessage(adbus_Message* msg, const QList<QDBusArgumentType>& types);
+    void                setupFactory(adbus_MsgFactory* msg);
+
+    adbus_MessageType   type;
+    int                 flags;
+    int64_t             serial;
+    int64_t             replySerial;
+    QString             signature;
+    QString             path;
+    QString             interface;
+    QString             member;
+    QString             error;
+    QString             sender;
+    QString             destination;
+    QList<QVariant>     arguments;
+
+    mutable bool        delayedReply;
+
 };
 

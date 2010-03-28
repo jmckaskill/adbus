@@ -251,7 +251,7 @@ static void FreeReply(adbus_ConnReply* r)
     /* Call release callbacks */
     if (r->release[0]) {
         if (r->relproxy) {
-            r->relproxy(r->relpuser, r->release[0], r->ruser[0]);
+            r->relproxy(r->relpuser, NULL, r->release[0], r->ruser[0]);
         } else {
             r->release[0](r->ruser[0]);
         }
@@ -260,7 +260,7 @@ static void FreeReply(adbus_ConnReply* r)
 
     if (r->release[1]) {
         if (r->relproxy) {
-            r->relproxy(r->relpuser, r->release[1], r->ruser[1]);
+            r->relproxy(r->relpuser, NULL, r->release[1], r->ruser[1]);
         } else {
             r->release[1](r->ruser[1]);
         }
@@ -307,8 +307,10 @@ void adbus_conn_removereply(
         adbus_Connection*       c,
         adbus_ConnReply*        reply)
 {
-    UNUSED(c);
-    FreeReply(reply);
+    if (reply) {
+        UNUSED(c);
+        FreeReply(reply);
+    }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -232,7 +232,7 @@
         void call (const std::string& method CONST_REF_ARGS_LC)
         {
             adbus_Call call;
-            adbus_call_method(m_Proxy, &call, method.c_str(), (int) method.size());
+            adbus_proxy_method(m_Proxy, &call, method.c_str(), (int) method.size());
 
             if (!call.msg)
               return;
@@ -265,7 +265,7 @@
                 m_EUser         = NULL;
             }
 
-            adbus_call_send(m_Proxy, &call);
+            adbus_call_send(&call);
 
             reset();
         }

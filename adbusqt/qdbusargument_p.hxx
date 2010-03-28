@@ -30,37 +30,73 @@
 #include <qdbusmetatype.h>
 #include <qshareddata.h>
 
+
+class QDBusArgumentType
+{
+public:
+    QDBusArgumentType();
+
+    static QDBusArgumentType* Lookup(int type);
+    static QDBusArgumentType* Lookup(const QByteArray& sig);
+
+    int  demarshall(adbus_Iterator* iter, QVariant& variant) const;
+    void marshall(adbus_Buffer* buf, const QVariant& variant, bool appendsig) const;
+
+    int  demarshall(adbus_Iterator* iter, void* data) const;
+    void marshall(adbus_Buffer* buf, const void* data) const;
+
+    int                                 m_TypeId;
+    QByteArray                          m_DBusSignature;
+    QDBusMetaType::MarshallFunction     m_Marshall;
+    QDBusMetaType::DemarshallFunction   m_Demarshall;
+};
+
+class QDBusArgumentList
+{
+public:
+    void    init(const QMetaMethod& method);
+    void    copyFromMessage(const QDBusMessage& msg);
+
+    struct Entry
+    {
+        Entry(bool inarg, int typeId, QDBusArgumentType* type)
+            : m_Inarg(inarg), m_TypeId(typeId), m_Type(type)
+        {}
+
+        bool                m_Inarg;
+        int                 m_TypeId;
+        QDBusArgumentType*  m_Type;
+    };
+
+    bool                                    m_AppendMessage;
+    QList<QPair<int, QDBusArgumentType*> >  m_Types;
+    QVector<void*>                          m_Arguments;
+};
+
 class QDBusArgumentPrivate : public QSharedData
 {
 public:
-    static int Demarshall(adbus_Iterator* iter, QDBusMetaType::DemarshallFunction func, void* data);
-    static void Marshall(adbus_Buffer* buf, QDBusMetaType::MarshallFunction func, const void* data);
-    static void Marshall(adbus_Buffer* buf, const QVariant& variant);
+    friend class QDBusArgumentType;
+    friend class QDBusMetaType;
 
-    QDBusArgumentPrivate() 
-        :   parseError(0),
-            m_Buffer(NULL)
-    { m_Iterator.data = NULL; }
+    QDBusArgumentPrivate(adbus_Buffer* b, bool appendsig);
+    QDBusArgumentPrivate(adbus_Iterator* i);
+    ~QDBusArgumentPrivate(){}
 
-    ~QDBusArgumentPrivate()
-    { adbus_buf_free(m_Buffer); }
+    void appendSignature(const char* sig);
+    void appendSignature(int typeId);
 
-    QDBusArgumentPrivate(const QDBusArgumentPrivate& other);
+    bool canIterate() const;
+    bool canBuffer();
 
-    // Grabbing the buffer will reset the iterator
-    // Grabbing the iterator will set it up to iterate over the buffer if reset
+    int                     err;
 
-    adbus_Iterator* iterator() const;
-    adbus_Buffer*   buffer();
-    void            startArgument(const char* sig);
+    QList<adbus_BufArray>   barrays;
+    adbus_Buffer*           buf;
 
-    int                 parseError;
-    QList<adbus_IterArray> iarrays;
-
-    QList<adbus_BufArray> barrays;
-
-    adbus_Buffer*           m_Buffer;
-    mutable adbus_Iterator  m_Iterator;
+    QList<adbus_IterArray>  iarrays;
+    adbus_Iterator*         iter;
+    int                     depth;
 };
 
 

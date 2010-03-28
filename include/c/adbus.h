@@ -186,7 +186,7 @@ typedef int             (*adbus_SendCallback)(void*, const char*, size_t);
 typedef uint8_t         (*adbus_RandCallback)(void*);
 typedef int             (*adbus_MsgCallback)(adbus_CbData* d);
 typedef void            (*adbus_Callback)(void*);
-typedef void            (*adbus_ProxyCallback)(void*,adbus_Callback,void*);
+typedef void            (*adbus_ProxyCallback)(void*,adbus_Callback cb,adbus_Callback release,void*);
 typedef int             (*adbus_ProxyMsgCallback)(void*,adbus_MsgCallback,adbus_CbData*);
 
 #include "adbus-iterator.h"
@@ -388,7 +388,7 @@ ADBUS_API int adbus_error_argument(
 typedef int         (*adbus_SendMsgCallback)(void*, adbus_Message*);
 typedef void        (*adbus_GetProxyCallback)(void*, adbus_ProxyCallback*, adbus_ProxyMsgCallback*, void**);
 typedef adbus_Bool  (*adbus_ShouldProxyCallback)(void*);
-typedef int         (*adbus_BlockCallback)(void*, adbus_BlockType, int timeoutms);
+typedef int         (*adbus_BlockCallback)(void*, adbus_BlockType type, void** handle, int timeoutms);
 
 struct adbus_ConnectionCallbacks
 {
@@ -426,6 +426,7 @@ ADBUS_API adbus_Bool adbus_conn_shouldproxy(
 ADBUS_API void adbus_conn_proxy(
         adbus_Connection*   connection,
         adbus_Callback      callback,
+        adbus_Callback      release,
         void*               user);
 
 ADBUS_API void adbus_conn_getproxy(
@@ -437,6 +438,7 @@ ADBUS_API void adbus_conn_getproxy(
 ADBUS_API int adbus_conn_block(
         adbus_Connection*       connection,
         adbus_BlockType         type,
+        void**                  handle,
         int                     timeoutms);
 
 ADBUS_API uint32_t adbus_conn_serial(
@@ -1003,7 +1005,9 @@ ADBUS_API void adbus_state_addreply(
 
 struct adbus_Call
 {
+    adbus_Proxy*            proxy;
     adbus_MsgFactory*       msg;
+    int                     timeoutms;
 
     adbus_MsgCallback       callback;
     void*                   cuser;
@@ -1040,13 +1044,13 @@ ADBUS_API void adbus_proxy_signal(
         const char*         signal,
         int                 size);
 
-ADBUS_API void adbus_call_method(
+ADBUS_API void adbus_proxy_method(
         adbus_Proxy*        proxy,
         adbus_Call*         call,
         const char*         method,
         int                 size);
 
-ADBUS_API void adbus_call_setproperty(
+ADBUS_API void adbus_proxy_setproperty(
         adbus_Proxy*        proxy,
         adbus_Call*         call,
         const char*         property,
@@ -1054,15 +1058,47 @@ ADBUS_API void adbus_call_setproperty(
         const char*         type,
         int                 typesize);
 
-ADBUS_API void adbus_call_getproperty(
+ADBUS_API void adbus_proxy_getproperty(
         adbus_Proxy*        proxy,
         adbus_Call*         call,
         const char*         property,
         int                 propsize);
 
-ADBUS_API void adbus_call_send(
-        adbus_Proxy*        proxy,
+ADBUS_API int adbus_call_send(
         adbus_Call*         call);
+
+ADBUS_API int adbus_call_block(
+        adbus_Call*         call);
+
+
+
+
+
+
+ADBUS_API adbus_Proxy* adbus_busproxy_new(
+        adbus_State*        s,
+        adbus_Connection*   c);
+
+ADBUS_API void adbus_busproxy_requestname(
+        adbus_Proxy*        p,
+        adbus_Call*         c,
+        const char*         name,
+        int                 size,
+        int                 flags);
+
+ADBUS_API void adbus_busproxy_releasename(
+        adbus_Proxy*        p,
+        adbus_Call*         c,
+        const char*         name,
+        int                 size);
+
+
+
+
+
+
+
+
 
 
 ADBUS_API adbus_Signal* adbus_sig_new(

@@ -42,8 +42,8 @@
 #ifndef QDBUSINTERFACE_H
 #define QDBUSINTERFACE_H
 
-#include <QtDBus/qdbusabstractinterface.h>
-#include <QtDBus/qdbusconnection.h>
+#include "qdbusabstractinterface.hxx"
+#include "qdbusconnection.hxx"
 
 QT_BEGIN_HEADER
 

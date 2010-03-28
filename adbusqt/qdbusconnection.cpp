@@ -40,20 +40,24 @@
 
 /* ------------------------------------------------------------------------- */
 
+QThreadStorage<QDBusProxy*> QDBusClient::m_Proxies;
+
+/* ------------------------------------------------------------------------- */
+
 QDBusClient::QDBusClient(adbus_BusType type, bool connectToBus)
 :   m_ConnectToBus(connectToBus),
-    m_ConnectedToBus(false),
+    m_Connected(false),
     m_Auth(NULL),
-    m_IODevice(NULL),
-    m_Socket(NULL)
+    m_IODevice(NULL)
 {
     adbus_ConnectionCallbacks cbs = {};
-    cbs.release       = &Free;
-    cbs.send_message  = &SendMsg;
-    cbs.proxy         = &QDBusProxy::ProxyCallback;
-    cbs.should_proxy  = &ShouldProxy;
-    cbs.get_proxy     = &GetProxy;
-    cbs.block         = &Block;
+    cbs.release         = &QDBusClient::Free;
+    cbs.send_message    = &QDBusClient::SendMsg;
+    cbs.recv_data       = &QDBusClient::Recv;
+    cbs.proxy           = &QDBusProxy::ProxyCallback;
+    cbs.should_proxy    = &QDBusClient::ShouldProxy;
+    cbs.get_proxy       = &QDBusClient::GetProxy;
+    cbs.block           = &QDBusClient::Block;
 
     m_Connection = adbus_conn_new(&cbs, this);
     m_Buffer = adbus_buf_new();
@@ -68,18 +72,17 @@ QDBusClient::QDBusClient(adbus_BusType type, bool connectToBus)
 
 QDBusClient::QDBusClient(const char* envstr, bool connectToBus)
 :   m_ConnectToBus(connectToBus),
-    m_ConnectedToBus(false),
+    m_Connected(false),
     m_Auth(NULL),
-    m_IODevice(NULL),
-    m_Socket(NULL)
+    m_IODevice(NULL)
 {
     adbus_ConnectionCallbacks cbs = {};
-    cbs.release       = &Free;
-    cbs.send_message  = &SendMsg;
+    cbs.release       = &QDBusClient::Free;
+    cbs.send_message  = &QDBusClient::SendMsg;
     cbs.proxy         = &QDBusProxy::ProxyCallback;
-    cbs.should_proxy  = &ShouldProxy;
-    cbs.get_proxy     = &GetProxy;
-    cbs.block         = &Block;
+    cbs.should_proxy  = &QDBusClient::ShouldProxy;
+    cbs.get_proxy     = &QDBusClient::GetProxy;
+    cbs.block         = &QDBusClient::Block;
 
     m_Connection = adbus_conn_new(&cbs, this);
     m_Buffer = adbus_buf_new();
@@ -94,32 +97,43 @@ QDBusClient::~QDBusClient()
     if (m_IODevice) {
         m_IODevice->deleteLater();
         m_IODevice = NULL;
-        m_Socket = NULL;
     }
     adbus_auth_free(m_Auth);
     adbus_buf_free(m_Buffer);
+    adbus_conn_free(m_Connection);
 }
 
 /* ------------------------------------------------------------------------- */
 
-adbus_ssize_t QDBusClient::SendMsg(void* u, adbus_Message* m)
+int QDBusClient::SendMsg(void* u, adbus_Message* m)
 {
     QDBusClient* d = (QDBusClient*) u;
     if (!d->m_IODevice)
         return -1;
 
-    return (adbus_ssize_t) d->m_IODevice->write(m->data, m->size);
+    return d->m_IODevice->write(m->data, m->size);
 }
 
 /* ------------------------------------------------------------------------- */
 
-adbus_ssize_t QDBusClient::Send(void* u, const char* b, size_t sz)
+int QDBusClient::Send(void* u, const char* b, size_t sz)
 {
     QDBusClient* d = (QDBusClient*) u;
     if (!d->m_IODevice)
         return -1;
 
-    return (adbus_ssize_t) d->m_IODevice->write(b, sz);
+    return d->m_IODevice->write(b, sz);
+}
+
+/* ------------------------------------------------------------------------- */
+
+int QDBusClient::Recv(void* u, char* buf, size_t sz)
+{
+    QDBusClient* d = (QDBusClient*) u;
+    if (!d->m_IODevice)
+        return -1;
+
+    return d->m_IODevice->read(buf, sz);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -127,7 +141,7 @@ adbus_ssize_t QDBusClient::Send(void* u, const char* b, size_t sz)
 uint8_t QDBusClient::Rand(void* u)
 {
     (void) u;
-    return (uint8_t) rand();
+    return (uint8_t) qrand();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -142,9 +156,9 @@ adbus_Bool QDBusClient::ShouldProxy(void* u)
 
 void QDBusClient::GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallback* msgcb, void** data)
 {
-    QDBusClient* d = (QDBusClient*) u;
-    if (!d->m_Proxies.hasLocalData()) {
-        d->m_Proxies.setLocalData(new QDBusProxy);
+    (void) u;
+    if (!m_Proxies.hasLocalData()) {
+        m_Proxies.setLocalData(new QDBusProxy);
     }
 
     if (cb) {
@@ -155,12 +169,14 @@ void QDBusClient::GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallb
         *msgcb = QDBusProxy::ProxyMsgCallback;
     }
 
-    *data = (QDBusProxy*) d;
+    *data = m_Proxies.localData();
 }
 
 /* ------------------------------------------------------------------------- */
 
-int QDBusClient::Block(void* u, adbus_BlockType type, int timeoutms)
+#define UNBLOCK_CODE 6
+
+int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms)
 {
     QDBusClient* d = (QDBusClient*) u;
 
@@ -168,53 +184,49 @@ int QDBusClient::Block(void* u, adbus_BlockType type, int timeoutms)
     {
     case ADBUS_WAIT_FOR_CONNECTED:
         {
-            if (QThread::currentThread() == d->thread()) {
-                if (!d->m_IODevice)
-                    return -1;
+            QEventLoop loop;
+            *data = &loop;
 
-                if (d->m_Socket && !d->m_Socket->waitForConnected())
-                    return -1;
+            connect(d, SIGNAL(connected()), &loop, SLOT(quit()));
+            connect(d, SIGNAL(disconnected()), &loop, SLOT(quit()));
 
-                if (d->m_ConnectToBus) {
-                    QEventLoop loop;
-                    QTimer::singleShot(timeoutms, &loop, SLOT(quit()));
-                    loop.exec();
-                    if (!d->m_ConnectToBus)
-                        return -1;
-                }
-
-            } else {
-                if (!d->m_ConnectedSemaphore.tryAcquire(1, timeoutms))
-                    return -1;
+            if (timeoutms > 0) {
+                QTimer::singleShot(timeoutms, &loop, SLOT(quit()));
             }
+
+            if (loop.exec() == UNBLOCK_CODE)
+                return 0;
+
+            if (!d->m_Connected)
+                return -1; /* timeout or error */
+
             return 0;
         }
 
     case ADBUS_BLOCK:
         {
-            if (!d->m_BlockingLoops.hasLocalData()) {
-                d->m_BlockingLoops.setLocalData(new QEventLoop);
-            }
+            QEventLoop loop;
+            *data = &loop;
 
-            QEventLoop* loop = d->m_BlockingLoops.localData();
-
+            connect(d, SIGNAL(disconnected()), &loop, SLOT(quit()));
             if (timeoutms > 0) {
-                QTimer::singleShot(timeoutms, loop, SLOT(quit()));
-
-                if (loop->exec() == 0)
-                  return -1; // timeout
-
-            } else {
-                loop->exec();
+                QTimer::singleShot(timeoutms, &loop, SLOT(quit()));
             }
+
+            if (loop.exec() != UNBLOCK_CODE)
+                return -1; // timeout or error
+
             return 0;
         }
 
     case ADBUS_UNBLOCK:
         {
-            QEventLoop* loop = d->m_BlockingLoops.localData();
-            if (loop)
-                loop->exit(1);
+            QEventLoop* loop = (QEventLoop*) *data;
+            if (!loop)
+                return -1;
+
+            loop->exit(UNBLOCK_CODE);
+            *data = NULL;
             return 0;
         }
 
@@ -229,8 +241,8 @@ void QDBusClient::ConnectedToBus(void* u)
 {
     QDBusClient* d = (QDBusClient*) u;
     d->m_UniqueName = QString::fromUtf8(adbus_conn_uniquename(d->m_Connection, NULL));
-    d->m_ConnectedToBus = true;
-    d->m_ConnectedSemaphore.release(INT_MAX);
+    d->m_Connected = true;
+    emit d->connected();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -269,10 +281,9 @@ bool QDBusClient::connectToServer(const char* envstr)
         connect(s, SIGNAL(readyRead()), this, SLOT(socketReadyRead()));
         connect(s, SIGNAL(connected()), this, SLOT(socketConnected()));
         m_IODevice = s;
-        m_Socket = s;
         return true;
 
-#ifndef _WIN32
+#ifdef Q_OS_UNIX
     } else if (type == "unix") {
         // Use a socket opened by adbus_sock* so we can handle abstract
         // sockets. adbus_sock_connect is normally blocking (hence why we
@@ -291,6 +302,7 @@ bool QDBusClient::connectToServer(const char* envstr)
         socketConnected();
         return true;
 #endif
+
     } else {
         return false;
     }
@@ -303,12 +315,12 @@ void QDBusClient::disconnect()
     if (m_IODevice) {
         m_IODevice->deleteLater();
         m_IODevice = NULL;
-        m_Socket = NULL;
     }
     adbus_buf_reset(m_Buffer);
     adbus_auth_free(m_Auth);
     m_Auth = NULL;
-    m_ConnectedToBus = false;
+    m_Connected = false;
+    emit disconnected();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -316,9 +328,7 @@ void QDBusClient::disconnect()
 void QDBusClient::socketConnected()
 {
     m_IODevice->write("\0", 1);
-    if (m_Auth) {
-        adbus_auth_free(m_Auth);
-    }
+    adbus_auth_free(m_Auth);
     m_Auth = adbus_cauth_new(&Send, &Rand, this);
     adbus_cauth_external(m_Auth);
     adbus_cauth_start(m_Auth);
@@ -326,43 +336,30 @@ void QDBusClient::socketConnected()
 
 /* ------------------------------------------------------------------------- */
 
-#define RECV_SIZE 64 * 1024
-
 void QDBusClient::socketReadyRead()
 {
-    qint64 read;
-    do {
-        char* dest = adbus_buf_recvbuf(m_Buffer, RECV_SIZE);
-        read = m_IODevice->read(dest, RECV_SIZE);
-        adbus_buf_recvd(m_Buffer, RECV_SIZE, read);
-    } while (read == RECV_SIZE);
+    if (!m_Authenticated) {
+        QByteArray data = m_IODevice->readAll();
 
-    if (read < 0) {
-        return disconnect();
-    }
+        int used = adbus_auth_parse(m_Auth, data.constData(), data.size(), &m_Authenticated);
+        if (used < 0) {
+            return disconnect();
+        }
 
-    while (adbus_buf_size(m_Buffer) > 0) {
-        if (m_Auth) {
-            int ret = adbus_auth_parse(m_Auth, m_Buffer);
-            if (ret < 0) {
-                return disconnect();
-            } else if (ret == 0) {
-                break;
-            } else if (ret > 0) {
-                adbus_auth_free(m_Auth);
-                m_Auth = NULL;
-                adbus_conn_setsender(m_Connection, &SendMsg, this);
-                if (m_ConnectToBus) {
-                    adbus_conn_connect(m_Connection, &ConnectedToBus, this);
-                } else {
-                    m_ConnectedSemaphore.release(INT_MAX);
-                }
-            }
-        } else {
-            if (adbus_conn_parse(m_Connection, m_Buffer)) {
+        if (m_Authenticated) {
+            if (adbus_conn_parse(m_Connection, data.constData() + used, data.size() - used)) {
                 return disconnect();
             }
-            break;
+            if (m_ConnectToBus) {
+                adbus_conn_connect(m_Connection, &ConnectedToBus, this);
+            } else {
+                m_Connected = true;
+                emit connected();
+            }
+        }
+    } else {
+        if (adbus_conn_parsecb(m_Connection)) {
+            return disconnect();
         }
     }
 }
@@ -436,17 +433,19 @@ QDBusConnectionPrivate* GetConnection(adbus_BusType type)
 
 QDBusConnection::QDBusConnection(QDBusConnectionPrivate *dd)
 { 
+    void* handle = NULL;
     qCopySharedData(d, dd); 
     if (d->connection) {
-        adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, -1);
+        adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1);
     }
 }
 
 QDBusConnection::QDBusConnection(const QString& name)
 {
+    void* handle = NULL;
     qCopySharedData(d, GetConnection(name));
     if (d->connection) {
-        adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, -1);
+        adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1);
     }
 }
 
@@ -526,7 +525,7 @@ QString QDBusConnection::baseService() const
 bool QDBusConnection::send(const QDBusMessage &message) const
 { 
     if (isConnected()) {
-        return adbus_msg_send(QDBusMessagePrivate::GetFactory(message), d->connection) != 0;
+        return adbus_msg_send(QDBusMessagePrivate::ToFactory(message), d->connection) != 0;
     } else {
         return false;
     }
@@ -538,7 +537,7 @@ QDBusPendingCall QDBusConnection::asyncCall(const QDBusMessage& message, int tim
 {
     Q_UNUSED(timeout); // TODO
 
-    adbus_MsgFactory* msg = QDBusMessagePrivate::GetFactory(message);
+    adbus_MsgFactory* msg = QDBusMessagePrivate::ToFactory(message);
 
     const char* service = adbus_msg_destination(msg, NULL);
     uint32_t serial = adbus_conn_serial(d->connection);
@@ -569,7 +568,7 @@ bool QDBusConnection::callWithCallback(const QDBusMessage& message,
 {
     Q_UNUSED(timeout);
     QDBusObject* priv = QDBusConnectionPrivate::GetObject(*this, receiver);
-    adbus_MsgFactory* msg = QDBusMessagePrivate::GetFactory(message);
+    adbus_MsgFactory* msg = QDBusMessagePrivate::ToFactory(message);
 
     if (adbus_msg_serial(msg) < 0)
         adbus_msg_setserial(msg, adbus_conn_serial(d->connection));

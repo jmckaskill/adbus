@@ -25,11 +25,9 @@
 
 #pragma once
 
-// Don't include qdbuspendingcall.h here as we need to overload the class
-// definition in the cpp file. 
-
-// #include <qdbuspendingcall.h>
+#include "qdbuspendingcall.hxx"
 #include "qdbusobject_p.hxx"
+#include "private/qobject_p.h"
 #include <qshareddata.h>
 #include <qdbuserror.h>
 #include <adbus.h>
@@ -44,17 +42,17 @@ public:
 
     void destroy();
     void waitForFinished();
+    bool isFinished() const {return m_Finished;}
 
-    QList<QVariant>   replyArgs;
-    QDBusError        error;
+    QList<int>          m_ReplyMetaTypes;
+    QDBusMessage        m_Reply;
+    QDBusError          m_Error;
 
 signals:
     void finished();
 
 private:
-    friend class QDBusPendingCall;
-
-    QDBusPendingCallPrivate(const QDBusConnection& c);
+    QDBusPendingCallPrivate(const QDBusConnection& c, const QByteArray& service, uint32_t serial);
     ~QDBusPendingCallPrivate() {}
 
     // Called on the local thread
@@ -63,17 +61,26 @@ private:
 
     // Called on the connection thread
     static void Delete(void* u);
+    static void Unregister(void* u);
     static void AddReply(void* u);
     static void ReplyReceived(void* u);
 
     void haveReply();
 
-    QDBusConnection   qconnection;
-    adbus_Connection* connection;
-    adbus_ConnReply*  connReply;
-    QByteArray        service;
-    uint32_t          serial;
-    bool              waiting;
+    QDBusConnection     m_QConnection;
+    adbus_Connection*   m_Connection;
+    adbus_ConnReply*    m_ConnReply;
+    QByteArray          m_Service;
+    uint32_t            m_Serial;
+    void*               m_Block;
+    bool                m_Finished;
 };
 
+
+class QDBusPendingCallWatcherPrivate: public QObjectPrivate
+{
+    Q_DECLARE_PUBLIC(QDBusPendingCallWatcher)
+public:
+    void _q_finished();
+};
 

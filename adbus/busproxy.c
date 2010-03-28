@@ -23,17 +23,43 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+#include "internal.h"
 
-#include <qdbuspendingcall.h>
-#include <private/qobject_p.h>
-
-class QDBusPendingCallWatcherPrivate: public QObjectPrivate
+adbus_Proxy* adbus_busproxy_new(
+        adbus_State*        s,
+        adbus_Connection*   c)
 {
-public:
-    void _q_finished();
+    adbus_Proxy* p = adbus_proxy_new(s);
+    adbus_proxy_init(p, c, "org.freedesktop.DBus", -1, "/org/freedesktop/DBus", -1);
+    adbus_proxy_setinterface(p, "org.freedesktop.DBus", -1);
+    return p;
+}
 
-    Q_DECLARE_PUBLIC(QDBusPendingCallWatcher)
-};
+
+
+void adbus_busproxy_requestname(
+        adbus_Proxy*        p,
+        adbus_Call*         c,
+        const char*         name,
+        int                 size,
+        int                 flags)
+{
+    adbus_proxy_method(p, c, "RequestName", -1);
+    adbus_msg_setsig(c->msg, "su", -1);
+    adbus_msg_string(c->msg, name, size);
+    adbus_msg_u32(c->msg, (uint32_t) flags);
+}
+
+
+void adbus_busproxy_releasename(
+        adbus_Proxy*        p,
+        adbus_Call*         c,
+        const char*         name,
+        int                 size)
+{
+    adbus_proxy_method(p, c, "ReleaseName", -1);
+    adbus_msg_setsig(c->msg, "s", -1);
+    adbus_msg_string(c->msg, name, size);
+}
 
 

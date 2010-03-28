@@ -742,10 +742,10 @@ adbus_Bool adbus_conn_shouldproxy(adbus_Connection* c)
  *
  * \sa adbus_conn_shouldproxy(), adbus_ConnectionCallbacks::proxy
  */
-void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, void* user)
+void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, adbus_Callback release, void* user)
 { 
     if (c->callbacks.proxy) {
-        c->callbacks.proxy(c->user, callback, user); 
+        c->callbacks.proxy(c->user, callback, release, user); 
     } else {
         callback(user);
     }
@@ -781,8 +781,8 @@ void adbus_conn_getproxy(
     }
 }
 
-int adbus_conn_block(adbus_Connection* c, adbus_BlockType type, int timeoutms)
+int adbus_conn_block(adbus_Connection* c, adbus_BlockType type, void** handle, int timeoutms)
 {
     /* This will purposely crash if the block callback is not set */
-    return c->callbacks.block(c->user, type, timeoutms);
+    return c->callbacks.block(c->user, type, handle, timeoutms);
 }

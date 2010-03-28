@@ -306,7 +306,7 @@ void adbus_proxy_signal(
 /** Setup an adbus_Call structure for a method call
  *  \relates adbus_Proxy
  */
-void adbus_call_method(
+void adbus_proxy_method(
         adbus_Proxy*        p,
         adbus_Call*         call,
         const char*         method,
@@ -317,6 +317,8 @@ void adbus_call_method(
     p->type = METHOD_CALL;
     memset(call, 0, sizeof(adbus_Call));
     call->msg = m;
+    call->proxy = p;
+    call->timeoutms = -1;
 
     adbus_msg_reset(m);
     adbus_msg_settype(m, ADBUS_MSG_METHOD);
@@ -334,7 +336,7 @@ void adbus_call_method(
 /** Setup an adbus_Call structure to set a property
  *  \relates adbus_Proxy
  */
-void adbus_call_setproperty(
+void adbus_proxy_setproperty(
         adbus_Proxy*        p,
         adbus_Call*         call,
         const char*         property,
@@ -349,6 +351,8 @@ void adbus_call_setproperty(
 
     memset(call, 0, sizeof(adbus_Call));
     call->msg = m;
+    call->proxy = p;
+    call->timeoutms = -1;
 
     adbus_msg_reset(m);
     adbus_msg_settype(m, ADBUS_MSG_METHOD);
@@ -370,7 +374,7 @@ void adbus_call_setproperty(
 /** Setup an adbus_Call structure to get a property
  *  \relates adbus_Proxy
  */
-void adbus_call_getproperty(
+void adbus_proxy_getproperty(
         adbus_Proxy*        p,
         adbus_Call*         call,
         const char*         property,
@@ -383,6 +387,8 @@ void adbus_call_getproperty(
 
     memset(call, 0, sizeof(adbus_Call));
     call->msg = m;
+    call->proxy = p;
+    call->timeoutms = -1;
 
     adbus_msg_reset(m);
     adbus_msg_settype(m, ADBUS_MSG_METHOD);
@@ -400,14 +406,12 @@ void adbus_call_getproperty(
 
 /* ------------------------------------------------------------------------- */
 
-/** Send off a call
- *  \relates adbus_Proxy
- */
-void adbus_call_send(
-        adbus_Proxy*        p,
-        adbus_Call*         call)
+int adbus_call_send(adbus_Call* call)
 {
-    adbus_MsgFactory* msg = p->message;
+    adbus_MsgFactory* msg = call->msg;
+    adbus_Proxy* p = call->proxy;
+
+    assert(p->message == msg);
 
     if (p->type == SET_PROP_CALL) {
         adbus_msg_endvariant(msg, &p->variant);
@@ -432,13 +436,12 @@ void adbus_call_send(
         r.release[1]    = call->release[1];
         r.ruser[1]      = call->ruser[1];
 
-        if (p->state) {
-            adbus_state_addreply(p->state, p->connection, &r);
-        } else {
-            adbus_conn_addreply(p->connection, &r);
-        }
+        adbus_state_addreply(p->state, p->connection, &r);
 
     } else {
+        /* Why are you adding release callbacks, without a reply or error
+         * callback?
+         */
         assert(!call->cuser && !call->euser);
         assert(!call->release[0] && !call->ruser[0]);
         assert(!call->release[1] && !call->ruser[1]);
@@ -446,9 +449,113 @@ void adbus_call_send(
     }
 
     /* Send message */
-    adbus_msg_send(msg, p->connection);
+    return adbus_msg_send(msg, p->connection);
 }
 
+/* ------------------------------------------------------------------------- */
+
+struct ProxyBlockData
+{
+    adbus_Connection*   connection;
+    adbus_Bool          valid;
+    void*               block;
+    adbus_MsgCallback   callback;
+    void*               cuser;
+    adbus_MsgCallback   error;
+    void*               euser;
+    adbus_Callback      release[2];
+    void*               ruser[2];
+    int*                ret;
+};
+
+static void ProxyBlockRelease(void* user)
+{
+    struct ProxyBlockData* d = (struct ProxyBlockData*) user;
+
+    /* No need to proxy this as we have already been proxied */
+    if (d->valid) {
+        if (d->release[0]) {
+            d->release[0](d->ruser[0]);
+        }
+        if (d->release[1]) {
+            d->release[1](d->ruser[1]);
+        }
+    }
+
+    free(d);
+}
+
+static int ProxyBlockCallback(adbus_CbData* d)
+{
+    struct ProxyBlockData* s = (struct ProxyBlockData*) d->user1;
+    int ret = 0;
+
+    /* No need to proxy this as we have already been proxied */
+    if (s->valid) {
+        if (s->callback) {
+            d->user1 = s->cuser;
+            ret = s->callback(d);
+        }        
+        adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
+    }
+
+    return ret;
+}
+
+static int ProxyBlockError(adbus_CbData* d)
+{
+    struct ProxyBlockData* s = (struct ProxyBlockData*) d->user1;
+    int ret = 0;
+
+    /* No need to proxy this as we have already been proxied */
+    if (s->valid) {
+        if (s->error) {
+            d->user1 = s->euser;
+            ret = s->error(d);
+        }        
+        *s->ret = 1;
+        adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
+    }
+
+    return ret;
+}
+
+int adbus_call_block(adbus_Call* call)
+{
+    int ret = 0;
+    struct ProxyBlockData* d = NEW(struct ProxyBlockData);
+
+    d->callback         = call->callback;
+    d->cuser            = call->cuser;
+    d->error            = call->error;
+    d->euser            = call->euser;
+    d->release[0]       = call->release[0];
+    d->release[1]       = call->release[1];
+    d->ruser[0]         = call->ruser[0];
+    d->ruser[1]         = call->ruser[1];
+
+    call->callback      = &ProxyBlockCallback;
+    call->error         = &ProxyBlockError;
+    call->cuser         = d;
+    call->euser         = d;
+    call->release[0]    = &ProxyBlockRelease;
+    call->ruser[0]      = d;
+    call->release[1]    = NULL;
+    call->ruser[1]      = NULL;
+
+    d->valid            = 1;
+    d->connection       = call->proxy->connection;
+    d->ret              = &ret;
+
+    if (adbus_call_send(call))
+        return -1;
+
+    if (adbus_conn_block(d->connection, ADBUS_BLOCK, &d->block, call->timeoutms))
+        return -1;
+
+    /* Returns -1 on send, block, and timeout, 0 on success, 1 on dbus error */
+    return ret;
+}
 
 
 

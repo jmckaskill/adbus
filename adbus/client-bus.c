@@ -61,10 +61,10 @@ void adbus_conn_connect(
 
     {
         adbus_Call f;
-        adbus_call_method(c->bus, &f, "Hello", -1);
+        adbus_proxy_method(c->bus, &f, "Hello", -1);
         f.callback  = &ConnectCallback;
 
-        adbus_call_send(c->bus, &f);
+        adbus_call_send(&f);
     }
 }
 

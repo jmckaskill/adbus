@@ -50,8 +50,8 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qstringlist.h>
 #include <QtCore/qvariant.h>
-#include <QtDBus/qdbusextratypes.h>
-#include <QtDBus/qdbusmacros.h>
+#include "qdbusextratypes.hxx"
+#include "qdbusmacros.hxx"
 
 QT_BEGIN_HEADER
 

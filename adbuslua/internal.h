@@ -55,6 +55,7 @@ struct Connection
     adbus_MsgFactory*       message;
     lua_State*              L;
     int                     queue;
+    void*                   block;
 };
 
 struct Interface

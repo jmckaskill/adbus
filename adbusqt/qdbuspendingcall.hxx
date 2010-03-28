@@ -46,8 +46,8 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qshareddata.h>
 
-#include <QtDBus/qdbusmacros.h>
-#include <QtDBus/qdbusmessage.h>
+#include "qdbusmacros.hxx"
+#include "qdbusmessage.hxx"
 
 QT_BEGIN_HEADER
 
@@ -82,7 +82,12 @@ public:
     static QDBusPendingCall fromCompletedCall(const QDBusMessage &message);
 
 protected:
-    QExplicitlySharedDataPointer<QDBusPendingCallPrivate> d;
+    // ADBUSQT CHANGE - we want to be able to release the data and free on
+    // another thread so use a plain pointer instead (note its the same exact
+    // size, and the public api has no access to it directly or via inline
+    // functions)
+    //QExplicitlySharedDataPointer<QDBusPendingCallPrivate> d;
+    QDBusPendingCallPrivate* d;
     friend class QDBusPendingCallPrivate;
     friend class QDBusPendingCallWatcher;
     friend class QDBusConnection;

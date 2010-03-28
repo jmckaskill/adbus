@@ -43,8 +43,8 @@
 #define QDBUSSERVICEWATCHER_H
 
 #include <QtCore/qobject.h>
-#include <QtDBus/qdbusmacros.h>
-#include "qstringlist.h"
+#include <QtCore/qstringlist.h>
+#include "qdbusmacros.hxx"
 
 QT_BEGIN_HEADER
 

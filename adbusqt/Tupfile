@@ -4,8 +4,8 @@ CFLAGS += $(CFLAGS_QT_CORE) $(CFLAGS_QT_NETWORK) $(CFLAGS_QT_XML) $(CFLAGS_QT_DB
 CFLAGS += -DQDBUS_MAKEDLL
 CFLAGS += -fvisibility=hidden
 
-MOCFLAGS_qdbuspendingcall.hxx += -fqdbuspendingcall.h -fqdbuspendingcallwatcher_p.hxx
+MOCFLAGS_qdbuspendingcall.hxx += -fqdbuspendingcall.hxx -fqdbuspendingcall_p.hxx
 
-#: foreach *.hxx |> !moc |> moc_%B.cpp
-#: foreach *.cpp |> !cpp |> %B.o
+: foreach *.hxx |> !moc |> moc_%B.cpp
+: foreach *.cpp |> !cpp |> %B.o
 

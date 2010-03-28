@@ -57,6 +57,7 @@ struct adbusI_StateData
         adbus_Match         match;
     } u;
     void*                   data;
+    int                     err;
     adbus_Callback          release[2];
     void*                   ruser[2];
 };

@@ -13,7 +13,7 @@ LDFLAGS_libQtDBus.so += $(LD_QT)
 : deps/LuaXML/*.o |> !ld-so |> LuaXML_lib.so
 : adbus/*.o dmem/lib.a |> !ld-so |> adbus.so
 : adbuslua/*.o adbus.so lua5.1.so |> !ld-so |> adbuslua_core.so
-#: adbusqt/*.o adbus.so |> !ldpp-so |> libQtDBus.so
+: adbusqt/*.o adbus.so |> !ldpp-so |> libQtDBus.so
 
 
 
@@ -48,7 +48,7 @@ LDFLAGS_ex_qtdbus_pong  += $(LD_QT)
 : example/simple/*.o adbus.so |> !ld |> ex_simple
 : example/simplecpp/*.o adbus.so |> !ldpp |> ex_simplecpp
 
-#: example/simpleqt/*.o libQtDBus.so adbus.so |> !ldpp |> ex_simpleqt
-#: example/qt-dbus/pingpong/ping_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_ping
-#: example/qt-dbus/pingpong/pong_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_pong
+: example/simpleqt/*.o libQtDBus.so adbus.so |> !ldpp |> ex_simpleqt
+: example/qt-dbus/pingpong/ping_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_ping
+: example/qt-dbus/pingpong/pong_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_pong
 

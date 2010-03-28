@@ -634,7 +634,6 @@ struct SocketData
 {
     adbus_Socket sock;
     adbus_Connection* connection;
-    adbus_Bool yield;
     adbus_Bool connected;
     adbus_Buffer* txbuf;
 };
@@ -689,27 +688,26 @@ static void Close(void* d)
     free(s);
 }
 
-static int Block(void* d, adbus_BlockType type, int timeoutms)
+static int Block(void* d, adbus_BlockType type, void** block, int timeoutms)
 {
     struct SocketData* s = (struct SocketData*) d;
-    (void) timeoutms;
+    /* This block function doesn't support timeouts yet */
+    assert(timeoutms == -1);
 
     if (type == ADBUS_BLOCK) {
-        adbus_Bool outeryield = s->yield;
-        s->yield = 0;
-        while (!s->yield) {
+        while (!*block) {
             FlushTxBuffer(s);
             if (adbus_conn_parsecb(s->connection)) {
                 return -1;
             }
         }
-        s->yield = outeryield;
 
     } else if (type == ADBUS_UNBLOCK) {
-        s->yield = 1;
+        /* Just set it to something */
+        *block = s;
 
     } else if (type == ADBUS_WAIT_FOR_CONNECTED) {
-        while (!s->connected) {
+        while (!*block && !s->connected) {
             FlushTxBuffer(s);
             if (adbus_conn_parsecb(s->connection)) {
                 return -1;
@@ -737,6 +735,7 @@ adbus_Connection* adbus_sock_busconnect_s(
     adbus_Bool authenticated = 0;
     int recvd = 0, used = 0;
     char buf[256];
+    void* handle = NULL;
 
     d->txbuf = adbus_buf_new();
     d->sock = adbus_sock_connect_s(envstr, size);
@@ -779,7 +778,7 @@ adbus_Connection* adbus_sock_busconnect_s(
     if (sockret)
         *sockret = d->sock;
 
-    if (adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, -1))
+    if (adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1))
         goto err;
 
     adbus_auth_free(auth);

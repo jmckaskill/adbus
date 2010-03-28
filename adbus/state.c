@@ -119,7 +119,7 @@ static void FreeData(adbusI_StateData* d)
 
     if (d->release[0]) {
         if (d->conn->relproxy) {
-            d->conn->relproxy(d->conn->relpuser, d->release[0], d->ruser[0]);
+            d->conn->relproxy(d->conn->relpuser, NULL, d->release[0], d->ruser[0]);
         } else {
             d->release[0](d->ruser[0]);
         }
@@ -127,7 +127,7 @@ static void FreeData(adbusI_StateData* d)
 
     if (d->release[1]) {
         if (d->conn->relproxy) {
-            d->conn->relproxy(d->conn->relpuser, d->release[1], d->ruser[1]);
+            d->conn->relproxy(d->conn->relpuser, NULL, d->release[1], d->ruser[1]);
         } else {
             d->release[1](d->ruser[1]);
         }
@@ -170,11 +170,15 @@ static int DoBind(adbusI_StateData* d)
 static void ProxyBind(void* user)
 {
     adbusI_StateData* d = (adbusI_StateData*) user;
-    int err = DoBind(d);
+    d->err = DoBind(d);
+}
 
+static void FreeProxyBind(void* user)
+{
+    adbusI_StateData* d = (adbusI_StateData*) user;
     adbus_iface_deref(d->u.bind.interface);
     free((char*) d->u.bind.path);
-    if (err) {
+    if (d->err) {
         FreeData(d);
     }
 }
@@ -195,8 +199,9 @@ void adbus_state_bind(
         const adbus_Bind*   b)
 {
     adbusI_StateData* d = NEW(adbusI_StateData);
-    d->u.bind = *b;
     LookupConnection(s, d, c);
+    d->u.bind = *b;
+    d->err = -1;
 
     assert(!b->proxy && !b->relproxy);
 
@@ -211,7 +216,7 @@ void adbus_state_bind(
         b2->relpuser = d->conn->relpuser;
 
         adbus_iface_ref(b2->interface);
-        adbus_conn_proxy(c, &ProxyBind, d);
+        adbus_conn_proxy(c, &ProxyBind, &FreeProxyBind, d);
     } else {
         if (DoBind(d)) {
             FreeData(d);
@@ -244,11 +249,15 @@ static int DoAddMatch(adbusI_StateData* d)
     return 0;
 }
 
-static void ProxyAddMatch(void* user)
+static void ProxyMatch(void* user)
 {
     adbusI_StateData* d  = (adbusI_StateData*) user;
+    d->err = DoAddMatch(d);
+}
 
-    int err = DoAddMatch(d);
+static void FreeProxyMatch(void* user)
+{
+    adbusI_StateData* d  = (adbusI_StateData*) user;
 
     adbus_Match* m  = &d->u.match;
     free((char*) m->sender);
@@ -259,7 +268,7 @@ static void ProxyAddMatch(void* user)
     free((char*) m->error);
     free(m->arguments);
 
-    if (err) {
+    if (d->err) {
         FreeData(d);
     }
 }
@@ -283,6 +292,7 @@ void adbus_state_addmatch(
     adbusI_StateData* d = NEW(adbusI_StateData);
     LookupConnection(s, d, c);
     d->u.match = *m;
+    d->err = -1;
 
     assert(!m->proxy && !m->relproxy);
 
@@ -306,7 +316,7 @@ void adbus_state_addmatch(
             memcpy(m2->arguments, m->arguments, m->argumentsSize);
         }
 
-        adbus_conn_proxy(c, &ProxyAddMatch, d);
+        adbus_conn_proxy(c, &ProxyMatch, &FreeProxyMatch, d);
     } else {
         if (DoAddMatch(d)) {
             FreeData(d);
@@ -342,10 +352,15 @@ static int DoAddReply(adbusI_StateData* d)
 static void ProxyReply(void* user)
 {
     adbusI_StateData* d = (adbusI_StateData*) user;
-    int err = DoAddReply(d);
+    d->err = DoAddReply(d);
+}
+
+static void FreeProxyReply(void* user)
+{
+    adbusI_StateData* d = (adbusI_StateData*) user;
 
     free((char*) d->u.reply.remote);
-    if (err) {
+    if (d->err) {
         FreeData(d);
     }
 }
@@ -368,6 +383,7 @@ void adbus_state_addreply(
     adbusI_StateData* d = NEW(adbusI_StateData);
     LookupConnection(s, d, c);
     d->u.reply = *r;
+    d->err = -1;
 
     assert(!r->proxy && !r->relproxy);
 
@@ -381,7 +397,7 @@ void adbus_state_addreply(
         r2->relproxy = d->conn->relproxy;
         r2->relpuser = d->conn->relpuser;
 
-        adbus_conn_proxy(c, &ProxyReply, d);
+        adbus_conn_proxy(c, &ProxyReply, &FreeProxyReply, d);
     } else {
         if (DoAddReply(d)) {
             FreeData(d);
@@ -428,11 +444,11 @@ static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connecti
     d->conn = conn;
 }
 
-/* Called on the connection thread */
+/* Called on the connection thread if the connection still exists */
 static void ResetConn(void* user)
 {
-    adbusI_StateData* d;
     adbusI_StateConn* c = (adbusI_StateConn*) user;
+    adbusI_StateData* d;
 
     DIL_FOREACH(StateData, d, &c->binds, hl) {
         adbus_conn_unbind(c->connection, (adbus_ConnBind*) d->data);
@@ -448,6 +464,14 @@ static void ResetConn(void* user)
         adbus_conn_removereply(c->connection, (adbus_ConnReply*) d->data);
     }
     assert(dil_isempty(&c->replies));
+}
+
+/* Always called after ResetConn (if its going to be called) - on indetermined
+ * thread 
+ */
+static void FreeConn(void* user)
+{
+    adbusI_StateConn* c = (adbusI_StateConn*) user;
 
     if (c->refConnection) {
         adbus_conn_deref(c->connection);
@@ -469,9 +493,10 @@ void adbus_state_reset(adbus_State* s)
     DIL_FOREACH(StateConn, c, &s->connections, hl) {
         dil_remove(StateConn, c, &c->hl);
         if (adbus_conn_shouldproxy(c->connection)) {
-            adbus_conn_proxy(c->connection, &ResetConn, c);
+            adbus_conn_proxy(c->connection, &ResetConn, &FreeConn, c);
         } else {
             ResetConn(c);
+            FreeConn(c);
         }
     }
     assert(dil_isempty(&s->connections));

@@ -138,14 +138,14 @@ adbusI_TrackedRemote* adbusI_getTrackedRemote(
              * avoid a race condition.
              */
             adbus_Call f;
-            adbus_call_method(c->bus, &f, "GetNameOwner", -1);
+            adbus_proxy_method(c->bus, &f, "GetNameOwner", -1);
             f.callback = &GetNameOwner;
             f.cuser    = t;
 
             adbus_msg_setsig(f.msg, "s", 1);
             adbus_msg_string(f.msg, t->service.str, t->service.sz);
 
-            adbus_call_send(c->bus, &f);
+            adbus_call_send(&f);
         }
 
         return t;

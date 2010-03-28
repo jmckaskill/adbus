@@ -38,9 +38,12 @@
 struct QDBusProxyEvent : public QEvent
 {
     QDBusProxyEvent() : QEvent(type) {}
+    ~QDBusProxyEvent() {if (release) release(user);}
+
     static QEvent::Type type;
 
     adbus_Callback      cb;
+    adbus_Callback      release;
     void*               user;
 };
 
@@ -67,7 +70,7 @@ public:
     ~QDBusProxy();
 
     // Called on a non local thread
-    static void ProxyCallback(void* user, adbus_Callback cb, void* cbuser);
+    static void ProxyCallback(void* user, adbus_Callback cb, adbus_Callback release, void* cbuser);
     static int  ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData* d);
 
     // Called on the local thread
@@ -83,57 +86,55 @@ private:
 /* ------------------------------------------------------------------------- */
 
 class QDBusObject;
-struct QDBusUserData;
-DILIST_INIT(QDBusUserData, QDBusUserData);
+struct QDBusMatchData;
+struct QDBusReplyData;
+struct QDBusBindData;
+DILIST_INIT(QDBusMatchData, QDBusMatchData)
+DILIST_INIT(QDBusReplyData, QDBusReplyData)
+DILIST_INIT(QDBusBindData, QDBusBindData)
 
 struct QDBusUserData
 {
-    // Called on the connection thread
+    // Only used for user datas bound into the interfaces - called on the
+    // connection thread.
     static void Free(void* u) {delete (QDBusUserData*) u;}
 
     QDBusUserData()
     : argList(), methodIndex(-1), errorIndex(-1), object(NULL)
-    { memset(&hl, 0, sizeof(hl)); }
+    {}
 
-    ~QDBusUserData()
-    { dil_remove(QDBusUserData, this, &hl); }
+    QDBusUserData()
+    { free(methodArguments); }
 
-
-    d_IList(QDBusUserData)    hl;
-    QDBusObject*              owner;
-    QDBusArgumentList         argList;
-    int                       methodIndex;
-    int                       errorIndex;
-    QObject*                  object;
-    adbus_Connection*         connection;
+    QDBusObject*                owner;
+    void**                      methodArguments;
+    int                         methodIndex;
+    int                         errorIndex;
+    QObject*                    object;
+    adbus_Connection*           connection;
 };
 
 struct QDBusMatchData : public QDBusUserData
 {
-    // Called on the connection thread
-    static void Free(void* u) {delete (QDBusMatchData*) u;}
+    QDBusMatchData() : connMatch(NULL) {adbus_match_init(&match);}
+    ~QDBusMatchData() {dil_remove(QDBusMatchData, this, &hl);}
 
-    QDBusMatchData() 
-      : connMatch(NULL)
-    { adbus_match_init(&match); }
-
-    QByteArray                sender;
-    QByteArray                path;
-    QByteArray                interface;
-    QByteArray                member;
-    adbus_Match               match;
-    adbus_ConnMatch*          connMatch;
+    d_IList(QDBusMatchData)     hl;
+    QByteArray                  sender;
+    QByteArray                  path;
+    QByteArray                  interface;
+    QByteArray                  member;
+    QByteArray                  slot;
+    adbus_Match                 match;
+    adbus_ConnMatch*            connMatch;
 };
 
 struct QDBusBindData : public QDBusUserData
 {
-    // Called on the connection thread
-    static void Free(void* u) {delete (QDBusBindData*) u;}
+    QDBusBindData() : connBind(NULL) {adbus_bind_init(&bind);}
+    ~QDBusBindData() {dil_remove(QDBusBindData, this, &hl);}
 
-    QDBusBindData() 
-      : connBind(NULL)
-    { adbus_bind_init(&bind); }
-
+    d_IList(QDBusBindData)    hl;
     QByteArray                path;
     adbus_Bind                bind;
     adbus_ConnBind*           connBind;
@@ -141,13 +142,10 @@ struct QDBusBindData : public QDBusUserData
 
 struct QDBusReplyData : public QDBusUserData
 {
-    // Called on the connection thread
-    static void Free(void* u) {delete (QDBusReplyData*) u;}
+    QDBusReplyData() : connReply(NULL) {adbus_reply_init(&reply);}
+    ~QDBusReplyData() {dil_remove(QDBusReplyData, this, &hl);}
 
-    QDBusReplyData() 
-      : connReply(NULL)
-    { adbus_reply_init(&reply); }
-
+    d_IList(QDBusReplyData)   hl;
     QByteArray                remote;
     adbus_Reply               reply;
     adbus_ConnReply*          connReply;
@@ -176,28 +174,38 @@ public:
     // Callbacks called on the local thread
     static int ReplyCallback(adbus_CbData* d);
     static int ErrorCallback(adbus_CbData* d);
+    static int MatchCallback(adbus_CbData* d);
     static int MethodCallback(adbus_CbData* d);
     static int GetPropertyCallback(adbus_CbData* d);
     static int SetPropertyCallback(adbus_CbData* d);
 
     // Callbacks called on the connection thread
     static void Delete(void* u);
+    static void Unregister(void* u);
     static void DoBind(void* u);
+    static void FreeDoBind(void* u);
     static void DoAddMatch(void* u);
     static void DoAddReply(void* u);
+    static void DoRemoveMatch(void* u);
+
+    adbus_Message*      m_CurrentMessage;
+    QDBusArgumentList*  m_CurrentArguments;
 
 public slots:
     void destroy();
 
 private:
-    ~QDBusObject();
+    ~QDBusObject() {}
 
     QDBusConnection           m_QConnection;
     adbus_Connection* const   m_Connection;
     QObject* const            m_Tracked;
 
-    // These lists are only manipulated on the connection thread
-    d_IList(QDBusUserData) m_Matches;
-    d_IList(QDBusUserData) m_Binds;
-    d_IList(QDBusUserData) m_Replies;
+    // These lists are manipulated on the local thread and on the connection
+    // thread when the object gets destroyed.
+    d_IList(QDBusMatchData) m_Matches;
+    d_IList(QDBusBindData)  m_Binds;
+    d_IList(QDBusReplyData) m_Replies;
 };
+
+

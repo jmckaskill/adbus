@@ -43,7 +43,7 @@
 #define QDBUSCONTEXT_H
 
 #include <QtCore/qstring.h>
-#include <QtDBus/qdbuserror.h>
+#include "qdbuserror.hxx"
 
 QT_BEGIN_HEADER
 

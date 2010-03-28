@@ -25,9 +25,11 @@
 
 #include <adbus.h>
 
+void* blockhandle;
+
 static int Quit(adbus_CbData* d)
 {
-    adbus_conn_block(d->connection, ADBUS_UNBLOCK, -1);
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &blockhandle, -1);
     return 0;
 }
 
@@ -62,14 +64,14 @@ int main()
 {
     adbus_Connection* connection;
     adbus_State* state;
-    adbus_Proxy* proxy;
+    adbus_Proxy* bus;
 
     connection = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
     if (!connection)
         abort();
 
     state = adbus_state_new();
-    proxy = adbus_proxy_new(state);
+    bus = adbus_busproxy_new(state, connection);
 
     /* Bind our interface to '/' */
     {
@@ -85,21 +87,15 @@ int main()
     /* Register for nz.co.foobar.adbus.PingServer */
     {
         adbus_Call f;
-
-        adbus_proxy_init(proxy, connection, "org.freedesktop.DBus", -1, "/", -1);
-        adbus_call_method(proxy, &f, "RequestName", -1);
-
-        adbus_msg_setsig(f.msg, "su", -1);
-        adbus_msg_string(f.msg, "nz.co.foobar.adbus.PingServer", -1);
-        adbus_msg_u32(f.msg, 0);
-
-        adbus_call_send(proxy, &f);
+        adbus_busproxy_requestname(bus, &f, "nz.co.foobar.adbus.PingServer", -1, 0);
+        if (adbus_call_block(&f))
+            abort();
     }
 
     /* Block for the quit method */
-    adbus_conn_block(connection, ADBUS_BLOCK, -1);
+    adbus_conn_block(connection, ADBUS_BLOCK, &blockhandle, -1);
 
-    adbus_proxy_free(proxy);
+    adbus_proxy_free(bus);
     adbus_state_free(state);
     adbus_conn_free(connection);
 

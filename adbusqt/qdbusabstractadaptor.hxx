@@ -43,7 +43,7 @@
 #define QDBUSABSTRACTADAPTOR_H
 
 #include <QtCore/qobject.h>
-#include <QtDBus/qdbusmacros.h>
+#include "qdbusmacros.hxx"
 
 QT_BEGIN_HEADER
 

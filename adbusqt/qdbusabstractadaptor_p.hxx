@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <qdbusabstractadaptor.h>
+#include "qdbusabstractadaptor.hxx"
 #include "private/qobject_p.h"
 
 class QDBusAbstractAdaptorPrivate : public QObjectPrivate

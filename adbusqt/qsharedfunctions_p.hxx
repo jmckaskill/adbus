@@ -29,6 +29,12 @@
 // the header so we use wrappers instead.
 // These are basically a copy of QSharedDataPointer
 
+// Specialise this to change the delete mechanism - eg if you actually want to
+// delete the data on another thread.
+template <class T>
+inline void qDeleteSharedData(T*& d)
+{ delete d; }
+
 // Call at the beginning of non-const member functions
 template <class T>
 inline void qDetachSharedData(T*& d)
@@ -37,7 +43,7 @@ inline void qDetachSharedData(T*& d)
         T* x = new T(*d);
         x->ref.ref();
         if (!d->ref.deref())
-            delete d;
+            qDeleteSharedData(d);
         d = x;
     }
 }
@@ -50,12 +56,12 @@ inline void qAssignSharedData(T*& d, const T* o)
         if (o)
             o->ref.ref();
         if (d && !d->ref.deref())
-            delete d;
+            qDeleteSharedData(d);
         d = (T*) o;
     }    
 }
 
-// Call in the copy constructor
+// Call in the private and copy constructor
 template <class T>
 inline void qCopySharedData(T*& d, const T* o)
 {
@@ -69,7 +75,8 @@ template <class T>
 inline void qDestructSharedData(T*& d)
 {
     if (d && !d->ref.deref())
-        delete d;
+        qDeleteSharedData(d);
+    d = NULL;
 }
 
 

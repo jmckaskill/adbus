@@ -49,7 +49,7 @@ QDBusProxy::~QDBusProxy()
 QEvent::Type QDBusProxyEvent::type = (QEvent::Type) QEvent::registerEventType();
 
 // Called on the connection thread
-void QDBusProxy::ProxyCallback(void* user, adbus_Callback cb, void* cbuser)
+void QDBusProxy::ProxyCallback(void* user, adbus_Callback cb, adbus_Callback release, void* cbuser)
 {
     QDBusProxy* s = (QDBusProxy*) user;
 
@@ -60,6 +60,7 @@ void QDBusProxy::ProxyCallback(void* user, adbus_Callback cb, void* cbuser)
         QDBusProxyEvent* e = new QDBusProxyEvent;
         e->cb = cb;
         e->user = cbuser;
+        e->release = release;
 
         QCoreApplication::postEvent(s, e);
     }
@@ -108,7 +109,9 @@ bool QDBusProxy::event(QEvent* event)
 {
     if (event->type() == QDBusProxyEvent::type) {
         QDBusProxyEvent* e = (QDBusProxyEvent*) event;
-        e->cb(e->user);
+        if (e->cb) {
+            e->cb(e->user);
+        }
         return true;
 
     } else if (event->type() == QDBusProxyMsgEvent::type) {
@@ -166,26 +169,45 @@ QDBusObject::QDBusObject(const QDBusConnection& connection, QObject* tracked)
     connect(m_Tracked, SIGNAL(destroyed()), this, SLOT(destroy()), Qt::DirectConnection);
 }
 
-void QDBusObject::Delete(void* u)
+void QDBusObject::Unregister(void* u)
 {
     QDBusObject* d = (QDBusObject*) u;
 
     // Remove all pending binds, matches, and replies
-    QDBusUserData* i;
-    DIL_FOREACH(QDBusUserData, i, &d->m_Matches, hl) {
-        adbus_conn_removematch(d->m_Connection, ((QDBusMatchData*) d)->connMatch);
+    QDBusMatchData* m;
+    DIL_FOREACH(QDBusMatchData, m, &d->m_Matches, hl) {
+        adbus_conn_removematch(d->m_Connection, m->connMatch);
     }
-    Q_ASSERT(dil_isempty(&d->m_Matches));
 
-    DIL_FOREACH(QDBusUserData, i, &d->m_Replies, hl) {
-        adbus_conn_removereply(d->m_Connection, ((QDBusReplyData*) d)->connReply);
+    QDBusReplyData* r;
+    DIL_FOREACH(QDBusReplyData, r, &d->m_Replies, hl) {
+        adbus_conn_removereply(d->m_Connection, r->connReply);
     }
-    Q_ASSERT(dil_isempty(&d->m_Replies));
 
-    DIL_FOREACH(QDBusUserData, i, &d->m_Binds, hl) {
-        adbus_conn_unbind(d->m_Connection, ((QDBusBindData*) d)->connBind);
+    QDBusBindData* b;
+    DIL_FOREACH(QDBusBindData, b, &d->m_Binds, hl) {
+        adbus_conn_unbind(d->m_Connection, b->connBind);
     }
-    Q_ASSERT(dil_isempty(&d->m_Binds));
+}
+
+void QDBusObject::Delete(void* u)
+{
+    QDBusObject* d = (QDBusObject*) u;
+
+    QDBusMatchData* m;
+    DIL_FOREACH(QDBusMatchData, m, &d->m_Matches, hl) {
+        delete m;
+    }
+
+    QDBusReplyData* r;
+    DIL_FOREACH(QDBusReplyData, r, &d->m_Replies, hl) {
+        delete r;
+    }
+
+    QDBusBindData* b;
+    DIL_FOREACH(QDBusBindData, b, &d->m_Binds, hl) {
+        delete b;
+    }
 
     delete d;
 }
@@ -196,29 +218,67 @@ void QDBusObject::destroy()
         QDBusConnectionPrivate::RemoveObject(m_QConnection, m_Tracked);
     }
 
-    // Kill all incoming events from the connection thread
+    // Kill all incoming events from the connection thread and stop new ones
+    // from coming in. The data in those messages will still be freed since
+    // the dtor is still called, which calls the supplied release callback.
     setParent(NULL);
     moveToThread(NULL);
 
     // Delete the object on the proxy thread - this ensures that it receives all
     // of our messages up to this point safely and removing services can only be
     // done on the connection thread.
-    adbus_conn_proxy(m_Connection, &QDBusObject::Delete, this);
+    adbus_conn_proxy(m_Connection, &QDBusObject::Unregister, &QDBusObject::Delete, this);
+}
+
+/* ------------------------------------------------------------------------- */
+
+int QDBusObject::MatchCallback(adbus_CbData* d)
+{
+    QDBusMatchData* data = (QDBusMatchData*) d->user1;
+
+    /* We can get messages after the match has been removed, since we have to
+     * just across to the connection thread to remove the match.
+     */
+    if (data->methodIndex >= 0) {
+        adbus_Iterator argiter = {};
+        adbus_iter_args(&argiter, d->msg);
+
+        if (data->argList.GetArguments(&argiter))
+            return -1;
+
+        data->object->qt_metacall(
+                QMetaObject::InvokeMetaMethod,
+                data->methodIndex,
+                data->argList.Data());
+    }
+
+    return 0;
 }
 
 /* ------------------------------------------------------------------------- */
 
 int QDBusObject::ReplyCallback(adbus_CbData* d)
 {
-    QDBusUserData* data = (QDBusUserData*) d->user1;
+    QDBusReplyData* data = (QDBusReplyData*) d->user1;
 
-    adbus_Iterator argiter = {};
-    adbus_iter_args(&argiter, d->msg);
+    /* We always add the reply callback, even if the user didn't set a reply
+     * callback, so that we can remove the reply data.
+     */
+    if (data->methodIndex >= 0) {
+        adbus_Iterator argiter = {};
+        adbus_iter_args(&argiter, d->msg);
 
-    if (data->argList.GetArguments(&argiter))
-        return -1;
+        if (data->argList.GetArguments(&argiter))
+            return -1;
 
-    data->object->qt_metacall(QMetaObject::InvokeMetaMethod, data->methodIndex, data->argList.Data());
+        data->object->qt_metacall(
+                QMetaObject::InvokeMetaMethod,
+                data->methodIndex,
+                data->argList.Data());
+    }
+
+    dil_remove(QDBusReplyData, data, &data->hl);
+    delete data;
 
     return 0;
 }
@@ -227,18 +287,28 @@ int QDBusObject::ReplyCallback(adbus_CbData* d)
 
 int QDBusObject::ErrorCallback(adbus_CbData* d)
 {
-    QDBusUserData* data = (QDBusUserData*) d->user1;
+    QDBusReplyData* data = (QDBusReplyData*) d->user1;
 
-    DBusError dbusError = {d->msg};
-    QDBusError err(&dbusError);
+    /* We always add the reply callback, even if the user didn't set a reply
+     * callback, so that we can remove the reply data.
+     */
+    if (data->errorIndex >= 0) {
+        DBusError dbusError = {d->msg};
+        QDBusError err(&dbusError);
 
-    QDBusMessage msg;
-    if (QDBusMessagePrivate::Copy(d->msg, &msg))
-        return -1;
+        QDBusMessage msg = QDBusMessagePrivate::FromMessage(d->msg);
 
-    // Error methods are void (QDBusError, QDBusMessage)
-    void* args[] = {0, &err, &msg};
-    data->object->qt_metacall(QMetaObject::InvokeMetaMethod, data->errorIndex, args);
+        // Error methods are void (QDBusError, QDBusMessage)
+        void* args[] = {0, &err, &msg};
+
+        data->object->qt_metacall(
+                QMetaObject::InvokeMetaMethod,
+                data->errorIndex,
+                args);
+    }
+
+    dil_remove(QDBusReplyData, data, &data->hl);
+    delete data;
 
     return 0;
 }
@@ -248,7 +318,9 @@ int QDBusObject::ErrorCallback(adbus_CbData* d)
 int QDBusObject::MethodCallback(adbus_CbData* d)
 {
     QDBusUserData* method = (QDBusUserData*) d->user1;
-    QDBusUserData* bind   = (QDBusUserData*) d->user2;
+    QDBusBindData* bind   = (QDBusBindData*) d->user2;
+
+    Q_ASSERT(method->methodIndex >= 0);
 
     adbus_Iterator argiter = {};
     adbus_iter_args(&argiter, d->msg);
@@ -256,7 +328,10 @@ int QDBusObject::MethodCallback(adbus_CbData* d)
     if (method->argList.GetArguments(&argiter))
         return -1;
 
-    bind->object->qt_metacall(QMetaObject::InvokeMetaMethod, method->methodIndex, method->argList.Data());
+    bind->object->qt_metacall(
+            QMetaObject::InvokeMetaMethod,
+            method->methodIndex,
+            method->argList.Data());
 
     if (d->ret) {
         method->argList.GetReturns(adbus_msg_argbuffer(d->ret));
@@ -272,7 +347,13 @@ int QDBusObject::GetPropertyCallback(adbus_CbData* d)
     QDBusUserData* prop = (QDBusUserData*) d->user1;
     QDBusUserData* bind = (QDBusUserData*) d->user2;
 
-    bind->object->qt_metacall(QMetaObject::ReadProperty, prop->methodIndex, prop->argList.Data());
+    Q_ASSERT(prop->methodIndex >= 0);
+
+    bind->object->qt_metacall(
+            QMetaObject::ReadProperty,
+            prop->methodIndex,
+            prop->argList.Data());
+
     prop->argList.GetProperty(d->getprop);
 
     return 0;
@@ -285,10 +366,15 @@ int QDBusObject::SetPropertyCallback(adbus_CbData* d)
     QDBusUserData* prop = (QDBusUserData*) d->user1;
     QDBusUserData* bind = (QDBusUserData*) d->user2;
 
+    Q_ASSERT(prop->methodIndex >= 0);
+
     if (prop->argList.SetProperty(&d->setprop))
         return -1;
 
-    bind->object->qt_metacall(QMetaObject::WriteProperty, prop->methodIndex, prop->argList.Data());
+    bind->object->qt_metacall(
+            QMetaObject::WriteProperty,
+            prop->methodIndex,
+            prop->argList.Data());
 
     return 0;
 }
@@ -298,7 +384,6 @@ int QDBusObject::SetPropertyCallback(adbus_CbData* d)
 void QDBusObject::DoAddReply(void* u)
 {
     QDBusReplyData* d = (QDBusReplyData*) u;
-    dil_insert_after(QDBusUserData, &d->owner->m_Replies, d, &d->hl);
     d->connReply = adbus_conn_addreply(d->connection, &d->reply);
 }
 
@@ -357,22 +442,21 @@ bool QDBusObject::addReply(const QByteArray& remote, uint32_t serial, QObject* r
 
     d->reply.serial = serial;
 
-    d->reply.release[0] = &QDBusReplyData::Free;
-    d->reply.ruser[0] = d;
+    /* Always add the reply callbacks even if returnIndex is invalid, since
+     * the reply callback also removes and frees the reply data.
+     */
 
+    d->reply.callback = &ReplyCallback;
     d->reply.cuser = d;
+
+    d->reply.error = &ErrorCallback;
     d->reply.euser = d;
     
     d->reply.proxy = &ProxyMsgCallback;
     d->reply.puser = this;
 
-    if (returnIndex >= 0)
-        d->reply.callback = &ReplyCallback;
-
-    if (errorIndex >= 0)
-        d->reply.error = &ErrorCallback;
-
-    adbus_conn_proxy(m_Connection, &DoAddReply, d);
+    dil_insert_after(QDBusReplyData, &m_Replies, d, &d->hl);
+    adbus_conn_proxy(m_Connection, &DoAddReply, NULL, d);
 
     return true;
 }
@@ -382,7 +466,6 @@ bool QDBusObject::addReply(const QByteArray& remote, uint32_t serial, QObject* r
 void QDBusObject::DoAddMatch(void* u)
 {
     QDBusMatchData* d = (QDBusMatchData*) u;
-    dil_insert_after(QDBusUserData, &d->owner->m_Matches, d, &d->hl);
     d->connMatch = adbus_conn_addmatch(d->connection, &d->match);
 }
 
@@ -436,18 +519,60 @@ bool QDBusObject::addMatch(
     d->match.member = d->member.constData();
     d->match.memberSize = d->member.size();
 
-    d->match.release[0] = &QDBusUserData::Free;
-    d->match.ruser[0] = d;
-
-    d->match.callback = &ReplyCallback;
+    d->match.callback = &MatchCallback;
     d->match.cuser = d;
     
     d->match.proxy = &ProxyMsgCallback;
     d->match.puser = this;
 
-    adbus_conn_proxy(m_Connection, &DoAddMatch, d);
+    dil_insert_after(QDBusMatchData, &m_Matches, d, &d->hl);
+    adbus_conn_proxy(m_Connection, &DoAddMatch, NULL, d);
 
     return true;
+}
+
+/* ------------------------------------------------------------------------- */
+
+void QDBusObject::DoRemoveMatch(void* u)
+{
+    QDBusMatchData* d = (QDBusMatchData*) u;
+    adbus_conn_removematch(d->owner->m_Connection, d->connMatch);
+    d->connMatch = NULL;
+}
+
+void QDBusObject::removeMatch(
+        const QByteArray&   service,
+        const QByteArray&   path,
+        const QByteArray&   interface,
+        const QByteArray&   name,
+        QObject*            receiver,
+        const char*         slot)
+{
+    // 1. Find the match data.
+    // 2. Set the methodIndex to -1 so MatchCallback will not call the
+    // callback.
+    // 3. Send a request to the connection thread to remove the match
+    // 4. (On connection thread) Unset connMatch so we don't remove it on destruction
+    // 5. Leave it in m_Matches for the data to be freed at destruction time
+    
+    // Ideally we would want to remove it from m_Matches, but this is a bit
+    // tricky, we would have to send the request to the connection thread to
+    // remove it, get a response back and then remove it.
+
+    QDBusMatchData* d;
+    DIL_FOREACH (QDBusMatchData, d, &m_Matches, hl) {
+        if (    d->sender == service 
+            &&  d->path == path
+            &&  d->interface == interface
+            &&  d->member == name
+            &&  d->object == receiver 
+            &&  d->slot == slot)
+        {
+            d->methodIndex = -1;
+            adbus_conn_proxy(m_Connection, &DoRemoveMatch, NULL, d);
+            return;
+        }
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -493,7 +618,7 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
             }
 
             QDBusUserData* d = new QDBusUserData;
-            d->argList.init(arguments);
+            d->argList.init(method);
             d->methodIndex = methodIndex;
 
             adbus_mbr_setmethod(mbr, &QDBusObject::MethodCallback, d);
@@ -558,8 +683,12 @@ static adbus_Member* AddProperty(adbus_Interface* iface, QMetaProperty prop, int
 void QDBusObject::DoBind(void* u)
 {
     QDBusBindData* d = (QDBusBindData*) u;
-    dil_insert_after(QDBusUserData, &d->owner->m_Binds, d, &d->hl);
     d->connBind = adbus_conn_bind(d->connection, &d->bind);
+}
+
+void QDBusObject::FreeDoBind(void* u)
+{
+    QDBusBindData* d = (QDBusBindData*) u;
     adbus_iface_deref(d->bind.interface);
 }
 
@@ -571,6 +700,7 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
 
     const QMetaObject* meta;
     for (meta = object->metaObject(); meta != NULL; meta = meta->superClass()) {
+        // interface is deref'd in FreeDoBind
         adbus_Interface* iface = adbus_iface_new(meta->className(), -1);
 
         int mbegin = meta->methodOffset();
@@ -591,17 +721,14 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
         d->bind.path = d->path.constData();
         d->bind.pathSize = d->path.size();
 
-        // interface is freed in DoBind
         d->bind.interface = iface;
         d->bind.cuser2 = d;
-
-        d->bind.release[0] = &QDBusBindData::Free;
-        d->bind.ruser[0] = d; 
 
         d->bind.proxy = &ProxyMsgCallback;
         d->bind.puser = this;
 
-        adbus_conn_proxy(m_Connection, &DoBind, d);
+        dil_insert_after(QDBusBindData, &m_Binds, d, &d->hl);
+        adbus_conn_proxy(m_Connection, &DoBind, &FreeDoBind, d);
     }
 
     return true;
@@ -721,13 +848,11 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
     d->bind.interface = iface;
     d->bind.cuser2 = d;
 
-    d->bind.release[0] = &QDBusUserData::Free;
-    d->bind.ruser[0] = d; 
-
     d->bind.proxy = &ProxyMsgCallback;
     d->bind.puser = this;
 
-    adbus_conn_proxy(m_Connection, &DoBind, d);
+    dil_insert_after(QDBusBindData, &m_Binds, d, &d->hl);
+    adbus_conn_proxy(m_Connection, &DoBind, &FreeDoBind, d);
 
     return true;
 }

@@ -205,7 +205,7 @@ static void FreeBind(adbus_ConnBind* b)
     /* Call release callbacks */
     if (b->release[0]) {
         if (b->relproxy) {
-            b->relproxy(b->relpuser, b->release[0], b->ruser[0]);
+            b->relproxy(b->relpuser, NULL, b->release[0], b->ruser[0]);
         } else  {
             b->release[0](b->ruser[0]);
         }
@@ -213,7 +213,7 @@ static void FreeBind(adbus_ConnBind* b)
 
     if (b->release[1]) {
         if (b->relproxy) {
-            b->relproxy(b->relpuser, b->release[1], b->ruser[1]);
+            b->relproxy(b->relpuser, NULL, b->release[1], b->ruser[1]);
         } else  {
             b->release[1](b->ruser[1]);
         }
@@ -364,7 +364,9 @@ void adbus_conn_unbind(
         adbus_ConnBind*     b)
 {
     UNUSED(c);
-    FreeBind(b);
+    if (b) {
+        FreeBind(b);
+    }
 }
 
 /* -------------------------------------------------------------------------- */

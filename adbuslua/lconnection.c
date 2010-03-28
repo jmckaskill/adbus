@@ -53,6 +53,7 @@ static struct Connection* CheckOpenedConnection(lua_State* L, int index)
 
 static int NewConnection(lua_State* L)
 {
+    void* handle = NULL;
     struct Connection* c = (struct Connection*) lua_newuserdata(L, sizeof(struct Connection));
     luaL_getmetatable(L, CONNECTION);
     lua_setmetatable(L, -2);
@@ -71,7 +72,7 @@ static int NewConnection(lua_State* L)
         }
     }
 
-    if (!c->connection || adbus_conn_block(c->connection, ADBUS_WAIT_FOR_CONNECTED, -1)) {
+    if (!c->connection || adbus_conn_block(c->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1)) {
         return luaL_error(L, "Failed to connect");
     }
 
@@ -106,7 +107,7 @@ static int Process(lua_State* L)
     struct Connection* c = CheckOpenedConnection(L, 1);
 
     /* This is unblocked by adbusluaI_callback and adbusluaI_method */
-    if (adbus_conn_block(c->connection, ADBUS_BLOCK, -1)) {
+    if (adbus_conn_block(c->connection, ADBUS_BLOCK, &c->block, -1)) {
         return CloseConnection(L);
     }
 
@@ -468,7 +469,7 @@ int adbusluaI_callback(adbus_CbData* d)
     /* Append message to queue */
     lua_rawseti(L, -2, lua_objlen(L, -2) + 1);
 
-    adbus_conn_block(o->connection->connection, ADBUS_UNBLOCK, -1);
+    adbus_conn_block(o->connection->connection, ADBUS_UNBLOCK, &o->connection->block, -1);
 
     return 0;
 }
@@ -495,7 +496,7 @@ int adbusluaI_method(adbus_CbData* d)
     /* Append message to queue */
     lua_rawseti(L, -2, lua_objlen(L, -2) + 1);
 
-    adbus_conn_block(o->connection->connection, ADBUS_UNBLOCK, -1);
+    adbus_conn_block(o->connection->connection, ADBUS_UNBLOCK, &o->connection->block, -1);
 
     /* The message queue in lua will handle the return */
     d->ret = NULL;

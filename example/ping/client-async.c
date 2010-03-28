@@ -33,6 +33,7 @@ static int replies = REPEAT;
 static int sent    = 0;
 
 static adbus_Proxy* proxy;
+static void* blockhandle;
 
 static int Reply(adbus_CbData* d);
 static int Error(adbus_CbData* d);
@@ -42,14 +43,14 @@ static void SendPing()
     if (++sent <= REPEAT) {
         adbus_Call f;
 
-        adbus_call_method(proxy, &f, "Ping", -1);
+        adbus_proxy_method(proxy, &f, "Ping", -1);
         f.callback = &Reply;
         f.error = &Error;
 
         adbus_msg_setsig(f.msg, "s", -1);
         adbus_msg_string(f.msg, "str", -1);
 
-        adbus_call_send(proxy, &f);
+        adbus_call_send(&f);
     }
 }
 
@@ -59,7 +60,7 @@ static int Reply(adbus_CbData* d)
     adbus_check_end(d);
 
     if (--replies <= 0) {
-        adbus_conn_block(d->connection, ADBUS_UNBLOCK, -1);
+        adbus_conn_block(d->connection, ADBUS_UNBLOCK, &blockhandle, -1);
     } else {
         /* Keep pings going until we have enough replies */
         SendPing();
@@ -71,7 +72,7 @@ static int Reply(adbus_CbData* d)
 static int Error(adbus_CbData* d)
 {
     fprintf(stderr, "Error %s %s\n", d->msg->sender, d->msg->error);
-    adbus_conn_block(d->connection, ADBUS_UNBLOCK, -1);
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &blockhandle, -1);
     return 0;
 }
 
@@ -98,7 +99,7 @@ int main()
     }
 
     /* Wait for the pings to finish */
-    adbus_conn_block(connection, ADBUS_BLOCK, -1);
+    adbus_conn_block(connection, ADBUS_BLOCK, &blockhandle, -1);
 
     adbus_proxy_free(proxy);
     adbus_state_free(state);

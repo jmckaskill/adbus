@@ -46,7 +46,7 @@
 
 #include <QtCore/qvariant.h>
 #include <QtCore/qstring.h>
-#include <QtDBus/qdbusmacros.h>
+#include "qdbusmacros.hxx"
 
 QT_BEGIN_HEADER
 

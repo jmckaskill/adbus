@@ -26,69 +26,9 @@
 #include "qdbuspendingcall_p.hxx"
 #include "qdbusconnection_p.hxx"
 #include "qdbuserror_p.hxx"
-
-// Unfortunately QDBusPendingCall uses 
-// QExplicitlySharedDataPointer<QDBusPendingCallPrivate> d; as its private
-// pointer. This is a pain since we want to detach the private object and free
-// it on a different thread. So we are going to use our own definition of
-// QDBusPendingCall that uses a plain pointer instead of
-// QExplicitelySharedDataPointer as d.
-
-class QDBusPendingCallPrivate;
-class QDBUS_EXPORT QDBusPendingCall
-{
-public:
-    QDBusPendingCall(const QDBusPendingCall &other);
-    ~QDBusPendingCall();
-    QDBusPendingCall &operator=(const QDBusPendingCall &other);
-
-#ifndef Q_QDOC
-    // pretend that they aren't here
-    bool isFinished() const;
-    void waitForFinished();
-
-    bool isError() const;
-    bool isValid() const;
-    QDBusError error() const;
-    QDBusMessage reply() const;
-#endif
-
-    static QDBusPendingCall fromError(const QDBusError &error);
-    static QDBusPendingCall fromCompletedCall(const QDBusMessage &message);
-
-protected:
-    QDBusPendingCallPrivate* d; // << notice the difference
-    friend class QDBusPendingCallPrivate;
-    friend class QDBusPendingCallWatcher;
-    friend class QDBusConnection;
-
-    QDBusPendingCall(QDBusPendingCallPrivate *dd);
-
-private:
-    QDBusPendingCall();         // not defined
-};
-
-class QDBusPendingCallWatcherPrivate;
-class QDBUS_EXPORT QDBusPendingCallWatcher: public QObject, public QDBusPendingCall
-{
-    Q_OBJECT
-public:
-    QDBusPendingCallWatcher(const QDBusPendingCall &call, QObject *parent = 0);
-    ~QDBusPendingCallWatcher();
-
-#ifdef Q_QDOC
-    // trick qdoc into thinking this method is here
-    bool isFinished() const;
-#endif
-    void waitForFinished();     // non-virtual override
-
-Q_SIGNALS:
-    void finished(QDBusPendingCallWatcher *self);
-
-private:
-    Q_DECLARE_PRIVATE(QDBusPendingCallWatcher)
-    Q_PRIVATE_SLOT(d_func(), void _q_finished())
-};
+#include "qsharedfunctions_p.hxx"
+#include "qdbusmessage_p.hxx"
+#include "qdbuspendingreply.hxx"
 
 /* ------------------------------------------------------------------------- */
 
@@ -108,49 +48,52 @@ void QDBusPendingCallPrivate::AddReply(void* u)
     r.proxy = &QDBusProxy::ProxyMsgCallback;
     r.puser = (QDBusProxy*) d;
 
-    r.remote = d->service.constData();
-    r.remoteSize = d->service.size();
+    r.remote = d->m_Service.constData();
+    r.remoteSize = d->m_Service.size();
 
     r.release[0] = &QDBusPendingCallPrivate::ReplyReceived;
     r.ruser[0] = d;
 
-    r.serial = d->serial;
+    r.serial = d->m_Serial;
 
-    d->connReply = adbus_conn_addreply(d->connection, &r);
+    d->m_ConnReply = adbus_conn_addreply(d->m_Connection, &r);
 }
 
 void QDBusPendingCallPrivate::ReplyReceived(void* u)
 { 
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) u;
-    d->connReply = NULL; 
+    /* Reset m_ConnReply to NULL so that we dont try and remove the reply in
+     * QDBusPendingCallPrivate::Unregister
+     */
+    d->m_ConnReply = NULL; 
 }
 
-QDBusPendingCallPrivate::QDBusPendingCallPrivate(const QDBusConnection& c)
-: qconnection(c),
-  connection(QDBusConnectionPrivate::Connection(c)),
-  connReply(NULL)
-{}
+QDBusPendingCallPrivate::QDBusPendingCallPrivate(const QDBusConnection& c, const QByteArray& service, uint32_t serial)
+:   m_QConnection(c),
+    m_Connection(QDBusConnectionPrivate::Connection(c)),
+    m_ConnReply(NULL),
+    m_Service(service),
+    m_Serial(serial),
+    m_Block(NULL),
+    m_Finished(false)
+{
+    adbus_conn_proxy(m_Connection, &AddReply, NULL, this);
+}
 
 QDBusPendingCall QDBusPendingCallPrivate::Create(const QDBusConnection& c, const QByteArray& service, uint32_t serial)
-{
-    QDBusPendingCallPrivate* d = new QDBusPendingCallPrivate(c);
-    d->service = service;
-    d->serial = serial;
-    adbus_conn_proxy(d->connection, &AddReply, d);
-
-    return QDBusPendingCall(d);
-}
+{ return QDBusPendingCall(new QDBusPendingCallPrivate(c, service, serial)); }
 
 /* ------------------------------------------------------------------------- */
+
+void QDBusPendingCallPrivate::Unregister(void* u)
+{
+    QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) u;
+    adbus_conn_removereply(d->m_Connection, d->m_ConnReply);
+}
 
 void QDBusPendingCallPrivate::Delete(void* u)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) u;
-
-    if (d->connReply) {
-        adbus_conn_removereply(d->connection, d->connReply);
-    }
-
     delete d;
 }
 
@@ -161,64 +104,30 @@ void QDBusPendingCallPrivate::destroy()
     moveToThread(NULL);
 
     // Delete on the connection thread
-    adbus_conn_proxy(connection, &QDBusPendingCallPrivate::Delete, this);
+    adbus_conn_proxy(m_Connection, &Unregister, &Delete, this);
 }
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusConnectionPrivate::haveReply()
+void QDBusPendingCallPrivate::haveReply()
 {
-    if (waiting) {
-        adbus_conn_block(connection, ADBUS_UNBLOCK, -1);
-    }
+    adbus_conn_block(m_Connection, ADBUS_UNBLOCK, &m_Block, -1);
+    m_Finished = true;
     emit finished();
+}
+
+void QDBusPendingCallPrivate::waitForFinished()
+{
+    adbus_conn_block(m_Connection, ADBUS_BLOCK, &m_Block, -1);
 }
 
 int QDBusPendingCallPrivate::ReplyCallback(adbus_CbData* data)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
 
-    adbus_Iterator i;
-    adbus_iter_args(&i, data->msg);
-
-    QByteArray sig;
-    QDBusArgumentType type;
-    while (i.size > 0) {
-        const char* sigend = adbus_nextarg(i.sig);
-        if (!sigend) {
-            goto err;
-        }
-
-        sig.clear();
-        sig.append(i.sig, sigend - i.sig);
-
-        if (!qDBusLookupDBusSignature(sig, &type) && type.typeId > 0) {
-            void* arg = QMetaType::construct(type.typeId);
-            if (QDBusArgumentPrivate::Demarshall(&i, type.demarshall, arg)) {
-                goto err;
-            }
-            d->replyArgs.push_back(QVariant(type.typeId, arg));
-            QMetaType::destroy(type.typeId, arg);
-
-            Q_ASSERT(sigend == i.sig);
-
-        } else {
-            if (adbus_iter_value(&i)) {
-                  goto err;
-            }
-            d->replyArgs.push_back(QVariant());
-            
-        }
-    }
-
+    d->m_Reply = QDBusMessagePrivate::FromMessage(data->msg);
     d->haveReply();
     return 0;
-
-err:
-    d->replyArgs.clear();
-    d->error = QDBusError(QDBusError::Other, QLatin1String("nz.co.foobar.ParseError"));
-    d->haveReply();
-    return -1;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -228,20 +137,124 @@ int QDBusPendingCallPrivate::ErrorCallback(adbus_CbData* data)
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
 
     DBusError err = {data->msg};
-    d->error = QDBusError(&err);
+    d->m_Error = QDBusError(&err);
 
     d->haveReply();
     return 0;
 }
 
+
+
+
+
+
+
+
+
+
 /* ------------------------------------------------------------------------- */
 
+inline void qDeleteSharedData(QDBusPendingCallPrivate*& d)
+{ d->destroy(); }
+
+QDBusPendingCall::QDBusPendingCall(QDBusPendingCallPrivate* dd)
+{ qCopySharedData(d, dd); }
+
+QDBusPendingCall::QDBusPendingCall(const QDBusPendingCall& r)
+{ qCopySharedData(d, r.d); }
+
+QDBusPendingCall& QDBusPendingCall::operator=(const QDBusPendingCall& r)
+{ qAssignSharedData(d, r.d); return *this; }
+
+QDBusPendingCall::~QDBusPendingCall()
+{ qDestructSharedData(d); }
+
+/* ------------------------------------------------------------------------- */
+
+bool QDBusPendingCall::isFinished() const
+{ return d->isFinished(); }
+
 void QDBusPendingCall::waitForFinished()
+{ d->waitForFinished(); }
+
+bool QDBusPendingCall::isError() const
+{ return d->m_Error.isValid(); }
+
+QDBusError QDBusPendingCall::error() const
+{ return d->m_Error; }
+
+QDBusMessage QDBusPendingCall::reply() const
+{ return d->m_Reply; }
+
+bool QDBusPendingCall::isValid() const
+{ return isFinished() && !isError(); }
+
+
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+void QDBusPendingCallWatcherPrivate::_q_finished()
 {
-    Q_ASSERT(!d->waiting);
-    d->waiting = true;
-    adbus_conn_block(d->connection, ADBUS_BLOCK, -1);    
+    Q_Q(QDBusPendingCallWatcher);
+    emit q->finished(q);
 }
+
+QDBusPendingCallWatcher::QDBusPendingCallWatcher(const QDBusPendingCall& call, QObject* parent)
+:   QObject(*new QDBusPendingCallWatcherPrivate, parent),
+    QDBusPendingCall(call)
+{
+    QObject::connect(QDBusPendingCall::d, SIGNAL(finished()), this, SLOT(_q_finished()));
+}
+
+QDBusPendingCallWatcher::~QDBusPendingCallWatcher()
+{}
+
+void QDBusPendingCallWatcher::waitForFinished()
+{ QDBusPendingCall::waitForFinished(); }
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+QDBusPendingReplyData::QDBusPendingReplyData()
+: QDBusPendingCall(NULL)
+{}
+
+QDBusPendingReplyData::~QDBusPendingReplyData()
+{}
+
+void QDBusPendingReplyData::assign(const QDBusPendingCall& call)
+{ *((QDBusPendingCall*) this) = call; }
+
+// Is this actually needed?
+#if 0
+void QDBusPendingReplyData::assign(const QDBusMessage& message)
+{ }
+#endif
+
+void QDBusPendingReplyData::setMetaTypes(int count, const int* metaTypes)
+{
+    d->m_ReplyMetaTypes.clear();
+    for (int i = 0; i < count; i++)
+        d->m_ReplyMetaTypes[i] = metaTypes[i];
+}
+
+
+
 
 
 

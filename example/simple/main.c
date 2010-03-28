@@ -26,12 +26,12 @@
 #include <adbus.h>
 #include <stdio.h>
 
-static int quit = 0;
+void* blockhandle;
 
-static int Quit(adbus_CbData* data)
+static int Quit(adbus_CbData* d)
 {
-    adbus_check_end(data);
-    quit = 1;
+    adbus_check_end(d);
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &blockhandle, -1);
     return 0;
 }
 
@@ -48,9 +48,9 @@ static adbus_Interface* CreateInterface()
 int main(int argc, char* argv[])
 {
     adbus_State* state = adbus_state_new();
-    adbus_Proxy* proxy = adbus_proxy_new(state);
     adbus_Interface* iface = CreateInterface();
     adbus_Connection* conn;
+    adbus_Proxy* bus;
 
     if (argc > 1) {
         fprintf(stderr, "Connecting to %s\n", argv[1]);
@@ -74,29 +74,22 @@ int main(int argc, char* argv[])
         adbus_state_bind(state, conn, &b);
     }
 
+    bus = adbus_busproxy_new(state, conn);
+
     {
         adbus_Call f;
 
-        adbus_proxy_init(proxy, conn, "org.freedesktop.DBus", -1, "/", -1);
-        adbus_call_method(proxy, &f, "RequestName", -1);
-
-        adbus_msg_setsig(f.msg, "su", -1);
-        adbus_msg_string(f.msg, "nz.co.foobar.adbus.TestService", -1);
-        adbus_msg_u32(f.msg, 0);
-
-        adbus_call_send(proxy, &f);
+        adbus_busproxy_requestname(bus, &f, "nz.co.foobar.adbus.TestService", -1, 0);
+        adbus_call_send(&f);
     }
 
-    while(!quit) {
-        if (adbus_conn_parsecb(conn)) {
-            return 2;
-        }
-    }
+    /* Wait for the quit call */
+    adbus_conn_block(conn, ADBUS_BLOCK, &blockhandle, -1);
 
     adbus_state_free(state);
     adbus_conn_free(conn);
     adbus_iface_free(iface);
-    adbus_proxy_free(proxy);
+    adbus_proxy_free(bus);
 
     return 0;
 }

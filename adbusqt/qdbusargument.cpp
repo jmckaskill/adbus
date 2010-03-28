@@ -28,94 +28,213 @@
 #include "qsharedfunctions_p.hxx"
 #include <qvariant.h>
 
-// Setting up an argument
-
 /* ------------------------------------------------------------------------- */
 
-int QDBusArgumentPrivate::Demarshall(adbus_Iterator* iter, QDBusMetaType::DemarshallFunction func, void* data)
+typedef QHash<int, QDBusArgumentType*> IntTypeHash;
+typedef QHash<QByteArray, QDBusArgumentType*> StringTypeHash;
+
+static QMutex* sMutex;
+static IntTypeHash *sTypeId;
+static StringTypeHash *sDBus;
+
+static void Init()
 {
-    QDBusArgumentPrivate d;
-    d.m_Iterator = *iter;
-
-    QDBusArgument arg(&d);
-    func(arg, data);
-    *iter = d.m_Iterator;
-    arg.d = NULL;
-
-    return d.parseError;
+    if (!sMutex)
+        sMutex = new QMutex;
+    if (!sTypeId)
+        sTypeId = new IntTypeHash;
+    if (!sDBus)
+        sDBus = new StringTypeHash;
 }
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentPrivate::Marshall(adbus_Buffer* buf, QDBusMetaType::MarshallFunction func, const void* data)
+void QDBusMetaType::registerMarshallOperators(
+        int                                 typeId,
+        QDBusMetaType::MarshallFunction     marshall,
+        QDBusMetatype::DemarshallFunction   demarshall)
 {
-    QDBusArgumentPrivate d;
-    d.m_Buffer = buf;
+    Init();
 
-    QDBusArgument arg(&d);
-    func(arg, data);
-    arg.d = NULL;
-    d.m_Buffer = NULL;
+    QDBusArgumentType* type = new QDBusArgumentType;
+    type->m_TypeId          = typeId;
+    type->m_Marshall        = marshall;
+    type->m_Demarshall      = demarshall;
+
+    adbus_Buffer* buf = adbus_buf_new();
+    type->marshall(buf, QVariant(typeId, NULL), true);
+    type->m_DBusSignature = adbus_buf_sig(sBuffer);
+    adbus_buf_free(buf);
+
+    {
+        QMutexLocker lock(sMutex);
+
+        Q_ASSERT(!sTypeId->contains(typeId));
+        Q_ASSERT(!sDBus->contains(typeId));
+
+        sTypeId->insert(typeId, type);
+        sDBus->insert(type->m_DBusSignature, type);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentPrivate::Marshall(adbus_Buffer* buf, const QVariant& variant)
+const char* QDBusMetaType::typeToSignature(int typeId)
 {
-    int typeId = variant.userType();
-    QDBusArgumentType type;
-    if (typeId <= 0 || qDBusLookupTypeId(typeId, &type) || !type.marshall)
-        return;
-
-    QDBusArgumentPrivate d;
-    d.m_Buffer = buf;
-
-    QDBusArgument arg(&d);
-    type.marshall(arg, variant.data());
-    arg.d = NULL;
-    d.m_Buffer = NULL;
+    QDBusArgumentType* type QDBusArgumentType::Lookup(typeId);
+    return type ? type->m_DBusSignature.constData() : NULL;
 }
 
 /* ------------------------------------------------------------------------- */
 
-QDBusArgumentPrivate::QDBusArgumentPrivate(const QDBusArgumentPrivate& other)
-: QSharedData()
+QDBusArgumentType* QDBusArgumentType::Lookup(int type)
 {
-    m_Buffer = adbus_buf_new();
-
-    adbus_Iterator iter;
-    adbus_iter_buffer(&iter, other.m_Buffer);
-    if (!iter.data)
-        return;
-
-    adbus_buf_appendvalue(m_Buffer, &iter);
+    Init();
+    QMutexLocker lock(sMutex);
+    return sTypeId->value(typeId);
 }
 
 /* ------------------------------------------------------------------------- */
 
-adbus_Iterator* QDBusArgumentPrivate::iterator() const
+QDBusArgumentType* QDBusArgumentType::Lookup(const QByteArray& sig)
 {
-    if (m_Iterator.data == NULL)
-        adbus_iter_buffer(&m_Iterator, m_Buffer);
-    return &m_Iterator;
+    Init();
+    QMutexLocker lock(sMutex);
+    return sDBus->value(typeId);
 }
 
 /* ------------------------------------------------------------------------- */
 
-adbus_Buffer* QDBusArgumentPrivate::buffer()
+static int RegisterBuiltInTypes()
 {
-    m_Iterator.data = NULL;
-    if (!barrays.empty())
-        adbus_buf_checkarrayentry(m_Buffer, &barrays.back());
-    return m_Buffer;
+    qDBusRegisterMetaType<uchar>();
+    qDBusRegisterMetaType<bool>();
+    qDBusRegisterMetaType<short>();
+    qDBusRegisterMetaType<ushort>();
+    qDBusRegisterMetaType<int>();
+    qDBusRegisterMetaType<uint>();
+    qDBusRegisterMetaType<qlonglong>();
+    qDBusRegisterMetaType<qulonglong>();
+    qDBusRegisterMetaType<QString>();
+    qDBusRegisterMetaType<QDBusVariant>();
+    qDBusRegisterMetaType<QDBusObjectPath>();
+    qDBusRegisterMetaType<QDBusSignature>();
+    qDBusRegisterMetaType<QStringList>();
+    qDBusRegisterMetaType<QByteArray>();
+    return 0;
+}
+
+Q_CONSTRUCTOR_FUNCTION(RegisterBuiltInTypes)
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+void QDBusArgumentType::marshall(adbus_Buffer* b, const QVariant& variant, bool appendsig) const
+{
+    Q_ASSERT(variant.userType() == m_TypeId);
+    marshall(b, variant.data(), appendsig);
+}
+
+void QDBusArgumentType::marshall(adbus_Buffer* b, const void* data, bool appendsig) const
+{
+    QDBusArgument arg(new QDBusArgumentPrivate(b, appendsig));
+    m_Marshall(arg, m_TypeId, data);
+}
+
+int QDBusArgumentType::demarshall(adbus_Iterator* i, QVariant& variant) const
+{
+    Q_ASSERT(variant.userType() == m_TypeId);
+    return demarshall(i, (void*) variant.data());
+}
+
+int QDBusArgumentType::demarshall(adbus_Iterator* i, void* data) const
+{
+    QDBusArgument arg(new QDBusArgumentPrivate(i));
+    m_Demarshall(arg, m_TypeId, data);
+    return arg.d->err;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+void QDBusArgumentList::init(const QMetaMethod& method)
+{
+    QList<QByteArray> types = method.parameterTypes();
+
+    m_Arguments.resize(types.size() + 1, NULL);
+
+    for (int i = 0; i < types.size(); i++) {
+
+        bool inarg;
+        int typeId;
+
+        if (i == types.size() - 1 && (types[i] == "const QDBusMessage&" || types[i] == "QDBusMessage")) {
+            m_AppendMessage = true;
+
+        } else if (types[i].startsWith("const ") && types[i].endsWith("&")) {
+            types[i].remove(0, 6);
+            types[i].remove(types[i].size() - 1, 1);
+            typeId = qMetaType::type(types[i].constData());
+            m_Types += Entry(true, typeId, QDBusArgumentType::Lookup(typeId));
+
+        } else if (types[i].endsWith("&")) {
+            types[i].remove(types[i].size() - 1, 1);
+            typeId = qMetaType::type(types[i].constData());
+            m_Types += Entry(false, typeId, QDBusArgumentType::Lookup(typeId));
+
+        } else {
+            typeId = qMetaType::type(types[i].constData());
+            m_Types += Entry(true, typeId, QDBusArgumentType::Lookup(typeId));
+        }
+
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentPrivate::startArgument(const char* sig)
+int QDBusArgumentList::copyFromMessage(const QDBusMessage& msg)
 {
-    if (barrays.empty())
-        adbus_buf_appendsig(m_Buffer, sig, -1);
+    static int messageTypeId = qMetaTypeId<QDBusMessage>();
+
+    QList<QVariant> args = msg.arguments();
+    if (args.size() != m_Types.size())
+        return -1;
+
+    for (int i = 0; i < args.size(); i++) {
+        m_Arguments[i] = args[i].data();
+    }
+
+    if (m_AppendMessage) {
+        m_Arguments[args.size() - 1] = &msg;
+    }
+
+    return 0;
 }
 
 
@@ -123,19 +242,72 @@ void QDBusArgumentPrivate::startArgument(const char* sig)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+QDBusArgumentPrivate::QDBusArgumentPrivate(adbus_Buffer* b, bool appendsig)
+{
+    err = 0;
+    buf = b;
+    depth = appendsig ? 1 : 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+QDBusArgumentPrivate::QDBusArgumentPrivate(adbus_Iterator* i)
+{
+    err = 0;
+    iter = i;
+    depth = 0;
+}
+
+/* ------------------------------------------------------------------------- */
+
+bool QDBusArgumentPrivate::canIterate() const
+{ return iter != NULL && !err; }
+
+bool QDBusArgumentPrivate::canBuffer()
+{ return buf != NULL; }
+
+void QDBusArgumentPrivate::appendSignature(const char* sig)
+{
+    if (depth == 0) {
+        adbus_buf_appendsig(buf, sig, -1);
+    }
+}
+
+void QDBusArgumentPrivate::appendSignature(int typeId)
+{
+    if (depth == 0) {
+        adbus_buf_appendsig(buf, QDBusMetaType::typeToSignature(typeId), -1);
+    }
+}
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+QDBusArgument::QDBusArgument() : d(NULL)
+{}
 
 /* ------------------------------------------------------------------------- */
 
 QDBusArgument::QDBusArgument(QDBusArgumentPrivate* priv)
 { qCopySharedData(d, priv); }
-
-/* ------------------------------------------------------------------------- */
-
-QDBusArgument::QDBusArgument()
-{
-    qCopySharedData(d, new QDBusArgumentPrivate);
-    d->m_Buffer = adbus_buf_new();
-}
 
 /* ------------------------------------------------------------------------- */
 
@@ -147,10 +319,7 @@ QDBusArgument::~QDBusArgument()
 QDBusArgument::QDBusArgument(const QDBusArgument& other)
 { qCopySharedData(d, other.d); }
 
-/* ------------------------------------------------------------------------- */
 
-QDBusArgument& QDBusArgument::operator=(const QDBusArgument& other)
-{ qAssignSharedData(d, other.d); return *this; }
 
 
 
@@ -164,46 +333,36 @@ QDBusArgument& QDBusArgument::operator=(const QDBusArgument& other)
 
 void QDBusArgument::beginArray(int type)
 {
-    // Only want to set the signature for the top array, as that includes the
-    // entire signature for the argument.
-    qDetachSharedData(d);
-    adbus_Buffer* b = d->buffer();
-    if (d->barrays.empty()) {
-        adbus_buf_appendsig(b, "a", 1);
-        adbus_buf_appendsig(b, QDBusMetaType::typeToSignature(type), -1);
+    if (d->canBuffer()) {
+        d->appendSignature("a");
+        d->appendSignature(type);
+        d->m_BufferArrays.push_back(adbus_BufArray());
+        adbus_buf_beginarray(d->m_Buffer, &d->m_BufferArrays.back());
     }
-
-    d->barrays.push_back(adbus_BufArray());
-    adbus_buf_beginarray(b, &d->barrays.back());
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::endArray()
 {
-    qDetachSharedData(d);
-    adbus_Buffer* b = d->buffer();
-    adbus_buf_endarray(b, &d->barrays.back());
-    d->barrays.pop_back();
+    if (d->canBuffer()) {
+        adbus_buf_endarray(d->m_Buffer, &d->m_BufferArrays.back());
+        d->m_BufferArrays.pop_back();
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::beginMap(int kid, int vid)
 {
-    // Only want to set the signature for the top array, as that includes the
-    // entire signature for the argument.
-    qDetachSharedData(d);
-    adbus_Buffer* b = d->buffer();
-    if (d->barrays.empty()) {
-        adbus_buf_appendsig(b, "a{", 2);
-        adbus_buf_appendsig(b, QDBusMetaType::typeToSignature(kid), -1);
-        adbus_buf_appendsig(b, QDBusMetaType::typeToSignature(vid), -1);
-        adbus_buf_appendsig(b, "}", 1);
+    if (d->canBuffer()) {
+        d->appendSignature("a{");
+        d->appendSignature(kid);
+        d->appendSignature(vid);
+        d->appendSignature("}");
+        d->m_BufferArrays.push_back(adbus_BufArray());
+        adbus_buf_beginarray(d->m_Buffer, &d->m_BufferArrays.back());
     }
-
-    d->barrays.push_back(adbus_BufArray());
-    adbus_buf_beginarray(b, &d->barrays.back());
 }
 
 /* ------------------------------------------------------------------------- */
@@ -215,37 +374,42 @@ void QDBusArgument::endMap()
 
 void QDBusArgument::beginMapEntry()
 { 
-    qDetachSharedData(d);
-    adbus_buf_begindictentry(d->buffer()); 
+    if (d->canBuffer()) {
+        adbus_buf_begindictentry(d->m_Buffer); 
+    }
 }
 
 void QDBusArgument::endMapEntry()
 { 
-    qDetachSharedData(d);
-    adbus_buf_enddictentry(d->buffer()); 
+    if (d->canBuffer()) {
+        adbus_buf_enddictentry(d->m_Buffer); 
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::beginStructure()
 { 
-    qDetachSharedData(d);
-    adbus_buf_beginstruct(d->buffer()); 
+    if (d->canBuffer()) {
+        adbus_buf_beginstruct(d->m_Buffer); 
+    }
 }
 
 void QDBusArgument::endStructure()
 { 
-    qDetachSharedData(d);
-    adbus_buf_endstruct(d->buffer()); 
+    if (d->canBuffer()) {
+        adbus_buf_endstruct(d->m_Buffer); 
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 QDBusArgument& QDBusArgument::operator<<(uchar arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("y");
-    adbus_buf_u8(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("y");
+        adbus_buf_u8(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -253,9 +417,10 @@ QDBusArgument& QDBusArgument::operator<<(uchar arg)
 
 QDBusArgument& QDBusArgument::operator<<(bool arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("b");
-    adbus_buf_bool(d->buffer(), arg ? 1 : 0);
+    if (d->canBuffer()) {
+        d->appendSignature("b");
+        adbus_buf_bool(d->m_Buffer, arg ? 1 : 0);
+    }
     return *this;
 }
 
@@ -263,9 +428,10 @@ QDBusArgument& QDBusArgument::operator<<(bool arg)
 
 QDBusArgument& QDBusArgument::operator<<(short arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("n");
-    adbus_buf_i16(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("n");
+        adbus_buf_i16(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -273,9 +439,10 @@ QDBusArgument& QDBusArgument::operator<<(short arg)
 
 QDBusArgument& QDBusArgument::operator<<(ushort arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("q");
-    adbus_buf_u16(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("q");
+        adbus_buf_u16(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -283,9 +450,10 @@ QDBusArgument& QDBusArgument::operator<<(ushort arg)
 
 QDBusArgument& QDBusArgument::operator<<(int arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("i");
-    adbus_buf_i32(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("i");
+        adbus_buf_i32(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -293,9 +461,10 @@ QDBusArgument& QDBusArgument::operator<<(int arg)
 
 QDBusArgument& QDBusArgument::operator<<(uint arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("u");
-    adbus_buf_u32(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("u");
+        adbus_buf_u32(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -303,9 +472,10 @@ QDBusArgument& QDBusArgument::operator<<(uint arg)
 
 QDBusArgument& QDBusArgument::operator<<(qlonglong arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("x");
-    adbus_buf_i64(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("x");
+        adbus_buf_i64(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -313,9 +483,10 @@ QDBusArgument& QDBusArgument::operator<<(qlonglong arg)
 
 QDBusArgument& QDBusArgument::operator<<(qulonglong arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("t");
-    adbus_buf_u64(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("t");
+        adbus_buf_u64(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -323,9 +494,10 @@ QDBusArgument& QDBusArgument::operator<<(qulonglong arg)
 
 QDBusArgument& QDBusArgument::operator<<(double arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("d");
-    adbus_buf_double(d->buffer(), arg);
+    if (d->canBuffer()) {
+        d->appendSignature("d");
+        adbus_buf_double(d->m_Buffer, arg);
+    }
     return *this;
 }
 
@@ -333,10 +505,11 @@ QDBusArgument& QDBusArgument::operator<<(double arg)
 
 QDBusArgument& QDBusArgument::operator<<(const QString& arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("s");
-    QByteArray utf8 = arg.toUtf8();
-    adbus_buf_string(d->buffer(), utf8.constData(), utf8.size());
+    if (d->canBuffer()) {
+        QByteArray utf8 = arg.toUtf8();
+        d->appendSignature("s");
+        adbus_buf_string(d->m_Buffer, utf8.constData(), utf8.size());
+    }
     return *this;
 }
 
@@ -344,10 +517,11 @@ QDBusArgument& QDBusArgument::operator<<(const QString& arg)
 
 QDBusArgument& QDBusArgument::operator<<(const QDBusObjectPath& arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("o");
-    QByteArray str8 = arg.path().toAscii();
-    adbus_buf_objectpath(d->buffer(), str8.constData(), str8.size());
+    if (d->canBuffer()) {
+        QByteArray utf8 = arg.path().toUtf8();
+        d->appendSignature("o");
+        adbus_buf_objectpath(d->m_Buffer, utf8.constData(), utf8.size());
+    }
     return *this;
 }
 
@@ -355,10 +529,11 @@ QDBusArgument& QDBusArgument::operator<<(const QDBusObjectPath& arg)
 
 QDBusArgument& QDBusArgument::operator<<(const QDBusSignature& arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("g");
-    QByteArray str8 = arg.signature().toAscii();
-    adbus_buf_signature(d->buffer(), str8.constData(), str8.size());
+    if (d->canBuffer()) {
+        QByteArray utf8 = arg.signature().toUtf8();
+        d->appendSignature("g");
+        adbus_buf_signature(d->m_Buffer, utf8.constData(), utf8.size());
+    }
     return *this;
 }
 
@@ -366,17 +541,19 @@ QDBusArgument& QDBusArgument::operator<<(const QDBusSignature& arg)
 
 QDBusArgument& QDBusArgument::operator<<(const QStringList& arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("as");
-    adbus_Buffer* b = d->buffer();
-    adbus_BufArray a;
-    adbus_buf_beginarray(b, &a);
-    for (int i = 0; i < arg.size(); i++) {
-        QByteArray utf8 = arg[i].toUtf8();
-        adbus_buf_arrayentry(b, &a);
-        adbus_buf_string(b, utf8.constData(), utf8.size());
+    if (d->canBuffer()) {
+        d->appendSignature("as");
+
+        adbus_Buffer* b = d->m_Buffer;
+        adbus_BufArray a;
+        adbus_buf_beginarray(b, &a);
+        for (int i = 0; i < arg.size(); i++) {
+            QByteArray utf8 = arg[i].toUtf8();
+            adbus_buf_arrayentry(b, &a);
+            adbus_buf_string(b, utf8.constData(), utf8.size());
+        }
+        adbus_buf_endarray(b, &a);
     }
-    adbus_buf_endarray(b, &a);
     return *this;
 }
 
@@ -384,13 +561,14 @@ QDBusArgument& QDBusArgument::operator<<(const QStringList& arg)
 
 QDBusArgument& QDBusArgument::operator<<(const QByteArray& arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("ay");
-    adbus_Buffer* b = d->buffer();
-    adbus_BufArray a;
-    adbus_buf_beginarray(b, &a);
-    adbus_buf_append(b, arg.constData(), arg.size());
-    adbus_buf_endarray(b, &a);
+    if (d->canBuffer()) {
+        d->startArgument("ay");
+        adbus_Buffer* b = d->m_Buffer;
+        adbus_BufArray a;
+        adbus_buf_beginarray(b, &a);
+        adbus_buf_append(b, arg.constData(), arg.size());
+        adbus_buf_endarray(b, &a);
+    }
     return *this;
 }
 
@@ -398,25 +576,9 @@ QDBusArgument& QDBusArgument::operator<<(const QByteArray& arg)
 
 void QDBusArgument::appendVariant(const QVariant& variant)
 {
-    qDetachSharedData(d);
-    int typeId = variant.userType();
-    if (typeId == qMetaTypeId<QDBusArgument>()) {
-        // We want to pull the actual dbus data out
-
-        const QDBusArgument* arg = (const QDBusArgument*) variant.constData();
-        if (arg) {
-            adbus_Iterator iter = *arg->d->iterator();
-            if (iter.data)
-                adbus_buf_appendvalue(d->buffer(), &iter);
-        }
-
-    } else {
-        // Look up the marshalling function
-
-        QDBusArgumentType type; 
-        if (!qDBusLookupTypeId(typeId, &type) && type.marshall) {
-            type.marshall(*this, variant.constData());
-        }
+    if (d->canBuffer()) {
+        QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
+        type->marshall(d->m_Buffer, variant);
     }
 }
 
@@ -424,20 +586,18 @@ void QDBusArgument::appendVariant(const QVariant& variant)
 
 QDBusArgument& QDBusArgument::operator<<(const QDBusVariant& arg)
 {
-    qDetachSharedData(d);
-    d->startArgument("v");
-    QVariant variant = arg.variant();
+    if (d->canBuffer()) {
+        QVariant variant = arg.variant();
+        QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
+        
+        adbus_Buffer* b = d->m_Buffer;
+        adbus_BufVariant v;
+        adbus_buf_beginvariant(b, &v, type->dbusSignature(), -1);
+        
+        type->marshall(b, variant);
 
-    const char* sig = QDBusMetaType::typeToSignature(variant.userType());
-
-    adbus_Buffer* b = d->buffer();
-    adbus_BufVariant v;
-    adbus_buf_beginvariant(b, &v, sig ? sig : "", -1);
-
-    if (sig)
-        appendVariant(variant);
-
-    adbus_buf_endvariant(b, &v);
+        adbus_buf_endvariant(b, &v);
+    }
     return *this;
 }
 
@@ -452,30 +612,31 @@ QDBusArgument& QDBusArgument::operator<<(const QDBusVariant& arg)
 
 void QDBusArgument::beginArray() const
 { 
-    qDetachSharedData(d);
-    if (d->parseError) return;
-
-    d->iarrays.push_back(adbus_IterArray());
-    d->parseError = adbus_iter_beginarray(d->iterator(), &d->iarrays.back()); 
+    if (d->canIterate()) {
+        d->m_IteratorArrays.push_back(adbus_IterArray());
+        d->err = adbus_iter_beginarray(d->m_Iterator, &d->m_IteratorArrays.back());
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 bool QDBusArgument::atEnd() const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return true;
-    return adbus_iter_inarray(d->iterator(), &d->iarrays.back()) == 0;
+    if (d->canIterate()) {
+        return adbus_iter_inarray(d->m_Iterator, &d->m_IteratorArrays.back()) == 0;
+    } else {
+        return true;
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::endArray() const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return;
-    d->parseError = adbus_iter_endarray(d->iterator(), &d->iarrays.back());
-    d->iarrays.pop_back();
+    if (d->canIterate()) {
+        d->err = adbus_iter_endarray(d->m_Iterator, &d->m_IteratorArrays.back());
+        d->m_IteratorArrays.pop_back();
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -490,48 +651,49 @@ void QDBusArgument::endMap() const
 
 void QDBusArgument::beginMapEntry() const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return;
-    d->parseError = adbus_iter_begindictentry(d->iterator());
+    if (d->canIterate()) {
+        d->err = adbus_iter_begindictentry(d->m_Iterator);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::endMapEntry() const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return;
-    d->parseError = adbus_iter_enddictentry(d->iterator());
+    if (d->canIterate()) {
+        d->err = adbus_iter_enddictentry(d->m_Iterator);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::beginStructure() const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return;
-    d->parseError = adbus_iter_beginstruct(d->iterator());
+    if (d->canIterate()) {
+        d->err = adbus_iter_beginstruct(d->m_Iterator);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusArgument::endStructure() const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return;
-    d->parseError = adbus_iter_endstruct(d->iterator());
+    if (d->canIterate()) {
+        d->err = adbus_iter_endstruct(d->m_Iterator);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
 
 const QDBusArgument& QDBusArgument::operator>>(uchar& arg) const
 {
-    qDetachSharedData(d);
-    const uint8_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_u8(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const uint8_t* data = NULL;
+        d->err = adbus_iter_u8(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -539,12 +701,13 @@ const QDBusArgument& QDBusArgument::operator>>(uchar& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(bool& arg) const
 {
-    qDetachSharedData(d);
-    const adbus_Bool* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_bool(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data == 0;
+    if (d->canIterate()) {
+        const adbus_Bool* data = NULL;
+        d->err = adbus_iter_bool(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = (*data == 0);
+        }
+    }
     return *this;
 }
 
@@ -552,12 +715,13 @@ const QDBusArgument& QDBusArgument::operator>>(bool& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(short& arg) const
 {
-    qDetachSharedData(d);
-    const int16_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_i16(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const int16_t* data = NULL;
+        d->err = adbus_iter_i16(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -565,12 +729,13 @@ const QDBusArgument& QDBusArgument::operator>>(short& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(ushort& arg) const
 {
-    qDetachSharedData(d);
-    const uint16_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_u16(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const uint16_t* data = NULL;
+        d->err = adbus_iter_u16(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -578,12 +743,13 @@ const QDBusArgument& QDBusArgument::operator>>(ushort& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(int& arg) const
 {
-    qDetachSharedData(d);
-    const int32_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_i32(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const int32_t* data = NULL;
+        d->err = adbus_iter_i32(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -591,12 +757,13 @@ const QDBusArgument& QDBusArgument::operator>>(int& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(uint& arg) const
 {
-    qDetachSharedData(d);
-    const uint32_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_u32(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const uint32_t* data = NULL;
+        d->err = adbus_iter_u32(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -604,12 +771,13 @@ const QDBusArgument& QDBusArgument::operator>>(uint& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(qlonglong& arg) const
 {
-    qDetachSharedData(d);
-    const int64_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_i64(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const int64_t* data = NULL;
+        d->err = adbus_iter_i64(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -617,12 +785,13 @@ const QDBusArgument& QDBusArgument::operator>>(qlonglong& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(qulonglong& arg) const
 {
-    qDetachSharedData(d);
-    const uint64_t* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_u64(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const uint64_t* data = NULL;
+        d->err = adbus_iter_u64(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -630,12 +799,13 @@ const QDBusArgument& QDBusArgument::operator>>(qulonglong& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(double& arg) const
 {
-    qDetachSharedData(d);
-    const double* data = NULL;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_double(d->iterator(), &data);
-    if (d->parseError) return *this;
-    arg = *data;
+    if (d->canIterate()) {
+        const double* data = NULL;
+        d->err = adbus_iter_double(d->m_Iterator, &data);
+        if (!d->err) {
+            arg = *data;
+        }
+    }
     return *this;
 }
 
@@ -643,13 +813,14 @@ const QDBusArgument& QDBusArgument::operator>>(double& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(QString& arg) const
 {
-    qDetachSharedData(d);
-    const char* str = NULL;
-    size_t sz = 0;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_string(d->iterator(), &str, &sz);
-    if (d->parseError) return *this;
-    arg = QString::fromUtf8(str, sz);
+    if (d->canIterate()) {
+        const char* str = NULL;
+        size_t sz = 0;
+        d->err = adbus_iter_string(d->m_Iterator, &str, &sz);
+        if (!d->err) {
+            arg = QString::fromUtf8(str, sz);
+        }
+    }
     return *this;
 }
 
@@ -657,13 +828,14 @@ const QDBusArgument& QDBusArgument::operator>>(QString& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(QDBusObjectPath& arg) const
 {
-    qDetachSharedData(d);
-    const char* str = NULL;
-    size_t sz = 0;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_objectpath(d->iterator(), &str, &sz);
-    if (d->parseError) return *this;
-    arg.setPath(QString::fromUtf8(str, sz));
+    if (d->canIterate()) {
+        const char* str = NULL;
+        size_t sz = 0;
+        d->err = adbus_iter_objectpath(d->m_Iterator, &str, &sz);
+        if (!d->err) {
+            arg.setPath(QString::fromUtf8(str, sz));
+        }
+    }
     return *this;
 }
 
@@ -671,13 +843,14 @@ const QDBusArgument& QDBusArgument::operator>>(QDBusObjectPath& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(QDBusSignature& arg) const
 {
-    qDetachSharedData(d);
-    const char* str = NULL;
-    size_t sz = 0;
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_signature(d->iterator(), &str, &sz);
-    if (d->parseError) return *this;
-    arg.setSignature(QString::fromUtf8(str, sz));
+    if (d->canIterate()) {
+        const char* str = NULL;
+        size_t sz = 0;
+        d->err = adbus_iter_signature(d->m_Iterator, &str, &sz);
+        if (!d->err) {
+            arg.setSignature(QString::fromUtf8(str, sz));
+        }
+    }
     return *this;
 }
 
@@ -685,14 +858,15 @@ const QDBusArgument& QDBusArgument::operator>>(QDBusSignature& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(QStringList& arg) const
 {
-    qDetachSharedData(d);
-    beginArray();
-    arg.clear();
-    while (!atEnd()) {
-        arg.push_back(QString());
-        *this >> arg.back();
+    if (d->canIterate()) {
+        beginArray();
+        arg.clear();
+        while (!atEnd()) {
+            arg.push_back(QString());
+            *this >> arg.back();
+        }
+        endArray();
     }
-    endArray();
     return *this;
 }
 
@@ -700,53 +874,37 @@ const QDBusArgument& QDBusArgument::operator>>(QStringList& arg) const
 
 const QDBusArgument& QDBusArgument::operator>>(QByteArray& arg) const
 {
-    qDetachSharedData(d);
-    if (d->parseError) return *this;
+    if (d->canIterate()) {
+        adbus_IterArray a;
+        d->err = adbus_iter_beginarray(d->m_Iterate, &a) 
+              || adbus_iter_endarray(d->m_Iterate, &a);
 
-    adbus_IterArray a = {};
-    d->parseError = adbus_iter_beginarray(d->iterator(), &a);
-    if (d->parseError) return *this;
-    d->parseError = adbus_iter_endarray(d->iterator(), &a);
-    if (d->parseError) return *this;
-
-    arg.clear();
-    arg.append(a.data, a.size);
-
+        if (!d->err) {
+            arg.clear();
+            arg.append(a.data, a.size);
+        }
+    }
     return *this;
 }
 
 /* ------------------------------------------------------------------------- */
 
-const QDBusArgument& QDBusArgument::operator>>(QDBusVariant& variant) const
+const QDBusArgument& QDBusArgument::operator>>(QDBusVariant& arg) const
 {
-    // Try and demarshall the argument, but if we cant chuck the argument into
-    // the variant as a QDBusArgument
+    if (d->canIterate()) {
+        adbus_IterVariant v;
+        d->err = adbus_iter_beginvariant(i, &v);
+        if (!d->err)
+            return *this;
 
-    qDetachSharedData(d);
-    if (d->parseError) return *this;
+        QVariant variant;
+        QDBusArgumentType* type = QDBusArgumentType::Lookup(&v);
+        d->err = type->demarshall(&d->m_Iterator, variant);
 
-    adbus_Iterator* i = d->iterator();
-    adbus_IterVariant v = {};
-    d->parseError = adbus_iter_beginvariant(i, &v);
-    if (d->parseError) return *this;
+        if (!d->err)
+            return *this;
 
-    QDBusArgumentType type;
-    if (!qDBusLookupDBusSignature(v.sig, &type) && type.typeId > 0 && type.demarshall) {
-        // Use the demarshall function
-        void* value = QMetaType::construct(type.typeId);
-        type.demarshall(*this, value);
-        if (!d->parseError)
-            variant.setVariant(QVariant(type.typeId, value));
-        QMetaType::destroy(type.typeId, value);
-
-    } else {
-        // We couldn't find the signature. Copy the data into a new
-        // QDBusArgument.
-        QDBusArgument arg;
-        d->parseError = adbus_buf_appendvalue(arg.d->buffer(), i);
-        if (!d->parseError) {
-            variant.setVariant(qVariantFromValue<QDBusArgument>(arg));
-        }
+        arg.setVariant(variant);
     }
     return *this;
 }

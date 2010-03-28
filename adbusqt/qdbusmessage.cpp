@@ -26,78 +26,207 @@
 #include "qdbusmessage_p.hxx"
 #include "qdbusargument_p.hxx"
 #include "qsharedfunctions_p.hxx"
+#include "qdbusmetatype_p.hxx"
+#include <QtCore/qthreadstorage.h>
 
 /* ------------------------------------------------------------------------- */
 
-int QDBusMessagePrivate::Copy(const adbus_Message* from, QDBusMessage* to)
+class QDBusMessageFactory
 {
-    adbus_MsgFactory* m = to->d_ptr->msg;
+    QDBusMessageFactory(const QDBusMessageFactory&);
+    QDBusMessageFactory& operator=(const QDBusMessageFactory&);
+public:
+    QDBusMessageFactory() : d(adbus_msg_new()) {}
+    ~QDBusMessageFactory() {adbus_msg_free(d);}
 
-    adbus_msg_reset(m);
-    adbus_msg_settype(m, from->type);
-    adbus_msg_setflags(m, from->flags);
-    adbus_msg_setserial(m, from->serial);
-    if (from->replySerial)
-        adbus_msg_setreply(m, *from->replySerial);
-    if (from->path)
-        adbus_msg_setpath(m, from->path, from->pathSize);
-    if (from->interface)
-        adbus_msg_setinterface(m, from->interface, from->interfaceSize);
-    if (from->member)
-        adbus_msg_setmember(m, from->member, from->memberSize);
-    if (from->error)
-        adbus_msg_seterror(m, from->error, from->errorSize);
-    if (from->destination)
-        adbus_msg_setdestination(m, from->destination, from->destinationSize);
-    if (from->sender)
-        adbus_msg_setsender(m, from->sender, from->senderSize);
+    adbus_MsgFactory* d;
+};
 
-    adbus_msg_setsig(m, from->signature, from->signatureSize);
-    adbus_msg_append(m, from->argdata, from->argsize);
+static QThreadStorage<QDBusMessageFactory*> factories;
 
-    return 0;
+adbus_MsgFactory* QDBusMessagePrivate::ToFactory(const QDBusMessage& msg)
+{
+    if (!factories.hasLocalData()) {
+        factories.setLocalData(new QDBusMessageFactory);
+    }
+
+    QDBusMessageFactory* f = factories.localData();
+    msg.d_ptr->setupFactory(f->d);
+    return f->d;
 }
 
 /* ------------------------------------------------------------------------- */
 
-QDBusMessagePrivate::QDBusMessagePrivate(const QDBusMessagePrivate& other)
-: QSharedData()
+QDBusMessage QDBusMessagePrivate::FromMessage(adbus_Message* msg)
 {
-    msg = adbus_msg_new();
+    QDBusMessage ret;
+    ret.d_ptr->fromMessage(msg);
+    return ret;
+}
 
-    adbus_MsgFactory* from = other.msg;
-    adbus_MsgFactory* to = msg;
+/* ------------------------------------------------------------------------- */
 
-    adbus_msg_settype(to, adbus_msg_type(from));
-    adbus_msg_setflags(to, adbus_msg_flags(from));
-    adbus_msg_setserial(to, adbus_msg_serial(from));
+QDBusMessagePrivate::QDBusMessagePrivate()
+:   type(ADBUS_MSG_INVALID),
+    flags(0),
+    serial(-1),
+    replySerial(-1),
+    delayedReply(false)
+{
+}
 
-    uint32_t serial;
-    if (adbus_msg_reply(from, &serial))
-        adbus_msg_setreply(to, serial);
+/* ------------------------------------------------------------------------- */
 
-    const char* str;
-    size_t sz;
+void QDBusMessagePrivate::fromMessage(adbus_Message* msg)
+{
+    delayedReply = false;
 
-    if (NULL != (str = adbus_msg_path(from, &sz)))
-        adbus_msg_setpath(to, str, sz);
-    if (NULL != (str = adbus_msg_interface(from, &sz)))
-        adbus_msg_setinterface(to, str, sz);
-    if (NULL != (str = adbus_msg_sender(from, &sz)))
-        adbus_msg_setsender(to, str, sz);
-    if (NULL != (str = adbus_msg_destination(from, &sz)))
-        adbus_msg_setdestination(to, str, sz);
-    if (NULL != (str = adbus_msg_member(from, &sz)))
-        adbus_msg_setmember(to, str, sz);
-    if (NULL != (str = adbus_msg_error(from, &sz)))
-        adbus_msg_seterror(to, str, sz);
-    if (NULL != (str = adbus_msg_destination(from, &sz)))
-        adbus_msg_setdestination(to, str, sz);
+    type = msg->type;
+    flags = msg->flags;
+    serial = msg->serial;
 
-    const adbus_Buffer* args = adbus_msg_argbuffer_c(from);
-    str = adbus_buf_sig(args, &sz);
-    adbus_msg_setsig(to, str, sz);
-    adbus_msg_append(to, adbus_buf_data(args), adbus_buf_size(args));
+    if (msg->replySerial) {
+        replySerial = *msg->replySerial;
+    } else {
+        replySerial = -1;
+    }
+
+    if (msg->signature) {
+        signature = QString::fromAscii(msg->signature, msg->signatureSize);
+    } else {
+        signature.clear();
+    }
+
+    if (msg->path) {
+        path = QString::fromAscii(msg->path, msg->pathSize);
+    } else {
+        path.clear();
+    }
+
+    if (msg->interface) {
+        interface = QString::fromAscii(msg->interface, msg->interfaceSize);
+    } else {
+        interface.clear();
+    }
+
+    if (msg->member) {
+        member = QString::fromAscii(msg->member, msg->memberSize);
+    } else {
+        member.clear();
+    }
+
+    if (msg->error) {
+        error = QString::fromAscii(msg->error, msg->errorSize);
+    } else {
+        error.clear();
+    }
+
+    if (msg->destination) {
+        destination = QString::fromAscii(msg->destination, msg->destinationSize);
+    } else {
+        destination.clear();
+    }
+
+    if (msg->sender) {
+        sender = QString::fromAscii(msg->sender, msg->senderSize);
+    } else {
+        sender.clear();
+    }
+
+    adbus_Iterator i;
+    adbus_iter_args(&i, msg);
+    QByteArray sig;
+    while (i.size > 0) {
+        const char* sigend = adbus_nextarg(i.sig);
+        if (!sigend) {
+            goto err;
+        }
+
+        sig.clear();
+        sig.append(i.sig, sigend - i.sig);
+
+        QDBusArgumentType* type = QDBusArgumentType::Lookup(sig);
+        if (type) {
+            QVariant variant(type->m_TypeId, NULL);
+            if (type->demarshall(&i, variant)) {
+                goto err;
+            }
+            arguments.push_back(variant);
+        } else {
+            if (adbus_iter_value(&i)) {
+                  goto err;
+            }
+            arguments.push_back(QVariant());
+        }
+    }
+
+err:
+    type = ADBUS_MSG_ERROR;
+    flags = 0;
+    error = "nz.co.foobar.adbus.ParseError";
+
+    signature.clear();
+    path.clear();
+    interface.clear();
+    member.clear();
+    sender.clear();
+    destination.clear();
+
+    arguments.clear();
+}
+
+/* ------------------------------------------------------------------------- */
+
+void QDBusMessagePrivate::setupFactory(adbus_MsgFactory* msg)
+{
+    adbus_msg_reset(msg);
+    adbus_msg_settype(msg, type);
+    adbus_msg_setflags(msg, flags);
+    if (serial >= 0)
+        adbus_msg_setserial(msg, (uint32_t) serial);
+    if (replySerial >= 0)
+        adbus_msg_setreply(msg, (uint32_t) replySerial);
+
+    if (!path.isEmpty()) {
+        QByteArray path8 = path.toAscii();
+        adbus_msg_setpath(msg, path8.constData(), path8.size());
+    }
+
+    if (!interface.isEmpty()) {
+        QByteArray interface8 = interface.toAscii();
+        adbus_msg_setinterface(msg, interface8.constData(), interface8.size());
+    }
+
+    if (!member.isEmpty()) {
+        QByteArray member8 = member.toAscii();
+        adbus_msg_setmember(msg, member8.constData(), member8.size());
+    }
+
+    if (!error.isEmpty()) {
+        QByteArray error8 = error.toAscii();
+        adbus_msg_seterror(msg, error8.constData(), error8.size());
+    }
+
+    if (!sender.isEmpty()) {
+        QByteArray sender8 = sender.toAscii();
+        adbus_msg_setsender(msg, sender8.constData(), sender8.size());
+    }
+
+    if (!destination.isEmpty()) {
+        QByteArray destination8 = destination.toAscii();
+        adbus_msg_setdestination(msg, destination8.constData(), destination8.size());
+    }
+
+    if (!path.isEmpty()) {
+        QByteArray path8 = path.toAscii();
+        adbus_msg_setpath(msg, path8.constData(), path8.size());
+    }
+
+    adbus_Buffer* buf = adbus_msg_argbuffer(msg);
+    for (int i = 0; i < arguments.size(); i++) {
+        // This will also tack on the signature
+        QDBusArgumentPrivate::Marshall(buf, arguments[i]);
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -122,16 +251,11 @@ QDBusMessage QDBusMessage::createSignal(const QString& path,
 {
     QDBusMessage ret;
 
-    QByteArray path8 = path.toAscii();
-    QByteArray iface8 = interface.toAscii();
-    QByteArray name8 = name.toAscii();
-
-    adbus_MsgFactory* m = ret.d_ptr->msg;
-    adbus_msg_settype(m, ADBUS_MSG_SIGNAL);
-    adbus_msg_setflags(m, ADBUS_MSG_NO_REPLY);
-    adbus_msg_setpath(m, path8.constData(), path8.size());
-    adbus_msg_setinterface(m, iface8.constData(), iface8.size());
-    adbus_msg_setmember(m, name8.constData(), name8.size());
+    ret.d_ptr->type = ADBUS_MSG_SIGNAL;
+    ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
+    ret.d_ptr->path = path;
+    ret.d_ptr->interface = interface;
+    ret.d_ptr->member = name;
 
     return ret;
 }
@@ -145,17 +269,11 @@ QDBusMessage QDBusMessage::createMethodCall(const QString& destination,
 {
     QDBusMessage ret;
 
-    QByteArray dest8 = destination.toAscii();
-    QByteArray path8 = path.toAscii();
-    QByteArray iface8 = interface.toAscii();
-    QByteArray method8 = method.toAscii();
-
-    adbus_MsgFactory* m = ret.d_ptr->msg;
-    adbus_msg_settype(m, ADBUS_MSG_METHOD);
-    adbus_msg_setdestination(m, dest8.constData(), dest8.size());
-    adbus_msg_setpath(m, path8.constData(), path8.size());
-    adbus_msg_setinterface(m, iface8.constData(), iface8.size());
-    adbus_msg_setmember(m, method8.constData(), method8.size());
+    ret.d_ptr->type = ADBUS_MSG_METHOD;
+    ret.d_ptr->destination = destination;
+    ret.d_ptr->path = path;
+    ret.d_ptr->interface = interface;
+    ret.d_ptr->member = method;
 
     return ret;
 }
@@ -167,17 +285,10 @@ QDBusMessage QDBusMessage::createError(const QString &name, const QString &msg)
 {
     QDBusMessage ret;
 
-    adbus_MsgFactory* m = ret.d_ptr->msg;
-    adbus_msg_settype(m, ADBUS_MSG_ERROR);
-
-    QByteArray name8 = name.toAscii();
-    adbus_msg_seterror(m, name8.constData(), name8.size());
-
-    if (!msg.isEmpty()) {
-        QByteArray msg8 = msg.toUtf8();
-        adbus_msg_setsig(m, "s", 1);
-        adbus_msg_string(m, msg8.constData(), msg8.size());
-    }
+    ret.d_ptr->type = ADBUS_MSG_ERROR;
+    ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
+    ret.d_ptr->error = name;
+    ret.d_ptr->arguments[0] = msg;
 
     return ret;
 }
@@ -190,22 +301,12 @@ QDBusMessage QDBusMessage::createErrorReply(const QString name,
 {
     QDBusMessage ret;
 
-    adbus_MsgFactory* m = ret.d_ptr->msg;
-    adbus_msg_settype(m, ADBUS_MSG_ERROR);
-
-    size_t sendersz;
-    const char* sender = adbus_msg_sender(d_ptr->msg, &sendersz);
-    adbus_msg_setdestination(m, sender, (int) sendersz);
-    adbus_msg_setreply(m, adbus_msg_serial(d_ptr->msg));
-
-    QByteArray name8 = name.toAscii();
-    adbus_msg_seterror(m, name8.constData(), name8.size());
-
-    if (!msg.isEmpty()) {
-        QByteArray msg8 = msg.toUtf8();
-        adbus_msg_setsig(m, "s", 1);
-        adbus_msg_string(m, msg8.constData(), msg8.size());
-    }
+    ret.d_ptr->type = ADBUS_MSG_ERROR;
+    ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
+    ret.d_ptr->destination = d_ptr->sender;
+    ret.d_ptr->replySerial = d_ptr->serial;
+    ret.d_ptr->error = name;
+    ret.d_ptr->arguments[0] = msg;
 
     return ret;
 }
@@ -216,55 +317,77 @@ QDBusMessage QDBusMessage::createReply(const QList<QVariant> &arguments) const
 {
     QDBusMessage ret;
 
-    adbus_MsgFactory* m = ret.d_ptr->msg;
-    adbus_msg_settype(m, ADBUS_MSG_RETURN);
-
-    size_t sendersz;
-    const char* sender = adbus_msg_sender(d_ptr->msg, &sendersz);
-    adbus_msg_setdestination(m, sender, (int) sendersz);
-    adbus_msg_setreply(m, adbus_msg_serial(d_ptr->msg));
-
-    for (int i = 0; i < arguments.size(); i++)
-        ret << arguments[i];
+    ret.d_ptr->type = ADBUS_MSG_RETURN;
+    ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
+    ret.d_ptr->replySerial = d_ptr->serial;
+    ret.d_ptr->destination = d_ptr->sender;
+    ret.d_ptr->arguments = arguments;
 
     return ret;
 }
 
 /* ------------------------------------------------------------------------- */
 
+QList<QVariant> QDBusMessage::arguments() const
+{ return d_ptr->arguments; }
+
+void QDBusMessage::setArguments(const QList<QVariant>& arguments)
+{
+    qDetachSharedData(d_ptr);
+    d_ptr->arguments = arguments;
+}
+
 QDBusMessage& QDBusMessage::operator<<(const QVariant& arg)
 {
     qDetachSharedData(d_ptr);
-    adbus_Buffer* buf = adbus_msg_argbuffer(d_ptr->msg);
-    // This will also tack on the signature
-    QDBusArgumentPrivate::Marshall(buf, arg);
+    d_ptr->arguments.push_back(arg);
     return *this;
 }
 
 /* ------------------------------------------------------------------------- */
 
+QString QDBusMessage::service() const
+{ return d_ptr->sender; }
+
+QString QDBusMessage::path() const
+{ return d_ptr->path; }
+
+QString QDBusMessage::interface() const
+{ return d_ptr->interface; }
+
+QString QDBusMessage::member() const
+{ return d_ptr->member; }
+
+QDBusMessage::MessageType QDBusMessage::type() const
+{ return (QDBusMessage::MessageType) d_ptr->type; }
+
+QString QDBusMessage::signature() const
+{ return d_ptr->signature; }
+
 QString QDBusMessage::errorName() const
-{
-    size_t sz;
-    const char* str = adbus_msg_error(d_ptr->msg, &sz);
-    return str ? QString::fromUtf8(str, sz) : QString();
-}
+{ return d_ptr->error; }
+
+bool QDBusMessage::isReplyRequired() const
+{ return (d_ptr->flags & ADBUS_MSG_NO_REPLY) == 0; }
+
+void QDBusMessage::setDelayedReply(bool enable) const
+{ d_ptr->delayedReply = enable; }
+
+bool QDBusMessage::isDelayedReply() const
+{ return d_ptr->delayedReply; }
 
 /* ------------------------------------------------------------------------- */
 
 QString QDBusMessage::errorMessage() const
 {
-    adbus_Iterator iter = {};
-    adbus_iter_buffer(&iter, adbus_msg_argbuffer(d_ptr->msg));
-
-    if (strncmp(iter.sig, "s", 1) != 0)
+    if (d_ptr->type != ADBUS_MSG_ERROR || d_ptr->arguments.isEmpty()) {
         return QString();
-
-    const char* str;
-    size_t sz;
-    if (adbus_iter_string(&iter, &str, &sz))
-        return QString();
-
-    return QString::fromUtf8(str, sz);
+    } else {
+        return d_ptr->arguments[0].toString();
+    }
 }
+
+/* ------------------------------------------------------------------------- */
+
+
 

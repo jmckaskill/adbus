@@ -284,13 +284,13 @@ adbus_ConnMatch* adbus_conn_addmatch(
 
         adbusI_matchString(&m->matchString, &m->m);
 
-        adbus_call_method(c->bus, &f, "AddMatch", -1);
+        adbus_proxy_method(c->bus, &f, "AddMatch", -1);
 
         adbus_msg_setsig(f.msg, "s", 1);
         adbus_msg_string(f.msg, ds_cstr(&m->matchString), ds_size(&m->matchString));
         adbus_msg_end(f.msg);
 
-        adbus_call_send(c->bus, &f);
+        adbus_call_send(&f);
     }
 
     dil_insert_after(ConnMatch, &c->matches.list, m, &m->hl);
@@ -307,7 +307,7 @@ static void FreeMatch(adbus_ConnMatch* m)
 
     if (m->m.release[0]) {
         if (m->m.relproxy) {
-            m->m.relproxy(m->m.relpuser, m->m.release[0], m->m.ruser[0]);
+            m->m.relproxy(m->m.relpuser, NULL, m->m.release[0], m->m.ruser[0]);
         } else {
             m->m.release[0](m->m.ruser[0]);
         }
@@ -315,7 +315,7 @@ static void FreeMatch(adbus_ConnMatch* m)
 
     if (m->m.release[1]) {
         if (m->m.relproxy) {
-            m->m.relproxy(m->m.relpuser, m->m.release[1], m->m.ruser[1]);
+            m->m.relproxy(m->m.relpuser, NULL, m->m.release[1], m->m.ruser[1]);
         } else {
             m->m.release[1](m->m.ruser[1]);
         }
@@ -341,20 +341,22 @@ void adbus_conn_removematch(
         adbus_Connection*     c,
         adbus_ConnMatch*      m)
 {
-    ADBUSI_LOG_MATCH("Remove match", &m->m);
+    if (m) {
+        ADBUSI_LOG_MATCH("Remove match", &m->m);
 
-    if (m->m.addMatchToBusDaemon) {
-        adbus_Call f;
-        adbus_call_method(c->bus, &f, "RemoveMatch", -1);
+        if (m->m.addMatchToBusDaemon) {
+            adbus_Call f;
+            adbus_proxy_method(c->bus, &f, "RemoveMatch", -1);
 
-        adbus_msg_setsig(f.msg, "s", 1);
-        adbus_msg_string(f.msg, ds_cstr(&m->matchString), ds_size(&m->matchString));
-        adbus_msg_end(f.msg);
+            adbus_msg_setsig(f.msg, "s", 1);
+            adbus_msg_string(f.msg, ds_cstr(&m->matchString), ds_size(&m->matchString));
+            adbus_msg_end(f.msg);
 
-        adbus_call_send(c->bus, &f);
+            adbus_call_send(&f);
+        }
+
+        FreeMatch(m);
     }
-
-    FreeMatch(m);
 }
 
 /* -------------------------------------------------------------------------- */

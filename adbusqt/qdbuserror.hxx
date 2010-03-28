@@ -42,7 +42,7 @@
 #ifndef QDBUSERROR_H
 #define QDBUSERROR_H
 
-#include <QtDBus/qdbusmacros.h>
+#include "qdbusmacros.hxx"
 #include <QtCore/qstring.h>
 
 QT_BEGIN_HEADER

@@ -43,7 +43,7 @@
 #define QDBUSMETATYPE_H
 
 #include "QtCore/qmetatype.h"
-#include <QtDBus/qdbusargument.h>
+#include "qdbusargument.hxx"
 
 QT_BEGIN_HEADER
 
