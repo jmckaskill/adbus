@@ -204,7 +204,7 @@ static adbus_Socket BindTcp(struct Fields* f)
 
 /* ------------------------------------------------------------------------- */
 
-#ifdef AF_UNIX 
+#ifndef _WIN32
 #define UNIX_PATH_MAX 108
 static adbus_Socket ConnectAbstract(struct Fields* f)
 {
@@ -389,30 +389,46 @@ static adbus_Bool EnvironmentString(adbus_Bool connect, adbus_BusType type, char
 {
     UNUSED(connect);
     if (type == ADBUS_DEFAULT_BUS) {
-        return CopyEnv("DBUS_STARTER_ADDRESS", buf, sz)
-            || CopyEnv("DBUS_SESSION_BUS_ADDRESS", buf, sz)
+        if (CopyEnv("DBUS_STARTER_ADDRESS", buf, sz))
+            return 1;
+
+        if (CopyEnv("DBUS_SESSION_BUS_ADDRESS", buf, sz))
+            return 1;
+
 #ifdef _WIN32
-            || (connect && CopySharedMem(L"Local\\DBUS_SESSION_BUS_ADDRESS", buf, sz))
+        if (connect && CopySharedMem(L"Local\\DBUS_SESSION_BUS_ADDRESS", buf, sz))
+            return 1;
 #endif
-            || CopyString("autostart:", buf, sz);
+
+        if (CopyString("autostart:", buf, sz))
+            return 1;
 
     } else if (type == ADBUS_SESSION_BUS) {
-        return CopyEnv("DBUS_SESSION_BUS_ADDRESS", buf, sz)
+        if (CopyEnv("DBUS_SESSION_BUS_ADDRESS", buf, sz))
+            return 1;
+
 #ifdef _WIN32
-            || (connect && CopySharedMem(L"Local\\DBUS_SESSION_BUS_ADDRESS", buf, sz))
+        if (connect && CopySharedMem(L"Local\\DBUS_SESSION_BUS_ADDRESS", buf, sz))
+            return 1;
 #endif
-            || CopyString("autostart:", buf, sz);
+
+        if (CopyString("autostart:", buf, sz))
+            return 1;
 
     } else if (type == ADBUS_SYSTEM_BUS) {
-        return CopyEnv("DBUS_SYSTEM_BUS_ADDRESS", buf, sz)
-#ifdef AF_UNIX
-            || CopyString("unix:path=/var/run/dbus/system_bus_socket", buf, sz)
-#endif
-            || CopyString("autostart:", buf, sz);
+        if (CopyEnv("DBUS_SYSTEM_BUS_ADDRESS", buf, sz))
+            return 1;
 
-    } else {
-        return 0;
+#ifndef _WIN32
+        if (CopyString("unix:path=/var/run/dbus/system_bus_socket", buf, sz))
+            return 1;
+#endif
+
+        if (CopyString("autostart:", buf, sz))
+            return 1;
+
     }
+    return 0;
 }
 
 /** Gets the address to connect to for the given bus type.
@@ -546,6 +562,12 @@ adbus_Socket adbus_sock_connect_s(
     struct Fields f;
     adbus_Socket sfd = ADBUS_SOCK_INVALID;
 
+#ifdef _WIN32
+    WSADATA wsadata;
+    if (WSAStartup(MAKEWORD(2, 2), &wsadata))
+        return ADBUS_SOCK_INVALID;
+#endif
+
     ZERO(f);
 
     if (size < 0)
@@ -554,10 +576,11 @@ adbus_Socket adbus_sock_connect_s(
 
     ParseFields(&f, str, size);
 
+
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
         sfd = ConnectTcp(&f);
 
-#ifdef AF_UNIX
+#ifndef _WIN32
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.path) {
         sfd = ConnectUnix(&f);
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.abstract) {
@@ -603,6 +626,12 @@ adbus_Socket adbus_sock_bind_s(
     struct Fields f;
     adbus_Socket sfd = ADBUS_SOCK_INVALID;
 
+#ifdef _WIN32
+    WSADATA wsadata;
+    if (WSAStartup(MAKEWORD(2, 2), &wsadata))
+        return ADBUS_SOCK_INVALID;
+#endif
+
     ZERO(f);
 
     if (size < 0)
@@ -614,7 +643,7 @@ adbus_Socket adbus_sock_bind_s(
     if (f.proto && strcmp(f.proto, "tcp") == 0 && f.host && f.port) {
         sfd = BindTcp(&f);
 
-#ifdef AF_UNIX
+#ifndef _WIN32
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.path) {
         sfd = BindUnix(&f);
     } else if (f.proto && strcmp(f.proto, "unix") == 0 && f.abstract) {
@@ -673,7 +702,7 @@ static int Recv(void* d, char* buf, size_t sz)
 }
 
 static uint8_t Rand(void* d)
-{ return (uint8_t) rand(); }
+{ (void) d; return (uint8_t) rand(); }
 
 static void Close(void* d)
 {
@@ -692,9 +721,11 @@ static int Block(void* d, adbus_BlockType type, void** block, int timeoutms)
 {
     struct SocketData* s = (struct SocketData*) d;
     /* This block function doesn't support timeouts yet */
+    (void) timeoutms;
     assert(timeoutms == -1);
 
     if (type == ADBUS_BLOCK) {
+        *block = NULL;
         while (!*block) {
             FlushTxBuffer(s);
             if (adbus_conn_parsecb(s->connection)) {
@@ -707,6 +738,7 @@ static int Block(void* d, adbus_BlockType type, void** block, int timeoutms)
         *block = s;
 
     } else if (type == ADBUS_WAIT_FOR_CONNECTED) {
+        *block = NULL;
         while (!*block && !s->connected) {
             FlushTxBuffer(s);
             if (adbus_conn_parsecb(s->connection)) {

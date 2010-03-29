@@ -37,6 +37,16 @@
 
 /* ------------------------------------------------------------------------- */
 
+char* adbusluaI_strndup(const char* str, size_t len)
+{
+    char* ret = (char*) malloc(len + 1);
+    memcpy(ret, str, len);
+    ret[len] = '\0';
+    return ret;
+}
+
+/* ------------------------------------------------------------------------- */
+
 static adbus_Bool IsValidKey(const char* valid[], const char* key)
 {
     for (int i = 0; valid[i] != NULL; ++i) {

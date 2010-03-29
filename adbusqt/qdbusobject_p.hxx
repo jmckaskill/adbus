@@ -25,10 +25,10 @@
 
 #pragma once
 
-#include <QObject>
-#include <QList>
-#include <QEvent>
-#include "qdbusmetatype_p.hxx"
+#include <QtCore/qobject.h>
+#include <QtCore/qlist.h>
+#include <QtCore/qcoreevent.h>
+#include "qdbusmessage_p.hxx"
 #include "qdbusconnection.hxx"
 #include "dmem/list.h"
 
@@ -95,26 +95,37 @@ DILIST_INIT(QDBusBindData, QDBusBindData)
 
 struct QDBusUserData
 {
-    // Only used for user datas bound into the interfaces - called on the
+    // Only used for user data bound into the interfaces - called on the
     // connection thread.
     static void Free(void* u) {delete (QDBusUserData*) u;}
 
-    QDBusUserData()
-    : argList(), methodIndex(-1), errorIndex(-1), object(NULL)
-    {}
-
-    QDBusUserData()
-    { free(methodArguments); }
+    QDBusUserData() : owner(NULL), object(NULL), connection(NULL) {}
+    virtual ~QDBusUserData() {}
 
     QDBusObject*                owner;
-    void**                      methodArguments;
-    int                         methodIndex;
-    int                         errorIndex;
     QObject*                    object;
     adbus_Connection*           connection;
 };
 
-struct QDBusMatchData : public QDBusUserData
+struct QDBusMethodData : public QDBusUserData
+{
+    QDBusMethodData() : methodIndex(-1) {}
+
+    int                         methodIndex;
+    QDBusArgumentList           arguments;
+};
+
+struct QDBusPropertyData : public QDBusUserData
+{
+    QDBusPropertyData() : propIndex(-1), type(NULL), data(NULL) {}
+    ~QDBusPropertyData() {QMetaType::destroy(type->m_TypeId, data);}
+
+    int                         propIndex;
+    QDBusArgumentType*          type;
+    void*                       data;
+};
+
+struct QDBusMatchData : public QDBusMethodData
 {
     QDBusMatchData() : connMatch(NULL) {adbus_match_init(&match);}
     ~QDBusMatchData() {dil_remove(QDBusMatchData, this, &hl);}
@@ -134,21 +145,22 @@ struct QDBusBindData : public QDBusUserData
     QDBusBindData() : connBind(NULL) {adbus_bind_init(&bind);}
     ~QDBusBindData() {dil_remove(QDBusBindData, this, &hl);}
 
-    d_IList(QDBusBindData)    hl;
-    QByteArray                path;
-    adbus_Bind                bind;
-    adbus_ConnBind*           connBind;
+    d_IList(QDBusBindData)      hl;
+    QByteArray                  path;
+    adbus_Bind                  bind;
+    adbus_ConnBind*             connBind;
 };
 
-struct QDBusReplyData : public QDBusUserData
+struct QDBusReplyData : public QDBusMethodData
 {
-    QDBusReplyData() : connReply(NULL) {adbus_reply_init(&reply);}
+    QDBusReplyData() : connReply(NULL), errorIndex(-1) {adbus_reply_init(&reply);}
     ~QDBusReplyData() {dil_remove(QDBusReplyData, this, &hl);}
 
-    d_IList(QDBusReplyData)   hl;
-    QByteArray                remote;
-    adbus_Reply               reply;
-    adbus_ConnReply*          connReply;
+    d_IList(QDBusReplyData)     hl;
+    QByteArray                  remote;
+    adbus_Reply                 reply;
+    adbus_ConnReply*            connReply;
+    int                         errorIndex;
 };
 
 /* ------------------------------------------------------------------------- */
@@ -188,8 +200,10 @@ public:
     static void DoAddReply(void* u);
     static void DoRemoveMatch(void* u);
 
-    adbus_Message*      m_CurrentMessage;
-    QDBusArgumentList*  m_CurrentArguments;
+    static void ReleaseMatch(void* u);
+    static void ReleaseBind(void* u);
+
+    QDBusMessage        m_CurrentMessage;
 
 public slots:
     void destroy();

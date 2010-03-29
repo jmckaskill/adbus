@@ -25,15 +25,11 @@
 
 #include "qdbusobject_p.hxx"
 #include "qdbusmessage_p.hxx"
-#include "qdbuserror_p.hxx"
 #include "qdbusconnection_p.hxx"
-#include <QCoreApplication>
-#include <QMetaObject>
-#include <QMetaMethod>
-#include <QMetaProperty>
-#include <QThread>
-#include <QDomDocument>
-#include <QDomElement>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qmetaobject.h>
+#include <QtCore/qthread.h>
+#include <QtXml/qdom.h>
 
 /* ------------------------------------------------------------------------- */
 
@@ -214,6 +210,7 @@ void QDBusObject::Delete(void* u)
 
 void QDBusObject::destroy()
 {
+    Q_ASSERT(QThread::currentThread() == thread());
     if (m_Tracked) {
         QDBusConnectionPrivate::RemoveObject(m_QConnection, m_Tracked);
     }
@@ -235,6 +232,7 @@ void QDBusObject::destroy()
 int QDBusObject::MatchCallback(adbus_CbData* d)
 {
     QDBusMatchData* data = (QDBusMatchData*) d->user1;
+    QDBusMessage& msg    = data->owner->m_CurrentMessage;
 
     /* We can get messages after the match has been removed, since we have to
      * just across to the connection thread to remove the match.
@@ -243,13 +241,17 @@ int QDBusObject::MatchCallback(adbus_CbData* d)
         adbus_Iterator argiter = {};
         adbus_iter_args(&argiter, d->msg);
 
-        if (data->argList.GetArguments(&argiter))
+        /* Check that the message could be parsed correctly */
+        if (QDBusMessagePrivate::FromMessage(msg, d->msg))
             return -1;
 
-        data->object->qt_metacall(
-                QMetaObject::InvokeMetaMethod,
-                data->methodIndex,
-                data->argList.Data());
+        /* Check that we can convert the arguments correctly */
+        if (data->arguments.setupMetacall(&msg)) {
+            data->object->qt_metacall(
+                    QMetaObject::InvokeMetaMethod,
+                    data->methodIndex,
+                    data->arguments.metacallData());
+        }
     }
 
     return 0;
@@ -260,6 +262,7 @@ int QDBusObject::MatchCallback(adbus_CbData* d)
 int QDBusObject::ReplyCallback(adbus_CbData* d)
 {
     QDBusReplyData* data = (QDBusReplyData*) d->user1;
+    QDBusMessage& msg    = data->owner->m_CurrentMessage;
 
     /* We always add the reply callback, even if the user didn't set a reply
      * callback, so that we can remove the reply data.
@@ -268,13 +271,17 @@ int QDBusObject::ReplyCallback(adbus_CbData* d)
         adbus_Iterator argiter = {};
         adbus_iter_args(&argiter, d->msg);
 
-        if (data->argList.GetArguments(&argiter))
+        /* Check that the message could be parsed correctly */
+        if (QDBusMessagePrivate::FromMessage(msg, d->msg, data->arguments))
             return -1;
 
-        data->object->qt_metacall(
-                QMetaObject::InvokeMetaMethod,
-                data->methodIndex,
-                data->argList.Data());
+        /* Check that we can convert the arguments correctly */
+        if (data->arguments.setupMetacall(&msg)) {
+            data->object->qt_metacall(
+                    QMetaObject::InvokeMetaMethod,
+                    data->methodIndex,
+                    data->arguments.metacallData());
+        }
     }
 
     dil_remove(QDBusReplyData, data, &data->hl);
@@ -288,15 +295,17 @@ int QDBusObject::ReplyCallback(adbus_CbData* d)
 int QDBusObject::ErrorCallback(adbus_CbData* d)
 {
     QDBusReplyData* data = (QDBusReplyData*) d->user1;
+    QDBusMessage& msg    = data->owner->m_CurrentMessage;
 
     /* We always add the reply callback, even if the user didn't set a reply
      * callback, so that we can remove the reply data.
      */
     if (data->errorIndex >= 0) {
-        DBusError dbusError = {d->msg};
-        QDBusError err(&dbusError);
+        /* Check that the message could be parsed correctly */
+        if (QDBusMessagePrivate::FromMessage(msg, d->msg))
+            return -1;
 
-        QDBusMessage msg = QDBusMessagePrivate::FromMessage(d->msg);
+        QDBusError err(msg);
 
         // Error methods are void (QDBusError, QDBusMessage)
         void* args[] = {0, &err, &msg};
@@ -317,25 +326,32 @@ int QDBusObject::ErrorCallback(adbus_CbData* d)
 
 int QDBusObject::MethodCallback(adbus_CbData* d)
 {
-    QDBusUserData* method = (QDBusUserData*) d->user1;
-    QDBusBindData* bind   = (QDBusBindData*) d->user2;
+    QDBusMethodData* method = (QDBusMethodData*) d->user1;
+    QDBusBindData* bind     = (QDBusBindData*) d->user2;
+    QDBusMessage&  msg      = bind->owner->m_CurrentMessage;
 
     Q_ASSERT(method->methodIndex >= 0);
 
     adbus_Iterator argiter = {};
     adbus_iter_args(&argiter, d->msg);
 
-    if (method->argList.GetArguments(&argiter))
+    /* Check that the message could be parsed correctly */
+    if (QDBusMessagePrivate::FromMessage(msg, d->msg, method->arguments))
         return -1;
 
-    bind->object->qt_metacall(
-            QMetaObject::InvokeMetaMethod,
-            method->methodIndex,
-            method->argList.Data());
+    /* Check that we can convert the arguments correctly */
+    if (method->arguments.setupMetacall(&msg)) {
+        bind->object->qt_metacall(
+                QMetaObject::InvokeMetaMethod,
+                method->methodIndex,
+                method->arguments.metacallData());
 
-    if (d->ret) {
-        method->argList.GetReturns(adbus_msg_argbuffer(d->ret));
+    } else if (d->ret) {
+        return adbus_error_argument(d);
     }
+
+
+    QDBusMessagePrivate::GetReply(msg, &d->ret, method->arguments);
 
     return 0;
 }
@@ -344,17 +360,17 @@ int QDBusObject::MethodCallback(adbus_CbData* d)
 
 int QDBusObject::GetPropertyCallback(adbus_CbData* d)
 {
-    QDBusUserData* prop = (QDBusUserData*) d->user1;
-    QDBusUserData* bind = (QDBusUserData*) d->user2;
+    QDBusPropertyData* prop = (QDBusPropertyData*) d->user1;
+    QDBusUserData* bind     = (QDBusUserData*) d->user2;
 
-    Q_ASSERT(prop->methodIndex >= 0);
+    Q_ASSERT(prop->propIndex >= 0);
 
     bind->object->qt_metacall(
             QMetaObject::ReadProperty,
-            prop->methodIndex,
-            prop->argList.Data());
+            prop->propIndex,
+            &prop->data);
 
-    prop->argList.GetProperty(d->getprop);
+    prop->type->marshall(d->getprop, prop->data);
 
     return 0;
 }
@@ -363,18 +379,18 @@ int QDBusObject::GetPropertyCallback(adbus_CbData* d)
 
 int QDBusObject::SetPropertyCallback(adbus_CbData* d)
 {
-    QDBusUserData* prop = (QDBusUserData*) d->user1;
-    QDBusUserData* bind = (QDBusUserData*) d->user2;
+    QDBusPropertyData* prop = (QDBusPropertyData*) d->user1;
+    QDBusUserData* bind     = (QDBusUserData*) d->user2;
 
-    Q_ASSERT(prop->methodIndex >= 0);
+    Q_ASSERT(prop->propIndex >= 0);
 
-    if (prop->argList.SetProperty(&d->setprop))
+    if (prop->type->demarshall(&d->setprop, prop->data))
         return -1;
 
     bind->object->qt_metacall(
             QMetaObject::WriteProperty,
-            prop->methodIndex,
-            prop->argList.Data());
+            prop->propIndex,
+            &prop->data);
 
     return 0;
 }
@@ -389,6 +405,7 @@ void QDBusObject::DoAddReply(void* u)
 
 bool QDBusObject::addReply(const QByteArray& remote, uint32_t serial, QObject* receiver, const char* returnMethod, const char* errorMethod)
 {
+    Q_ASSERT(QThread::currentThread() == thread());
     int returnIndex = -1;
     int errorIndex = -1;
     const QMetaObject* meta = receiver->metaObject();
@@ -425,12 +442,13 @@ bool QDBusObject::addReply(const QByteArray& remote, uint32_t serial, QObject* r
     if (returnIndex < 0 && errorIndex < 0)
         return false;
 
-    QList<QDBusArgumentType> types;
-    if (returnIndex >= 0 && qDBusLookupParameters(meta->method(returnIndex), &types))
-        return false;
-
     QDBusReplyData* d = new QDBusReplyData;
-    d->argList.init(types);
+
+    if (returnIndex >= 0 && !d->arguments.init(meta->method(returnIndex))) {
+        delete d;
+        return false;
+    }
+
     d->methodIndex = returnIndex;
     d->errorIndex = errorIndex;
     d->object = receiver;
@@ -469,6 +487,12 @@ void QDBusObject::DoAddMatch(void* u)
     d->connMatch = adbus_conn_addmatch(d->connection, &d->match);
 }
 
+void QDBusObject::ReleaseMatch(void* u)
+{
+    QDBusMatchData* d = (QDBusMatchData*) u;
+    d->connMatch = NULL;
+}
+
 bool QDBusObject::addMatch(
         const QByteArray& service,
         const QByteArray& path,
@@ -477,6 +501,7 @@ bool QDBusObject::addMatch(
         QObject* receiver,
         const char* slot)
 {
+    Q_ASSERT(QThread::currentThread() == thread());
     if (!slot || !*slot)
         return false;
 
@@ -491,12 +516,13 @@ bool QDBusObject::addMatch(
     if (metaMethod.methodType() != QMetaMethod::Slot && metaMethod.methodType() != QMetaMethod::Signal)
         return false;
 
-    QList<QDBusArgumentType> types;
-    if (qDBusLookupParameters(metaMethod, &types))
-        return false;
-
     QDBusMatchData* d = new QDBusMatchData;
-    d->argList.init(types);
+
+    if (!d->arguments.init(metaMethod)) {
+        delete d;
+        return false;
+    }
+
     d->methodIndex = methodIndex;
     d->object = receiver;
     d->owner = this;
@@ -524,6 +550,9 @@ bool QDBusObject::addMatch(
     
     d->match.proxy = &ProxyMsgCallback;
     d->match.puser = this;
+
+    d->match.release[0] = &ReleaseMatch;
+    d->match.ruser[0] = d;
 
     dil_insert_after(QDBusMatchData, &m_Matches, d, &d->hl);
     adbus_conn_proxy(m_Connection, &DoAddMatch, NULL, d);
@@ -559,6 +588,7 @@ void QDBusObject::removeMatch(
     // tricky, we would have to send the request to the connection thread to
     // remove it, get a response back and then remove it.
 
+    Q_ASSERT(QThread::currentThread() == thread());
     QDBusMatchData* d;
     DIL_FOREACH (QDBusMatchData, d, &m_Matches, hl) {
         if (    d->sender == service 
@@ -588,13 +618,7 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
     if (nend == NULL)
         return NULL;
 
-    QList<QDBusArgumentType> arguments;
-    if (qDBusLookupParameters(method, &arguments))
-        return NULL;
-
     QList<QByteArray> names = method.parameterNames();
-    if (names.size() != arguments.size())
-        return NULL;
 
     switch (type)
     {
@@ -604,22 +628,30 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
             if (access < QMetaMethod::Public)
                 return NULL;
 
-            adbus_Member* mbr = adbus_iface_addmethod(iface, name, int(nend - name));
+            QDBusMethodData* d = new QDBusMethodData;
 
-            for (int i = 0; i < arguments.size(); i++) {
-                QDBusArgumentType* a = &arguments[i];
-                if (a->isReturn) {
-                    adbus_mbr_retsig(mbr, a->dbusSignature.constData(), a->dbusSignature.size());
-                    adbus_mbr_retsig(mbr, names[i].constData(), names[i].size());
-                } else {
-                    adbus_mbr_argsig(mbr, a->dbusSignature.constData(), a->dbusSignature.size());
-                    adbus_mbr_argsig(mbr, names[i].constData(), names[i].size());
-                }
+            if (!d->arguments.init(method)) {
+                delete d;
+                return NULL;
             }
 
-            QDBusUserData* d = new QDBusUserData;
-            d->argList.init(method);
             d->methodIndex = methodIndex;
+
+            adbus_Member* mbr = adbus_iface_addmethod(iface, name, int(nend - name));
+
+            for (int i = 0; i < d->arguments.m_Args.size(); i++) {
+
+                QDBusArgumentList::Entry* e = &d->arguments.m_Args[i];
+                const QByteArray& dbus = e->type->m_DBusSignature;
+
+                if (e->inarg) {
+                    adbus_mbr_argsig(mbr, dbus.constData(), dbus.size());
+                    adbus_mbr_argname(mbr, e->name.constData(), e->name.size());
+                } else {
+                    adbus_mbr_retsig(mbr, dbus.constData(), dbus.size());
+                    adbus_mbr_retname(mbr, e->name.constData(), e->name.size());
+                }
+            }
 
             adbus_mbr_setmethod(mbr, &QDBusObject::MethodCallback, d);
             adbus_mbr_addrelease(mbr, &QDBusUserData::Free, d);
@@ -627,12 +659,14 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
             return mbr;
         }
 
+#if 0
+        // TODO
     case QMetaMethod::Signal:
         {
             if (access != QMetaMethod::Protected)
                 return NULL;
 
-            adbus_Member* mbr = adbus_iface_addmethod(iface, name, int(nend - name));
+            adbus_Member* mbr = adbus_iface_addsignal(iface, name, int(nend - name));
 
             for (int i = 0; i < arguments.size(); i++) {
                 QDBusArgumentType* a = &arguments[i];
@@ -640,11 +674,12 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
                     continue;
 
                 adbus_mbr_argsig(mbr, a->dbusSignature.constData(), a->dbusSignature.size());
-                adbus_mbr_argsig(mbr, names[i].constData(), names[i].size());
+                adbus_mbr_argname(mbr, names[i].constData(), names[i].size());
             }
 
             return mbr;
         }
+#endif
 
     default:
         return NULL;
@@ -655,18 +690,25 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
 
 static adbus_Member* AddProperty(adbus_Interface* iface, QMetaProperty prop, int propertyIndex)
 {
-    QDBusArgumentType arg;
-    if (qDBusLookupCppSignature(prop.typeName(), &arg))
+    QDBusArgumentType* type = QDBusArgumentType::Lookup(prop.type());
+    if (!type)
         return NULL;
 
-    if (!prop.isValid() && !prop.isWritable())
+    if (!(prop.isValid() || prop.isWritable()))
         return NULL;
 
-    QDBusUserData* d = new QDBusUserData;
-    d->argList.init(arg);
-    d->methodIndex = propertyIndex;
+    QDBusPropertyData* d = new QDBusPropertyData;
+    d->propIndex    = propertyIndex;
+    d->type         = type;
+    d->data         = QMetaType::construct(prop.type());
 
-    adbus_Member* mbr = adbus_iface_addproperty(iface, prop.name(), -1, arg.dbusSignature.constData(), arg.dbusSignature.size());
+    adbus_Member* mbr = adbus_iface_addproperty(
+            iface,
+            prop.name(),
+            -1,
+            type->m_DBusSignature.constData(),
+            type->m_DBusSignature.size());
+
     if (prop.isValid()) {
         adbus_mbr_setgetter(mbr, &QDBusObject::GetPropertyCallback, d);
     }
@@ -692,8 +734,15 @@ void QDBusObject::FreeDoBind(void* u)
     adbus_iface_deref(d->bind.interface);
 }
 
+void QDBusObject::ReleaseBind(void* u)
+{
+    QDBusBindData* d = (QDBusBindData*) u;
+    d->connBind = NULL;
+}
+
 bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QDBusConnection::RegisterOptions options)
 {
+    Q_ASSERT(QThread::currentThread() == thread());
     // See if we have to export anything
     if ((options & QDBusConnection::ExportAllContents) == 0)
         return true;
@@ -726,6 +775,9 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
 
         d->bind.proxy = &ProxyMsgCallback;
         d->bind.puser = this;
+
+        d->bind.release[0] = &ReleaseBind;
+        d->bind.ruser[0] = d;
 
         dil_insert_after(QDBusBindData, &m_Binds, d, &d->hl);
         adbus_conn_proxy(m_Connection, &DoBind, &FreeDoBind, d);
@@ -767,6 +819,7 @@ static void GetAnnotations(adbus_Member* mbr, const QDomElement& xmlMember)
 
 bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const char* xml)
 {
+    Q_ASSERT(QThread::currentThread() == thread());
     // Since the various callback use InvokeMetaMethod directly we need to at
     // least check the xml against the meta object. In fact its much easier to
     // pull the argument names and signatures out of the meta object.
@@ -851,6 +904,9 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
     d->bind.proxy = &ProxyMsgCallback;
     d->bind.puser = this;
 
+    d->bind.release[0] = &ReleaseBind;
+    d->bind.ruser[0] = d;
+
     dil_insert_after(QDBusBindData, &m_Binds, d, &d->hl);
     adbus_conn_proxy(m_Connection, &DoBind, &FreeDoBind, d);
 
@@ -864,6 +920,7 @@ static QEvent::Type sThreadChangeCompleteEvent = (QEvent::Type) QEvent::register
 bool QDBusObject::event(QEvent* e)
 {
     if (e->type() == sThreadChangeCompleteEvent) {
+        Q_ASSERT(thread() == QThread::currentThread() && thread() == m_Tracked->thread());
         setParent(NULL);
         return true;
     } else {

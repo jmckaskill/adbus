@@ -26,15 +26,15 @@
 #pragma once
 
 #include <adbus.h>
-#include <qdbusargument.h>
-#include <qdbusmetatype.h>
-#include <qshareddata.h>
+#include "qdbusargument.hxx"
+#include "qdbusmessage.hxx"
+#include "qdbusmetatype.hxx"
+#include <QtCore/qshareddata.h>
 
 
 class QDBusArgumentType
 {
 public:
-    QDBusArgumentType();
 
     static QDBusArgumentType* Lookup(int type);
     static QDBusArgumentType* Lookup(const QByteArray& sig);
@@ -43,34 +43,16 @@ public:
     void marshall(adbus_Buffer* buf, const QVariant& variant, bool appendsig) const;
 
     int  demarshall(adbus_Iterator* iter, void* data) const;
-    void marshall(adbus_Buffer* buf, const void* data) const;
+    void marshall(adbus_Buffer* buf, const void* data, bool appendsig) const;
 
     int                                 m_TypeId;
     QByteArray                          m_DBusSignature;
     QDBusMetaType::MarshallFunction     m_Marshall;
     QDBusMetaType::DemarshallFunction   m_Demarshall;
-};
 
-class QDBusArgumentList
-{
-public:
-    void    init(const QMetaMethod& method);
-    void    copyFromMessage(const QDBusMessage& msg);
-
-    struct Entry
-    {
-        Entry(bool inarg, int typeId, QDBusArgumentType* type)
-            : m_Inarg(inarg), m_TypeId(typeId), m_Type(type)
-        {}
-
-        bool                m_Inarg;
-        int                 m_TypeId;
-        QDBusArgumentType*  m_Type;
-    };
-
-    bool                                    m_AppendMessage;
-    QList<QPair<int, QDBusArgumentType*> >  m_Types;
-    QVector<void*>                          m_Arguments;
+private:
+    friend class QDBusMetaType;
+    QDBusArgumentType() : m_TypeId(-1) {}
 };
 
 class QDBusArgumentPrivate : public QSharedData
@@ -79,12 +61,16 @@ public:
     friend class QDBusArgumentType;
     friend class QDBusMetaType;
 
-    QDBusArgumentPrivate(adbus_Buffer* b, bool appendsig);
-    QDBusArgumentPrivate(adbus_Iterator* i);
+    static QDBusArgument Create(adbus_Buffer* b, bool appendsig);
+    static QDBusArgument Create(adbus_Iterator* i);
+
+    static int ParseError(const QDBusArgument& arg);
+
     ~QDBusArgumentPrivate(){}
 
     void appendSignature(const char* sig);
     void appendSignature(int typeId);
+    bool shouldAppendSignature() const {return depth == 0;}
 
     bool canIterate() const;
     bool canBuffer();

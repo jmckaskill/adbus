@@ -24,19 +24,20 @@
  */
 
 #include "qdbusconnection_p.hxx"
+
 #include "qdbusmessage_p.hxx"
 #include "qdbusobject_p.hxx"
-#include "qsharedfunctions_p.hxx"
+#include "qsharedfunctions_p.h"
 #include "qdbusabstractadaptor_p.hxx"
 #include "qdbuspendingcall_p.hxx"
 
-#include <qdbuspendingcall.h>
-#include <QHash>
-#include <QMutex>
-#include <QtNetwork/QTcpSocket>
-#include <QtNetwork/QLocalSocket>
-#include <QThread>
-#include <QTimer>
+#include "qdbuspendingcall.hxx"
+
+#include <QtNetwork/qtcpsocket.h>
+#include <QtNetwork/qlocalsocket.h>
+#include <QtCore/qthread.h>
+#include <QtCore/qeventloop.h>
+#include <QtCore/qtimer.h>
 
 /* ------------------------------------------------------------------------- */
 
@@ -225,6 +226,7 @@ int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms
             if (!loop)
                 return -1;
 
+            Q_ASSERT(loop->thread() == QThread::currentThread());
             loop->exit(UNBLOCK_CODE);
             *data = NULL;
             return 0;
@@ -525,7 +527,9 @@ QString QDBusConnection::baseService() const
 bool QDBusConnection::send(const QDBusMessage &message) const
 { 
     if (isConnected()) {
-        return adbus_msg_send(QDBusMessagePrivate::ToFactory(message), d->connection) != 0;
+        adbus_MsgFactory* msg = d->GetFactory();
+        QDBusMessagePrivate::GetMessage(message, msg);
+        return adbus_msg_send(msg, d->connection) != 0;
     } else {
         return false;
     }
@@ -537,7 +541,8 @@ QDBusPendingCall QDBusConnection::asyncCall(const QDBusMessage& message, int tim
 {
     Q_UNUSED(timeout); // TODO
 
-    adbus_MsgFactory* msg = QDBusMessagePrivate::ToFactory(message);
+    adbus_MsgFactory* msg = d->GetFactory();
+    QDBusMessagePrivate::GetMessage(message, msg);
 
     const char* service = adbus_msg_destination(msg, NULL);
     uint32_t serial = adbus_conn_serial(d->connection);
@@ -568,13 +573,14 @@ bool QDBusConnection::callWithCallback(const QDBusMessage& message,
 {
     Q_UNUSED(timeout);
     QDBusObject* priv = QDBusConnectionPrivate::GetObject(*this, receiver);
-    adbus_MsgFactory* msg = QDBusMessagePrivate::ToFactory(message);
+    adbus_MsgFactory* msg = d->GetFactory();
+    QDBusMessagePrivate::GetMessage(message, msg);
 
     if (adbus_msg_serial(msg) < 0)
         adbus_msg_setserial(msg, adbus_conn_serial(d->connection));
 
     uint32_t serial = (uint32_t) adbus_msg_serial(msg);
-    const char* remote = adbus_msg_destination(msg, NULL);
+    QByteArray remote = message.service().toAscii();
     if (!priv->addReply(remote, serial, receiver, returnMethod, errorMethod))
         return false;
 
@@ -597,7 +603,7 @@ bool QDBusConnection::connect(const QString &service,
     QByteArray iface8 = interface.toAscii();
     QByteArray name8 = name.toAscii();
 
-    return priv->addMatch(serv8.constData(), path8.constData(), iface8.isEmpty() ? NULL : iface8.constData(), name8.constData(), receiver, slot);
+    return priv->addMatch(serv8, path8, iface8, name8, receiver, slot);
 }
 
 /* ------------------------------------------------------------------------- */

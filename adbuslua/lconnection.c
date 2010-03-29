@@ -58,6 +58,13 @@ static int NewConnection(lua_State* L)
     luaL_getmetatable(L, CONNECTION);
     lua_setmetatable(L, -2);
 
+    c->L            = L;
+    c->message      = adbus_msg_new();
+
+    luaL_checktype(L, 2, LUA_TTABLE);
+    lua_pushvalue(L, 2);
+    c->queue = luaL_ref(L, LUA_REGISTRYINDEX);
+
     if (lua_isnil(L, 1)) {
         c->connection = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
     } else {
@@ -75,13 +82,6 @@ static int NewConnection(lua_State* L)
     if (!c->connection || adbus_conn_block(c->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1)) {
         return luaL_error(L, "Failed to connect");
     }
-
-    c->L            = L;
-    c->message      = adbus_msg_new();
-
-    luaL_checktype(L, 2, LUA_TTABLE);
-    lua_pushvalue(L, 2);
-    c->queue = luaL_ref(L, LUA_REGISTRYINDEX);
 
     return 1;
 }
@@ -311,7 +311,7 @@ static int AddMatch(lua_State* L)
 
     lua_getfield(L, 3, "reply_serial");
     if (lua_isnumber(L, -1)) {
-        m.replySerial = lua_tonumber(L, -1);
+        m.replySerial = (uint32_t) lua_tonumber(L, -1);
     } else if (!lua_isnil(L, -1)) {
         return luaL_error(L, "Expected a number for 'reply_serial'");
     }
@@ -326,15 +326,15 @@ static int AddMatch(lua_State* L)
 
     lua_getfield(L, 3, "n");
     if (lua_isnumber(L, -1)) {
-        m.argumentsSize = lua_tonumber(L, -1);
+        m.argumentsSize = (size_t) lua_tonumber(L, -1);
     } else if (!lua_isnil(L, -1)) {
         return luaL_error(L, "Expected a number for 'n'");
     }
     lua_pop(L, 1);
 
     if (m.argumentsSize > 0) {
-        m.arguments = malloc(sizeof(adbus_Argument) * m.argumentsSize);
-        for (int i = 0; i < m.argumentsSize; i++) {
+        m.arguments = (adbus_Argument*) malloc(sizeof(adbus_Argument) * m.argumentsSize);
+        for (int i = 0; i < (int) m.argumentsSize; i++) {
             lua_rawgeti(L, 3, i + 1);
             if (lua_isstring(L, -1)) {
                 size_t sz;
@@ -467,7 +467,7 @@ int adbusluaI_callback(adbus_CbData* d)
     lua_setfield(L, -2, "callback");
 
     /* Append message to queue */
-    lua_rawseti(L, -2, lua_objlen(L, -2) + 1);
+    lua_rawseti(L, -2, (int) (lua_objlen(L, -2) + 1));
 
     adbus_conn_block(o->connection->connection, ADBUS_UNBLOCK, &o->connection->block, -1);
 
@@ -494,7 +494,7 @@ int adbusluaI_method(adbus_CbData* d)
     lua_setfield(L, -2, "user");
 
     /* Append message to queue */
-    lua_rawseti(L, -2, lua_objlen(L, -2) + 1);
+    lua_rawseti(L, -2, (int) (lua_objlen(L, -2) + 1));
 
     adbus_conn_block(o->connection->connection, ADBUS_UNBLOCK, &o->connection->block, -1);
 

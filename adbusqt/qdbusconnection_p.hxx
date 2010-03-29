@@ -24,16 +24,13 @@
  */
 
 #pragma once
-#include <qdbusconnection.h>
+#include "qdbusconnection.hxx"
 #include "qdbusobject_p.hxx"
 #include <adbus.h>
-#include <QString>
-#include <QSharedPointer>
-#include <QThreadStorage>
-#include <QSemaphore>
-#include <QEventLoop>
-#include <QMutex>
-#include <QHash>
+#include <QtCore/qstring.h>
+#include <QtCore/qthreadstorage.h>
+#include <QtCore/qmutex.h>
+#include <QtCore/qhash.h>
 
 class QIODevice;
 class QAbstractSocket;

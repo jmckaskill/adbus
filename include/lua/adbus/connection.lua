@@ -440,6 +440,8 @@ function mt:call(msg)
     msg._callback = nil
 
     if reply then
+        self._return_yield.yield = false
+        self._return_message = nil
         self:process(self._return_yield)
         
         local ret = self._return_message

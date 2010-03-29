@@ -27,9 +27,12 @@
 
 #include "qdbuspendingcall.hxx"
 #include "qdbusobject_p.hxx"
-#include "private/qobject_p.h"
-#include <qshareddata.h>
-#include <qdbuserror.h>
+
+#include "qdbuserror.hxx"
+
+#include <Qt/private/qobject_p.h>
+#include <QtCore/qshareddata.h>
+
 #include <adbus.h>
 
 class QDBusPendingCall;
@@ -46,6 +49,7 @@ public:
 
     QList<int>          m_ReplyMetaTypes;
     QDBusMessage        m_Reply;
+    QDBusMessage        m_ErrorMessage;
     QDBusError          m_Error;
 
 signals:

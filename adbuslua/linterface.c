@@ -46,7 +46,7 @@ static int NewInterface(lua_State* L)
     luaL_getmetatable(L, INTERFACE);
     lua_setmetatable(L, -2);
 
-    i->interface = adbus_iface_new(name, namesz);
+    i->interface = adbus_iface_new(name, (int) namesz);
 
     return 1;
 }
@@ -92,7 +92,7 @@ static int AddMethod(lua_State* L)
     size_t namesz;
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* name = luaL_checklstring(L, 2, &namesz);
-    i->member = adbus_iface_addmethod(i->interface, name, namesz);
+    i->member = adbus_iface_addmethod(i->interface, name, (int) namesz);
     adbus_mbr_setmethod(i->member, &adbusluaI_method, NULL);
     return 0;
 }
@@ -107,9 +107,9 @@ static int AddProperty(lua_State* L)
     const char* name = luaL_checklstring(L, 2, &namesz);
     const char* type = luaL_checklstring(L, 3, &typesz);
     const char* access = luaL_checkstring(L, 4);
-    i->member = adbus_iface_addproperty(i->interface, name, namesz, type, typesz);
+    i->member = adbus_iface_addproperty(i->interface, name, (int) namesz, type, (int) typesz);
 
-    namedup = strndup(name, namesz);
+    namedup = adbusluaI_strndup(name, namesz);
     adbus_mbr_addrelease(i->member, &free, namedup);
 
     if (strcmp(access, "read") == 0) {
@@ -133,7 +133,7 @@ static int AddSignal(lua_State* L)
     size_t namesz;
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* name = luaL_checklstring(L, 2, &namesz);
-    i->member = adbus_iface_addsignal(i->interface, name, namesz);
+    i->member = adbus_iface_addsignal(i->interface, name, (int) namesz);
     return 0;
 }
 
@@ -144,7 +144,7 @@ static int ArgumentName(lua_State* L)
     size_t namesz;
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* name = luaL_checklstring(L, 2, &namesz);
-    adbus_mbr_argname(i->member, name, namesz);
+    adbus_mbr_argname(i->member, name, (int) namesz);
     return 0;
 }
 
@@ -155,7 +155,7 @@ static int ReturnName(lua_State* L)
     size_t namesz;
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* name = luaL_checklstring(L, 2, &namesz);
-    adbus_mbr_retname(i->member, name, namesz);
+    adbus_mbr_retname(i->member, name, (int) namesz);
     return 0;
 }
 
@@ -166,7 +166,7 @@ static int ArgumentSignature(lua_State* L)
     size_t sigsz;
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* sig = luaL_checklstring(L, 2, &sigsz);
-    adbus_mbr_argsig(i->member, sig, sigsz);
+    adbus_mbr_argsig(i->member, sig, (int) sigsz);
     return 0;
 }
 
@@ -177,7 +177,7 @@ static int ReturnSignature(lua_State* L)
     size_t sigsz;
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* sig = luaL_checklstring(L, 2, &sigsz);
-    adbus_mbr_retsig(i->member, sig, sigsz);
+    adbus_mbr_retsig(i->member, sig, (int) sigsz);
     return 0;
 }
 
@@ -189,7 +189,7 @@ static int Annotate(lua_State* L)
     struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
     const char* name = luaL_checklstring(L, 2, &namesz);
     const char* value = luaL_checklstring(L, 3, &valuesz);
-    adbus_mbr_annotate(i->member, name, namesz, value, valuesz);
+    adbus_mbr_annotate(i->member, name, (int) namesz, value, (int) valuesz);
     return 0;
 }
 

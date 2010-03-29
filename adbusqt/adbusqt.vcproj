@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="8.00"
-	Name="adbus"
-	ProjectGUID="{A5F66934-13F7-4015-92F2-3A3F6EC8DA04}"
-	RootNamespace="adbus"
+	Name="adbusqt"
+	ProjectGUID="{DD9AC11E-3867-49ED-A6D7-29284EC7E24F}"
+	RootNamespace="adbusqt"
 	>
 	<Platforms>
 		<Platform
@@ -12,6 +12,9 @@
 		/>
 	</Platforms>
 	<ToolFiles>
+		<ToolFile
+			RelativePath="..\qt-build.rules"
+		/>
 	</ToolFiles>
 	<Configurations>
 		<Configuration
@@ -25,7 +28,19 @@
 				Name="VCPreBuildEventTool"
 			/>
 			<Tool
+				Name="MOC"
+				AdditionalOptions=""
+				QtCommandLine="/Od /I &quot;$(INPUTDIR)../include/c&quot; /I &quot;$(INPUTDIR)../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;QDBUS_MAKEDLL&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc80.pdb&quot; /W3 /WX /nologo /c /Wp64 /ZI /TP /errorReport:prompt"
+			/>
+			<Tool
+				Name="QRC"
+			/>
+			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="UIC"
+				AdditionalOptions="/Od /I &quot;../include&quot; /I &quot;../deps/msvc&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /Gm /EHsc /RTC1 /MDd /Fo&quot;Debug\\&quot; /Fd&quot;Debug\vc80.pdb&quot; /W4 /WX /nologo /c /Wp64 /ZI /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -39,12 +54,12 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="../include/c;../deps/msvc"
-				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY"
+				AdditionalIncludeDirectories="../include/c;../deps/msvc;$(QTDIR)/include"
+				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;QDBUS_MAKEDLL"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
-				WarningLevel="4"
+				WarningLevel="3"
 				WarnAsError="true"
 				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="4"
@@ -60,7 +75,6 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib advapi32.lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -101,7 +115,17 @@
 				Name="VCPreBuildEventTool"
 			/>
 			<Tool
+				Name="MOC"
+				AdditionalOptions="/O2 /GL /I &quot;../include&quot; /I &quot;../deps/msvc&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;NDEBUG&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /FD /EHsc /MD /Fo&quot;Release\\&quot; /Fd&quot;Release\vc80.pdb&quot; /W4 /WX /nologo /c /Wp64 /Zi /TP /errorReport:prompt"
+			/>
+			<Tool
+				Name="QRC"
+			/>
+			<Tool
 				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="UIC"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -114,7 +138,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="../include/c;../deps/msvc"
+				AdditionalIncludeDirectories="../include;../deps/msvc;$(QTDIR)/include"
 				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;NDEBUG"
 				RuntimeLibrary="2"
 				WarningLevel="4"
@@ -133,7 +157,6 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib advapi32.lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -169,239 +192,143 @@
 	</References>
 	<Files>
 		<Filter
-			Name="includes"
+			Name="include"
 			>
 			<File
-				RelativePath="..\include\c\adbus-iterator.h"
+				RelativePath=".\qdbusabstractadaptor.hxx"
 				>
 			</File>
 			<File
-				RelativePath="..\include\c\adbus.h"
+				RelativePath=".\qdbusabstractinterface.hxx"
 				>
 			</File>
 			<File
-				RelativePath="..\include\c\adbuscpp-include.h"
+				RelativePath=".\qdbusargument.hxx"
 				>
 			</File>
 			<File
-				RelativePath="..\include\c\adbuscpp-multi.h"
+				RelativePath=".\qdbusconnection.hxx"
 				>
 			</File>
 			<File
-				RelativePath="..\include\c\adbuscpp.h"
+				RelativePath=".\qdbusconnectioninterface.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbuscontext.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbuserror.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusextratypes.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusinterface.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusmacros.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusmessage.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusmetatype.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbuspendingcall.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbuspendingreply.h"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusreply.h"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusserver.hxx"
+				>
+			</File>
+			<File
+				RelativePath=".\qdbusservicewatcher.hxx"
 				>
 			</File>
 		</Filter>
 		<File
-			RelativePath=".\auth.c"
+			RelativePath=".\qdbusabstractadaptor.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\auth.h"
+			RelativePath=".\qdbusabstractadaptor_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\buffer.c"
+			RelativePath=".\qdbusabstractinterface.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\buffer.h"
+			RelativePath=".\qdbusabstractinterface_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\busproxy.c"
+			RelativePath=".\qdbusargument.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\client-bind.c"
+			RelativePath=".\qdbusargument_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\client-bind.h"
+			RelativePath=".\qdbusconnection.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\client-bus.c"
+			RelativePath=".\qdbusconnection_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\client-bus.h"
+			RelativePath=".\qdbusconnectioninterface.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\client-match.c"
+			RelativePath=".\qdbuserror.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\client-match.h"
+			RelativePath=".\qdbusmessage.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\client-reply.c"
+			RelativePath=".\qdbusmessage_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\client-reply.h"
+			RelativePath=".\qdbusobject.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\connection.c"
+			RelativePath=".\qdbusobject_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\connection.h"
+			RelativePath=".\qdbuspendingcall.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\debug.c"
+			RelativePath=".\qdbuspendingcall_p.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\debug.h"
-			>
-		</File>
-		<File
-			RelativePath=".\doc.inl"
-			>
-		</File>
-		<File
-			RelativePath=".\interface.c"
-			>
-		</File>
-		<File
-			RelativePath=".\interface.h"
-			>
-		</File>
-		<File
-			RelativePath=".\internal.h"
-			>
-		</File>
-		<File
-			RelativePath=".\iterator.c"
-			>
-		</File>
-		<File
-			RelativePath=".\message.c"
-			>
-		</File>
-		<File
-			RelativePath=".\message.h"
-			>
-		</File>
-		<File
-			RelativePath=".\messages.c"
-			>
-		</File>
-		<File
-			RelativePath=".\messages.h"
-			>
-		</File>
-		<File
-			RelativePath=".\misc.c"
-			>
-		</File>
-		<File
-			RelativePath=".\misc.h"
-			>
-		</File>
-		<File
-			RelativePath=".\parse.c"
-			>
-		</File>
-		<File
-			RelativePath=".\parse.h"
-			>
-		</File>
-		<File
-			RelativePath=".\proxy.c"
-			>
-		</File>
-		<File
-			RelativePath=".\proxy.h"
-			>
-		</File>
-		<File
-			RelativePath=".\server-bus.c"
-			>
-		</File>
-		<File
-			RelativePath=".\server-bus.h"
-			>
-		</File>
-		<File
-			RelativePath=".\server-match.c"
-			>
-		</File>
-		<File
-			RelativePath=".\server-match.h"
-			>
-		</File>
-		<File
-			RelativePath=".\server-parse.c"
-			>
-		</File>
-		<File
-			RelativePath=".\server-parse.h"
-			>
-		</File>
-		<File
-			RelativePath=".\server-remote.c"
-			>
-		</File>
-		<File
-			RelativePath=".\server-remote.h"
-			>
-		</File>
-		<File
-			RelativePath=".\server-service.c"
-			>
-		</File>
-		<File
-			RelativePath=".\server-service.h"
-			>
-		</File>
-		<File
-			RelativePath=".\server.c"
-			>
-		</File>
-		<File
-			RelativePath=".\server.h"
-			>
-		</File>
-		<File
-			RelativePath=".\sha1.c"
-			>
-		</File>
-		<File
-			RelativePath=".\sha1.h"
-			>
-		</File>
-		<File
-			RelativePath=".\signal.c"
-			>
-		</File>
-		<File
-			RelativePath=".\signal.h"
-			>
-		</File>
-		<File
-			RelativePath=".\socket.c"
-			>
-		</File>
-		<File
-			RelativePath=".\state.c"
-			>
-		</File>
-		<File
-			RelativePath=".\state.h"
-			>
-		</File>
-		<File
-			RelativePath=".\tracker.c"
-			>
-		</File>
-		<File
-			RelativePath=".\tracker.h"
+			RelativePath=".\qsharedfunctions_p.h"
 			>
 		</File>
 	</Files>

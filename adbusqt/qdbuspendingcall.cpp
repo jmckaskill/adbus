@@ -25,10 +25,10 @@
 
 #include "qdbuspendingcall_p.hxx"
 #include "qdbusconnection_p.hxx"
-#include "qdbuserror_p.hxx"
-#include "qsharedfunctions_p.hxx"
+#include "qdbuserror.hxx"
+#include "qsharedfunctions_p.h"
 #include "qdbusmessage_p.hxx"
-#include "qdbuspendingreply.hxx"
+#include "qdbuspendingreply.h"
 
 /* ------------------------------------------------------------------------- */
 
@@ -125,7 +125,7 @@ int QDBusPendingCallPrivate::ReplyCallback(adbus_CbData* data)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
 
-    d->m_Reply = QDBusMessagePrivate::FromMessage(data->msg);
+    QDBusMessagePrivate::FromMessage(d->m_Reply, data->msg);
     d->haveReply();
     return 0;
 }
@@ -136,8 +136,8 @@ int QDBusPendingCallPrivate::ErrorCallback(adbus_CbData* data)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
 
-    DBusError err = {data->msg};
-    d->m_Error = QDBusError(&err);
+    QDBusMessagePrivate::FromMessage(d->m_ErrorMessage, data->msg);
+    d->m_Error = QDBusError(d->m_ErrorMessage);
 
     d->haveReply();
     return 0;

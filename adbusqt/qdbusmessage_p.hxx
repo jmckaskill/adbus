@@ -25,22 +25,48 @@
 
 #pragma once
 
-#include <qdbusmessage.h>
-#include <qshareddata.h>
+#include "qdbusmessage.hxx"
+#include "qdbusargument_p.hxx"
+#include <QtCore/qshareddata.h>
 #include <adbus.h>
 
+class QDBusArgumentList
+{
+public:
+    QDBusArgumentList() : m_AppendMessage(false) {}
+
+    bool    init(const QMetaMethod& method);
+    void    setupMetacall(const QDBusMessage* msg);
+    void**  metacallData() {return m_MetacallData.data();}
+
+    struct Entry
+    {
+        Entry(bool inarg_, QByteArray name_, QDBusArgumentType* type_)
+            : inarg(inarg_), name(name_), type(type_)
+        {}
+
+        bool                inarg;
+        QByteArray          name;
+        QDBusArgumentType*  type;
+    };
+
+    bool                m_AppendMessage;
+    QList<Entry>        m_Args;
+    QVector<void*>      m_MetacallData;
+};
 
 class QDBusMessagePrivate : public QSharedData
 {
 public:
-    static QDBusMessage FromMessage(adbus_Message* msg);
-    static adbus_MsgFactory* ToFactory(const QDBusMessage& msg);
+    static int          FromMessage(QDBusMessage& q, adbus_Message* msg);
+    static int          FromMessage(QDBusMessage& q, adbus_Message* msg, const QDBusArgumentList& types);
+    static bool         GetMessage(const QDBusMessage& q, adbus_MsgFactory* ret) const;
+    static void         GetReply(const QDBusMessage& q, adbus_MsgFactory** ret, const QDBusArgumentList& types) const;
 
-    QDBusMessagePrivate();
+    QDBusMessagePrivate() {reset();}
 
-    int                 fromMessage(adbus_Message* msg);
-    int                 fromMessage(adbus_Message* msg, const QList<QDBusArgumentType>& types);
-    void                setupFactory(adbus_MsgFactory* msg);
+    void reset();
+    void getHeaders(adbus_Message* msg);
 
     adbus_MessageType   type;
     int                 flags;
@@ -56,6 +82,8 @@ public:
     QList<QVariant>     arguments;
 
     mutable bool        delayedReply;
+    mutable QString     replyErrorName;
+    mutable QString     replyErrorMsg;
 
 };
 

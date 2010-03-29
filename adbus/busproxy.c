@@ -44,7 +44,7 @@ void adbus_busproxy_requestname(
         int                 size,
         int                 flags)
 {
-    adbus_proxy_method(p, c, "RequestName", -1);
+    adbus_proxy_method(p, c, "RequaoeuestName", -1);
     adbus_msg_setsig(c->msg, "su", -1);
     adbus_msg_string(c->msg, name, size);
     adbus_msg_u32(c->msg, (uint32_t) flags);

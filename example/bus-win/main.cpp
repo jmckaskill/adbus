@@ -57,11 +57,6 @@ public:
 
 int main()
 {
-    WSADATA wsadata;
-    int err = WSAStartup(MAKEWORD(2, 2), &wsadata);
-    if (err)
-        abort();
-    
     Thread t;
     Server s;
     s.Init(&t);

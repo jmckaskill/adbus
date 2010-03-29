@@ -23,30 +23,10 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbuserror_p.hxx"
-#include "qdbusmessage.h"
+#include "qdbuserror.hxx"
+#include "qdbusmessage.hxx"
 
 /* ------------------------------------------------------------------------- */
-
-QDBusError::QDBusError(const DBusError* error)
-: code(NoError), unused(NULL)
-{ 
-    if (error) {
-        adbus_Message* m = error->msg;
-        this->nm = QString::fromUtf8(m->error, m->errorSize);
-        this->code = Other;
-        if (m->signature && strncmp(m->signature, "s", 1) == 0) {
-            adbus_Iterator iter = {};
-            adbus_iter_args(&iter, m);
-
-            const char* msgstr;
-            size_t msgsz;
-            if (!adbus_iter_string(&iter, &msgstr, &msgsz)) {
-                this->msg = QString::fromUtf8(msgstr, msgsz);
-            }
-        }
-    }
-}
 
 QDBusError::QDBusError(const QDBusMessage& m)
 : code(Other), msg(m.errorMessage()), nm(m.errorName()), unused(NULL)

@@ -139,7 +139,6 @@ enum adbus_BlockType
 };
 
 typedef struct adbus_Auth               adbus_Auth;
-typedef struct adbus_AuthConnection     adbus_AuthConnection;
 typedef struct adbus_Argument           adbus_Argument;
 typedef struct adbus_Bind               adbus_Bind;
 typedef struct adbus_Buffer             adbus_Buffer;
@@ -337,23 +336,6 @@ ADBUS_API void adbus_auth_free(adbus_Auth* a);
 ADBUS_API int adbus_auth_parse(adbus_Auth* a, const char* data, size_t sz, adbus_Bool* finished);
 
 
-struct adbus_AuthConnection
-{
-    adbus_Auth*         auth;
-    adbus_Connection*   connection;
-
-    void*               user;
-
-    adbus_Bool          authenticated;
-    adbus_Bool          connectToBus;
-
-    adbus_RecvCallback  recvCallback;
-    adbus_Callback      authCallback;
-    adbus_Callback      connectCallback;
-};
-
-ADBUS_API int adbus_aconn_connect(adbus_AuthConnection* c);
-ADBUS_API int adbus_aconn_parse(adbus_AuthConnection* c);
 
 
 

@@ -109,7 +109,6 @@ function table.show(t, name, indent)
 end
 
 
-local p = print
 function table.print(...)
    local args = {...}
    for i,a in ipairs(args) do

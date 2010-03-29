@@ -27,7 +27,7 @@
 
 #include "qdbusabstractinterface.h"
 #include "qdbusobject_p.hxx"
-#include "private/qobject_p.h"
+#include <Qt/private/qobject_p.h>
 #include <adbus.h>
 
 

@@ -40,7 +40,7 @@ extern "C" {
     DMEM_INLINE void dv_clear_base(dv_base_t* v)
     { v->size = 0; }
     DMEM_INLINE void dv_shrink_base(dv_base_t* v, size_t typesz, size_t decr)
-    { v->size -= decr; }
+    { (void) typesz; v->size -= decr; }
     DMEM_INLINE void dv_expand_base(dv_base_t* v, size_t typesz, size_t incr)
     {
         v->size += incr;
@@ -160,6 +160,8 @@ extern "C" {
 
 DMEM_INLINE size_t dv_a_check(size_t sz, size_t i)
 {
+    (void) i;
+    (void) sz;
     assert(sz > i);
     return 0;
 }

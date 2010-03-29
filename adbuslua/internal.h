@@ -83,4 +83,6 @@ IFUNC int adbusluaI_method(adbus_CbData* d);
 IFUNC int adbusluaI_getproperty(adbus_CbData* d);
 IFUNC int adbusluaI_setproperty(adbus_CbData* d);
 
+IFUNC char* adbusluaI_strndup(const char* str, size_t len);
+
 
