@@ -84,16 +84,20 @@ class QDBusConnectionPrivate : public QSharedData
 {
 public:
     static adbus_Connection* Connection(const QDBusConnection& c);
-    static QDBusObject* GetObject(const QDBusConnection& c, QObject* object);
-    static void RemoveObject(const QDBusConnection& c, QObject* object);
-    static QDBusConnection BusConnection(adbus_BusType type);
+    static QDBusObject*     GetObject(const QDBusConnection& c, QObject* object);
+    static void             RemoveObject(const QDBusConnection& c, QObject* object);
+    static QDBusConnection  BusConnection(adbus_BusType type);
+    static void             SetLastError(const QDBusConnection& c, QDBusError err);
 
     QDBusConnectionPrivate();
     ~QDBusConnectionPrivate();
 
     adbus_Connection*                       connection;
-    mutable QMutex                          objectLock;
-    mutable QHash<QObject*, QDBusObject*>   objects;
+    QDBusConnectionInterface*               interface;
+
+    mutable QMutex                          lock;
+    QHash<QObject*, QDBusObject*>           objects;
+    QDBusError                              lastError;
 
     static adbus_MsgFactory* GetFactory();
 };

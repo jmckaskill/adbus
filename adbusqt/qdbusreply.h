@@ -49,7 +49,7 @@
 #include "qdbusmessage.hxx"
 #include "qdbuserror.hxx"
 #include "qdbusextratypes.hxx"
-#include "qdbuspendingreply.hxx"
+#include "qdbuspendingreply.h"
 
 QT_BEGIN_HEADER
 

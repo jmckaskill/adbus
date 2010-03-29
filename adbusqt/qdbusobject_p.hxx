@@ -203,7 +203,8 @@ public:
     static void ReleaseMatch(void* u);
     static void ReleaseBind(void* u);
 
-    QDBusMessage        m_CurrentMessage;
+    QDBusMessage            m_CurrentMessage;
+    QDBusConnection         m_QConnection;
 
 public slots:
     void destroy();
@@ -211,7 +212,6 @@ public slots:
 private:
     ~QDBusObject() {}
 
-    QDBusConnection           m_QConnection;
     adbus_Connection* const   m_Connection;
     QObject* const            m_Tracked;
 

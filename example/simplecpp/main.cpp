@@ -24,92 +24,52 @@
  */
 
 #include <adbuscpp.h>
+#include <memory>
 
-#include <string.h>
-#include <stdio.h>
-#ifdef _WIN32
-#   include <windows.h>
-#else
-#   include <sys/socket.h>
-#endif
-
-static int SendMsg(void* d, adbus_Message* m)
-{ return (int) send(*(adbus_Socket*) d, m->data, m->size, 0); }
-
-static int Send(void* d, const char* b, size_t sz)
-{ return (int) send(*(adbus_Socket*) d, b, sz, 0); }
-
-static uint8_t Rand(void* d)
-{ return (uint8_t) rand(); }
-
-static int Recv(void* d, char* buf, size_t sz)
-{ return (int) recv(*(adbus_Socket*) d, buf, sz, 0); }
-
-class Quitter : public adbus::State
+class Main : public adbus::State
 {
 public:
-    Quitter() :m_Quit(false) {}
+    Main(adbus_Connection* c);
 
-    void quit()
-    { m_Quit = true; }
+    void quit() {adbus_conn_block(m_Connection, ADBUS_UNBLOCK, &m_Block, -1);}
+    int run()   {return adbus_conn_block(m_Connection, ADBUS_BLOCK, &m_Block, -1);}
 
-    bool m_Quit;
+private:
+    static adbus::Interface<Main>* Interface();
+
+    adbus_Connection*   m_Connection;
+    void*               m_Block;
 };
 
-static adbus::Interface<Quitter>* Interface()
+adbus::Interface<Main>* Main::Interface()
 {
-    static adbus::Interface<Quitter>* i = NULL;
-    if (i == NULL) {
-        i = new adbus::Interface<Quitter>("nz.co.foobar.Test.Quit");
-        i->addMethod0("Quit", &Quitter::quit);
+    static std::auto_ptr<adbus::Interface<Main> > i;
+    if (!i.get()) {
+        i.reset(new adbus::Interface<Main>("nz.co.foobar.Test.Main"));
 
+        i->addMethod0("Quit", &Main::quit);
     }
 
-    return i;
+    return i.get();
 }
 
-static adbus_ConnectionCallbacks cbs;
-static adbus_AuthConnection c;
-static adbus_State* state;
-
-static void Connected(void*)
+Main::Main(adbus_Connection* c) 
+    : m_Connection(c), m_Block(NULL) 
 {
-    state = adbus_state_new();
+    bind(c, "/", Interface(), this);
 
-    adbus::Proxy bus(state);
-    bus.init(c.connection, "org.freedesktop.DBus", "/");
+    adbus::Proxy bus(this);
+    bus.init(c, "org.freedesktop.DBus", "/");
     bus.call("RequestName", "nz.co.foobar.adbus.SimpleCppTest", uint32_t(0));
-
 }
 
 int main()
 {
-    adbus_Socket s = adbus_sock_connect(ADBUS_SESSION_BUS);
-    if (s == ADBUS_SOCK_INVALID)
+    adbus_Connection* connection = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
+    if (!connection)
         abort();
 
-    cbs.send_message    = &SendMsg;
-    cbs.recv_data       = &Recv;
-
-    c.connection        = adbus_conn_new(&cbs, &s);
-    c.auth              = adbus_cauth_new(&Send, &Rand, &s);
-    c.recvCallback      = &Recv;
-    c.user              = &s;
-    c.connectToBus      = 1;
-    c.connectCallback   = &Connected;
-
-    Quitter q;
-    q.bind(c.connection, "/", Interface(), &q);
-
-    adbus_cauth_external(c.auth);
-    adbus_aconn_connect(&c);
-
-    while(!q.m_Quit) {
-        if (adbus_aconn_parse(&c)) {
-            abort();
-        }
-    }
-
-    return 0;
+    Main m(connection);
+    return m.run();
 }
 

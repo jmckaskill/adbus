@@ -30,8 +30,7 @@
 #include "qsharedfunctions_p.h"
 #include "qdbusabstractadaptor_p.hxx"
 #include "qdbuspendingcall_p.hxx"
-
-#include "qdbuspendingcall.hxx"
+#include "qdbusconnectioninterface.hxx"
 
 #include <QtNetwork/qtcpsocket.h>
 #include <QtNetwork/qlocalsocket.h>
@@ -372,6 +371,10 @@ void QDBusClient::socketReadyRead()
 
 
 
+
+
+
+
 /* ------------------------------------------------------------------------- */
 
 adbus_Connection* QDBusConnectionPrivate::Connection(const QDBusConnection& c)
@@ -379,7 +382,7 @@ adbus_Connection* QDBusConnectionPrivate::Connection(const QDBusConnection& c)
 
 QDBusObject* QDBusConnectionPrivate::GetObject(const QDBusConnection& c, QObject* object)
 {
-    QMutexLocker lock(&c.d->objectLock);
+    QMutexLocker lock(&c.d->lock);
 
     QHash<QObject*, QDBusObject*>::iterator ii = c.d->objects.find(object);
     if (ii != c.d->objects.end())
@@ -392,16 +395,19 @@ QDBusObject* QDBusConnectionPrivate::GetObject(const QDBusConnection& c, QObject
 
 void QDBusConnectionPrivate::RemoveObject(const QDBusConnection& c, QObject* object)
 {
-    QMutexLocker lock(&c.d->objectLock);
+    QMutexLocker lock(&c.d->lock);
     c.d->objects.remove(object);
 }
 
 QDBusConnectionPrivate::QDBusConnectionPrivate()
 : connection(NULL)
-{} 
+{ interface = new QDBusConnectionInterface(QDBusConnection(this), NULL); } 
 
 QDBusConnectionPrivate::~QDBusConnectionPrivate()
-{ adbus_conn_deref(connection); }
+{ 
+    adbus_conn_deref(connection); 
+    delete interface;
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -412,6 +418,9 @@ static QDBusConnectionPrivate* sConnection[ADBUS_BUS_NUM];
 
 QDBusConnectionPrivate* GetConnection(const QString& name)
 {
+    if (name.isEmpty())
+        return NULL;
+
     QMutexLocker lock(&sConnectionLock);
 
     QDBusConnectionPrivate*& p = sNamedConnections[name];
@@ -492,13 +501,8 @@ QDBusConnection QDBusConnectionPrivate::BusConnection(adbus_BusType type)
 {
     QDBusConnectionPrivate* p = GetConnection(type);
     if (!p->connection) {
-        p->connection = adbus_conn_get(type);
-    }
-
-    if (!p->connection) {
         QDBusClient* c = new QDBusClient(type);
         p->connection = c->connection();
-        adbus_conn_set(type, p->connection);
     }
 
     return QDBusConnection(p);
@@ -668,4 +672,75 @@ bool QDBusConnection::registerObject(const QString &path, QObject *object, Regis
 }
 
 /* ------------------------------------------------------------------------- */
+
+void QDBusConnectionPrivate::SetLastError(const QDBusConnection& c, QDBusError err)
+{
+    QMutexLocker lock(&c.d->lock);
+    c.d->lastError = err;
+}
+
+/* ------------------------------------------------------------------------- */
+
+QDBusError QDBusConnection::lastError() const
+{
+    QMutexLocker lock(&d->lock);
+    return d->lastError;
+}
+
+/* ------------------------------------------------------------------------- */
+
+QDBusConnectionInterface* QDBusConnection::interface() const
+{ return d->interface; }
+
+/* ------------------------------------------------------------------------- */
+
+bool QDBusConnection::registerService(const QString& serviceName)
+{
+    return interface()->registerService(serviceName).value()
+        == QDBusConnectionInterface::ServiceRegistered;
+}
+
+/* ------------------------------------------------------------------------- */
+
+bool QDBusConnection::unregisterService(const QString& serviceName)
+{ return interface()->unregisterService(serviceName).value(); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+struct QDBusMessageFactory
+{
+    QDBusMessageFactory() : d(adbus_msg_new()) {}
+    ~QDBusMessageFactory() {adbus_msg_free(d);}
+    adbus_MsgFactory* d;
+};
+
+static QThreadStorage<QDBusMessageFactory*> factories;
+
+adbus_MsgFactory* QDBusConnectionPrivate::GetFactory()
+{
+    if (!factories.hasLocalData()) {
+        factories.setLocalData(new QDBusMessageFactory);
+    }
+
+    return factories.localData()->d;
+}
+
+
+
 

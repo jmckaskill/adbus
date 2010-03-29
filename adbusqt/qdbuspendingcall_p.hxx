@@ -47,7 +47,9 @@ public:
     void waitForFinished();
     bool isFinished() const {return m_Finished;}
 
-    QList<int>          m_ReplyMetaTypes;
+    bool                m_CheckTypes;
+    bool                m_TypeCheckFailure;
+    QList<int>          m_MetaTypes;
     QDBusMessage        m_Reply;
     QDBusMessage        m_ErrorMessage;
     QDBusError          m_Error;

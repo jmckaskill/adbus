@@ -23,48 +23,33 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbuserror.hxx"
-#include "qdbusmessage.hxx"
+#pragma once
+
+#include "qdbusservicewatcher.hxx"
+#include "qdbusobject_p.hxx"
+#include "qdbusconnection.hxx"
+#include <Qt/private/qobject_p.h>
+#include <QtCore/qstringlist.h>
 
 /* ------------------------------------------------------------------------- */
 
-QDBusError::QDBusError(const DBusError* err)
+class QDBusServiceWatcherPrivate : public QObjectPrivate
 {
-    /* Somehow I don't think this is going to work ... */
-    Q_ASSERT(false);
-    (void) err;
-}
+    Q_DECLARE_PUBLIC(QDBusServiceWatcher);
+public:
+    QDBusServiceWatcherPrivate()
+    :   object(NULL),
+        connection(""),
+        watchMode(QDBusServiceWatcher::WatchForOwnerChange)
+    {}
 
-QDBusError::QDBusError(const QDBusMessage& m)
-: code(Other), msg(m.errorMessage()), nm(m.errorName()), unused(NULL)
-{}
+    ~QDBusServiceWatcherPrivate() {object->destroy();}
 
-QDBusError::QDBusError(const QDBusError& other)
-: code(other.code), msg(other.msg), nm(other.nm), unused(other.unused)
-{}
+    void _q_serviceOwnerChanged(QString service, QString oldOwner, QString newOwner);
 
-QDBusError::QDBusError(ErrorType type, const QString& message)
-: code(type), msg(message), nm("nz.co.foobar.adbusqt.Error"), unused(NULL)
-{}
-
-QDBusError& QDBusError::operator=(const QDBusError& other)
-{
-    code = other.code;
-    msg = other.msg;
-    nm = other.nm;
-    unused = other.unused;
-    return *this;
-}
-
-QString QDBusError::name() const
-{ return this->nm; }
-
-QString QDBusError::message() const
-{ return this->msg; }
-
-bool QDBusError::isValid() const
-{ return this->code != NoError; }
-
-QString QDBusError::errorString(ErrorType error)
-{ Q_UNUSED(error); return "other"; }
+    QStringList                     services;
+    QDBusObject*                    object;
+    QDBusConnection                 connection;
+    QDBusServiceWatcher::WatchMode  watchMode;
+};
 

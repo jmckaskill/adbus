@@ -28,6 +28,7 @@
 #include "qdbusmessage.hxx"
 #include "qdbusargument_p.hxx"
 #include <QtCore/qshareddata.h>
+#include <QtCore/qvector.h>
 #include <adbus.h>
 
 class QDBusArgumentList
@@ -60,8 +61,10 @@ class QDBusMessagePrivate : public QSharedData
 public:
     static int          FromMessage(QDBusMessage& q, adbus_Message* msg);
     static int          FromMessage(QDBusMessage& q, adbus_Message* msg, const QDBusArgumentList& types);
-    static bool         GetMessage(const QDBusMessage& q, adbus_MsgFactory* ret) const;
-    static void         GetReply(const QDBusMessage& q, adbus_MsgFactory** ret, const QDBusArgumentList& types) const;
+    static bool         GetMessage(const QDBusMessage& q, adbus_MsgFactory* ret);
+    static void         GetReply(const QDBusMessage& q, adbus_MsgFactory** ret, const QDBusArgumentList& types);
+
+    static adbus_MsgFactory*    GetFactory();
 
     QDBusMessagePrivate() {reset();}
 

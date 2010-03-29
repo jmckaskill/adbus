@@ -859,3 +859,18 @@ const QDBusArgument& QDBusArgument::operator>>(QDBusVariant& arg) const
 
 
 
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+// TODO
+void QDBusSignature::check()
+{}
+
+void QDBusObjectPath::check()
+{}
+
+

@@ -35,21 +35,14 @@ using namespace adbus;
 
 QtClient::QtClient(QObject* parent)
 :   QObject(parent),
+    m_Auth(NULL),
     m_Socket(NULL)
 {
     adbus_ConnectionCallbacks cbs = {};
-    cbs.send_message = &SendMsg;
-    cbs.recv_data = &Receive;
+    cbs.send_message    = &SendMsg;
+    cbs.recv_data       = &Receive;
 
-    memset(&m_C, 0, sizeof(m_C));
-    m_C.connection      = adbus_conn_new(&cbs, this);
-    m_C.auth            = adbus_cauth_new(&Send, &Rand, this);
-    m_C.recvCallback    = &Receive;
-    m_C.authCallback    = &Authenticated;
-    m_C.connectCallback = &Connected;
-    m_C.user            = this;
-
-    adbus_cauth_external(m_C.auth);
+    m_Connection = adbus_conn_new(&cbs, this);
 }
 
 QtClient::~QtClient()
@@ -59,8 +52,8 @@ QtClient::~QtClient()
         m_Socket = NULL;
         emit disconnected();
     }
-    adbus_conn_free(m_C.connection);
-    adbus_auth_free(m_C.auth);
+    adbus_conn_free(m_Connection);
+    adbus_auth_free(m_Auth);
 }
 
 int QtClient::Receive(void* d, char* buf, size_t sz)
@@ -99,7 +92,7 @@ bool QtClient::connectToServer(adbus_BusType type, bool connectToBus)
 bool QtClient::connectToServer(const char* envstr, bool connectToBus)
 {
     disconnect();
-    m_C.connectToBus = connectToBus ? 1 : 0;
+    m_ConnectToBus = connectToBus;
 
     QString s = QString::fromAscii(envstr);
     QStringList l1 = s.split(':');
@@ -148,33 +141,57 @@ void QtClient::disconnect()
         m_Socket = NULL;
         emit disconnected();
     }
+    adbus_auth_free(m_Auth);
+    adbus_conn_free(m_Connection);
+    m_Auth = NULL;
 }
 
 void QtClient::socketConnected()
 {
-    if (adbus_aconn_connect(&m_C))
-        disconnect();
+    m_Auth = adbus_cauth_new(&Send, Rand, this);
+    adbus_cauth_external(m_Auth);
 }
 
 #define RECV_SIZE 64 * 1024
 
 void QtClient::socketReadyRead()
 {
-    if (adbus_aconn_parse(&m_C)) {
-        disconnect();
-    }
-}
+    if (m_Auth) {
 
-void QtClient::Authenticated(void* u)
-{
-    QtClient* q = (QtClient*) u;
-    emit q->authenticated();
+        QByteArray data = m_Socket->readAll();
+
+        adbus_Bool authed = 0;
+        int used = adbus_auth_parse(m_Auth, data.constData(), data.size(), &authed);
+        if (used < 0) {
+            return disconnect();
+        }
+
+        if (authed) {
+            adbus_auth_free(m_Auth);
+            m_Auth = NULL;
+
+            emit authenticated();
+
+            if (adbus_conn_parse(m_Connection, data.constData() + used, data.size() - used)) {
+                return disconnect();
+            }
+
+            if (m_ConnectToBus) {
+                adbus_conn_connect(m_Connection, &Connected, this);
+            }
+        }
+
+    } else {
+        if (adbus_conn_parsecb(m_Connection)) {
+            return disconnect();
+        }
+    }
 }
 
 void QtClient::Connected(void* u)
 {
     QtClient* q = (QtClient*) u;
-    QString qname = QString::fromUtf8(adbus_conn_uniquename(q->m_C.connection, NULL));
+    QString qname = QString::fromUtf8(adbus_conn_uniquename(q->m_Connection, NULL));
     emit q->connected(qname);
 }
     

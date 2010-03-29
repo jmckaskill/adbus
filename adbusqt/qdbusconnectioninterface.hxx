@@ -45,7 +45,7 @@
 #include <QtCore/qstringlist.h>
 
 #include "qdbusabstractinterface.hxx"
-#include "qdbusreply.hxx"
+#include "qdbusreply.h"
 
 QT_BEGIN_HEADER
 

@@ -245,13 +245,12 @@ int QDBusObject::MatchCallback(adbus_CbData* d)
         if (QDBusMessagePrivate::FromMessage(msg, d->msg))
             return -1;
 
-        /* Check that we can convert the arguments correctly */
-        if (data->arguments.setupMetacall(&msg)) {
-            data->object->qt_metacall(
-                    QMetaObject::InvokeMetaMethod,
-                    data->methodIndex,
-                    data->arguments.metacallData());
-        }
+        data->arguments.setupMetacall(&msg);
+
+        data->object->qt_metacall(
+                QMetaObject::InvokeMetaMethod,
+                data->methodIndex,
+                data->arguments.metacallData());
     }
 
     return 0;
@@ -275,13 +274,12 @@ int QDBusObject::ReplyCallback(adbus_CbData* d)
         if (QDBusMessagePrivate::FromMessage(msg, d->msg, data->arguments))
             return -1;
 
-        /* Check that we can convert the arguments correctly */
-        if (data->arguments.setupMetacall(&msg)) {
-            data->object->qt_metacall(
-                    QMetaObject::InvokeMetaMethod,
-                    data->methodIndex,
-                    data->arguments.metacallData());
-        }
+        data->arguments.setupMetacall(&msg);
+
+        data->object->qt_metacall(
+                QMetaObject::InvokeMetaMethod,
+                data->methodIndex,
+                data->arguments.metacallData());
     }
 
     dil_remove(QDBusReplyData, data, &data->hl);
@@ -306,6 +304,7 @@ int QDBusObject::ErrorCallback(adbus_CbData* d)
             return -1;
 
         QDBusError err(msg);
+        QDBusConnectionPrivate::SetLastError(data->owner->m_QConnection, err);
 
         // Error methods are void (QDBusError, QDBusMessage)
         void* args[] = {0, &err, &msg};
@@ -339,16 +338,12 @@ int QDBusObject::MethodCallback(adbus_CbData* d)
     if (QDBusMessagePrivate::FromMessage(msg, d->msg, method->arguments))
         return -1;
 
-    /* Check that we can convert the arguments correctly */
-    if (method->arguments.setupMetacall(&msg)) {
-        bind->object->qt_metacall(
-                QMetaObject::InvokeMetaMethod,
-                method->methodIndex,
-                method->arguments.metacallData());
+    method->arguments.setupMetacall(&msg);
 
-    } else if (d->ret) {
-        return adbus_error_argument(d);
-    }
+    bind->object->qt_metacall(
+            QMetaObject::InvokeMetaMethod,
+            method->methodIndex,
+            method->arguments.metacallData());
 
 
     QDBusMessagePrivate::GetReply(msg, &d->ret, method->arguments);
@@ -370,7 +365,7 @@ int QDBusObject::GetPropertyCallback(adbus_CbData* d)
             prop->propIndex,
             &prop->data);
 
-    prop->type->marshall(d->getprop, prop->data);
+    prop->type->marshall(d->getprop, prop->data, false);
 
     return 0;
 }

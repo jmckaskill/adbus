@@ -113,6 +113,16 @@ void QDBusPendingCallPrivate::haveReply()
 {
     adbus_conn_block(m_Connection, ADBUS_UNBLOCK, &m_Block, -1);
     m_Finished = true;
+
+    QList<QVariant> args = m_Reply.arguments();
+    if (m_Error.isValid() && m_CheckTypes && args.size() == m_MetaTypes.size()) {
+        bool success = true;
+        for (int i = 0; i < args.size(); i++) {
+            success = success && args.at(i).canConvert((QVariant::Type) m_MetaTypes.at(i));
+        }
+        m_TypeCheckFailure = !success;
+    }
+
     emit finished();
 }
 
@@ -138,6 +148,7 @@ int QDBusPendingCallPrivate::ErrorCallback(adbus_CbData* data)
 
     QDBusMessagePrivate::FromMessage(d->m_ErrorMessage, data->msg);
     d->m_Error = QDBusError(d->m_ErrorMessage);
+    QDBusConnectionPrivate::SetLastError(d->m_QConnection, d->m_Error);
 
     d->haveReply();
     return 0;
@@ -187,7 +198,12 @@ QDBusMessage QDBusPendingCall::reply() const
 { return d->m_Reply; }
 
 bool QDBusPendingCall::isValid() const
-{ return isFinished() && !isError(); }
+{ 
+    if (d->m_CheckTypes && d->m_TypeCheckFailure)
+        return false;
+
+    return isFinished() && !isError();
+}
 
 
 
@@ -246,11 +262,27 @@ void QDBusPendingReplyData::assign(const QDBusMessage& message)
 { }
 #endif
 
+QVariant QDBusPendingReplyData::argumentAt(int i) const
+{
+    QList<QVariant> args = d->m_Reply.arguments();
+    if (i >= args.size() || i >= d->m_MetaTypes.size() || !isValid())
+        return QVariant();
+
+    QVariant arg = args.at(i);
+    if (!arg.convert((QVariant::Type) d->m_MetaTypes.at(i)))
+        return QVariant();
+
+    return arg;
+}
+
 void QDBusPendingReplyData::setMetaTypes(int count, const int* metaTypes)
 {
-    d->m_ReplyMetaTypes.clear();
-    for (int i = 0; i < count; i++)
-        d->m_ReplyMetaTypes[i] = metaTypes[i];
+    d->m_MetaTypes.clear();
+    for (int i = 0; i < count; i++) {
+        d->m_MetaTypes << metaTypes[i];
+    }
+    d->m_CheckTypes = true;
+    d->m_TypeCheckFailure = true;
 }
 
 

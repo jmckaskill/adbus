@@ -54,6 +54,7 @@ QT_MODULE(DBus)
 class QDBusInterfacePrivate;
 class QDBUS_EXPORT QDBusInterface: public QDBusAbstractInterface
 {
+    Q_OBJECT
     friend class QDBusConnection;
 private:
     QDBusInterface(QDBusInterfacePrivate *p);
@@ -64,9 +65,10 @@ public:
                    QObject *parent = 0);
     ~QDBusInterface();
 
-    virtual const QMetaObject *metaObject() const;
-    virtual void *qt_metacast(const char *);
-    virtual int qt_metacall(QMetaObject::Call, int, void **);
+    // ADBUSQT CHANGE
+    //virtual const QMetaObject *metaObject() const;
+    //virtual void *qt_metacast(const char *);
+    //virtual int qt_metacall(QMetaObject::Call, int, void **);
 
 private:
     Q_DECLARE_PRIVATE(QDBusInterface)

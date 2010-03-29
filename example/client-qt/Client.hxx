@@ -91,8 +91,8 @@ namespace adbus {
         bool connectToServer(adbus_BusType type, bool connectToBus = true);
         bool connectToServer(const char* envstr, bool connectToBus = true);
 
-        adbus_Connection* connection() {return m_C.connection;}
-        operator adbus_Connection*() {return m_C.connection;}
+        adbus_Connection* connection() {return m_Connection;}
+        operator adbus_Connection*() {return m_Connection;}
 
     signals:
         void authenticated();
@@ -112,7 +112,9 @@ namespace adbus {
         static void     Connected(void* u);
         static void     Authenticated(void* u);
         
-        adbus_AuthConnection    m_C;
+        adbus_Auth*             m_Auth;
+        adbus_Connection*       m_Connection;
+        bool                    m_ConnectToBus;
         QIODevice*              m_Socket;
     };
 

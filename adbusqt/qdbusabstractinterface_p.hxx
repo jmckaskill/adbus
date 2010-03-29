@@ -27,6 +27,8 @@
 
 #include "qdbusabstractinterface.h"
 #include "qdbusobject_p.hxx"
+#include <QtCore/qmutex.h>
+#include <QtCore/qset.h>
 #include <Qt/private/qobject_p.h>
 #include <adbus.h>
 
@@ -46,6 +48,10 @@ public:
     QString             pathStr;
     QByteArray          interface;
     QDBusError          lastError;
+
+    QMutex              matchLock;
+    QSet<QByteArray>    matches;
+
     mutable adbus_MsgFactory* msg;
 };
 

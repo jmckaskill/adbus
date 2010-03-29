@@ -64,7 +64,7 @@ public:
     static QDBusArgument Create(adbus_Buffer* b, bool appendsig);
     static QDBusArgument Create(adbus_Iterator* i);
 
-    static int ParseError(const QDBusArgument& arg);
+    static int ParseError(const QDBusArgument& arg) {return arg.d->err;}
 
     ~QDBusArgumentPrivate(){}
 

@@ -5,6 +5,7 @@ CFLAGS += -DQDBUS_MAKEDLL
 CFLAGS += -fvisibility=hidden
 
 MOCFLAGS_qdbuspendingcall.hxx += -fqdbuspendingcall.hxx -fqdbuspendingcall_p.hxx
+MOCFLAGS_qdbusservicewatcher.hxx += -fqdbusservicewatcher.hxx -fqdbusservicewatcher_p.h
 
 : foreach *.hxx |> !moc |> moc_%B.cpp
 : foreach *.cpp |> !cpp |> %B.o

@@ -27,6 +27,7 @@
 #include "qdbusconnection_p.hxx"
 #include "qdbuspendingcall_p.hxx"
 #include "qdbuspendingreply.h"
+#include "qdbusinterface.hxx"
 
 /* ------------------------------------------------------------------------- */
 
@@ -34,6 +35,12 @@
 QDBusAbstractInterfaceBase::QDBusAbstractInterfaceBase(QDBusAbstractInterfacePrivate& p, QObject* parent)
 : QObject(p, parent)
 {}
+
+int QDBusAbstractInterfaceBase::qt_metacall(QMetaObject::Call type, int index, void** data)
+{ return QObject::qt_metacall(type, index, data); }
+
+
+/* ------------------------------------------------------------------------- */
 
 QDBusAbstractInterface::QDBusAbstractInterface(const QString& service,
                                                const QString& path,
@@ -94,6 +101,13 @@ void QDBusAbstractInterface::connectNotify(const char* signal)
 
     QByteArray member(signal, (int) (nameend - signal));
 
+    {
+        QMutexLocker lock(&d->matchLock);
+        if (!d->matches.contains(member))
+            return;
+        d->matches.insert(member);
+    }
+
     d->object->addMatch(d->remote, d->path, d->interface, member, this, sigMethod.constData());
 }
 
@@ -115,6 +129,13 @@ void QDBusAbstractInterface::disconnectNotify(const char* signal)
 
     QByteArray member(signal, (int) (nameend - signal));
 
+    {
+        QMutexLocker lock(&d->matchLock);
+        if (!d->matches.contains(member))
+            return;
+        d->matches.remove(member);
+    }
+
     d->object->removeMatch(d->remote, d->path, d->interface, member, this, sigMethod.constData());
                           
 }
@@ -125,8 +146,8 @@ void QDBusAbstractInterface::internalPropSet(const char* propname, const QVarian
 {
     Q_D(QDBusAbstractInterface);
 
-    QDBusArgumentType type;
-    if (qDBusLookupTypeId(value.userType(), &type))
+    QDBusArgumentType* type = QDBusArgumentType::Lookup(value.userType());
+    if (!type)
         return;
 
     adbus_msg_reset(d->msg);
@@ -143,8 +164,8 @@ void QDBusAbstractInterface::internalPropSet(const char* propname, const QVarian
     adbus_buf_string(b, propname, -1);
 
     adbus_BufVariant v;
-    adbus_buf_beginvariant(b, &v, type.dbusSignature.constData(), type.dbusSignature.size());
-    QDBusArgumentPrivate::Marshall(b, value);
+    adbus_buf_beginvariant(b, &v, type->m_DBusSignature.constData(), type->m_DBusSignature.size());
+    type->marshall(b, value, false);
     adbus_buf_endvariant(b, &v);
 
     adbus_msg_send(d->msg, d->connection);
@@ -161,7 +182,6 @@ QVariant QDBusAbstractInterface::internalPropGet(const char* propname) const
 
     adbus_msg_reset(d->msg);
     adbus_msg_settype(d->msg, ADBUS_MSG_METHOD);
-    adbus_msg_setflags(d->msg, ADBUS_MSG_NO_REPLY);
     adbus_msg_setserial(d->msg, serial);
     adbus_msg_setdestination(d->msg, d->remote.constData(), d->remote.size());
     adbus_msg_setpath(d->msg, d->path.constData(), d->path.size());
@@ -175,15 +195,15 @@ QVariant QDBusAbstractInterface::internalPropGet(const char* propname) const
 
     adbus_msg_send(d->msg, d->connection);
 
-    QDBusPendingReply<QVariant> reply(call);
+    QDBusPendingReply<QDBusVariant> reply(call);
     reply.waitForFinished();
 
-    return reply.argumentAt<0>();
+    return reply.argumentAt<0>().variant();
 }
 
 /* ------------------------------------------------------------------------- */
 
-static void DoCall(
+static bool DoCall(
         QDBusAbstractInterfacePrivate*  d,
         const QString&                  method,
         const QList<QVariant>&          args,
@@ -201,8 +221,13 @@ static void DoCall(
 
     adbus_Buffer* b = adbus_msg_argbuffer(d->msg);
     for (int i = 0; i < args.size(); i++) {
-        QDBusArgumentPrivate::Marshall(b, args[i]);
+        QDBusArgumentType* type = QDBusArgumentType::Lookup(args[i].userType());
+        if (!type) {
+            return false;
+        }
+        type->marshall(b, args[i], true);
     }
+    return true;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -264,10 +289,9 @@ QDBusMessage QDBusAbstractInterface::callWithArgumentList(
 
     if (reply.isError()) {
         d->lastError = reply.error();
-        return QDBusMessage();
-    } else {
-        return reply.reply();
     }
+
+    return reply.reply();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -392,4 +416,40 @@ QString QDBusAbstractInterface::interface() const
     Q_D(const QDBusAbstractInterface);
     return QString::fromAscii(d->interface);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ------------------------------------------------------------------------- */
+
+QDBusInterface::QDBusInterface(
+        const QString& service,
+        const QString& path,
+        const QString& interface,
+        const QDBusConnection& connection,
+        QObject* parent)
+: QDBusAbstractInterface(service, path, interface.toAscii().constData(), connection, parent)
+{}
+
+QDBusInterface::~QDBusInterface()
+{}
+
+
+
+
+
+
+
 

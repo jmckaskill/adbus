@@ -25,9 +25,10 @@
 
 #include "qdbusmessage_p.hxx"
 #include "qdbusargument_p.hxx"
-#include "qsharedfunctions_p.hxx"
-#include "qdbusmetatype_p.hxx"
+#include "qsharedfunctions_p.h"
+#include "qdbusreply.h"
 #include <QtCore/qthreadstorage.h>
+#include <QtCore/qmetaobject.h>
 
 
 
@@ -39,7 +40,7 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
     QList<QByteArray> types = method.parameterTypes();
     QList<QByteArray> names = method.parameterNames();
 
-    m_MetacallData.resize(types.size() + 1, NULL);
+    m_MetacallData.resize(types.size() + 1);
 
     QByteArray rettype = method.typeName();
     if (rettype.isEmpty() && rettype != "void") {
@@ -84,7 +85,7 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
         if (!type)
             return false;
 
-        m_Args += Entry(inarg, names, type);
+        m_Args += Entry(inarg, names[i], type);
     }
 
     Q_ASSERT(m_Args.size() == m_MetacallData.size() || (m_AppendMessage && m_Args.size() + 1 == m_MetacallData.size()));
@@ -124,8 +125,6 @@ void QDBusArgumentList::setupMetacall(const QDBusMessage* msg)
     if (m_AppendMessage) {
         m_MetacallData[m_MetacallData.size() - 1] = (void*) msg;
     }
-
-    return true;
 }
 
 
@@ -133,36 +132,6 @@ void QDBusArgumentList::setupMetacall(const QDBusMessage* msg)
 
 
 
-
-
-
-
-
-/* ------------------------------------------------------------------------- */
-
-class QDBusMessageFactory
-{
-    QDBusMessageFactory(const QDBusMessageFactory&);
-    QDBusMessageFactory& operator=(const QDBusMessageFactory&);
-public:
-    QDBusMessageFactory() : d(adbus_msg_new()) {}
-    ~QDBusMessageFactory() {adbus_msg_free(d);}
-
-    adbus_MsgFactory* d;
-};
-
-static QThreadStorage<QDBusMessageFactory*> factories;
-
-adbus_MsgFactory* QDBusMessagePrivate::ToFactory(const QDBusMessage& msg)
-{
-    if (!factories.hasLocalData()) {
-        factories.setLocalData(new QDBusMessageFactory);
-    }
-
-    QDBusMessageFactory* f = factories.localData();
-    msg.d_ptr->setupFactory(f->d);
-    return f->d;
-}
 
 
 
@@ -199,12 +168,12 @@ int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg)
             if (type->demarshall(&i, variant)) {
                 goto err;
             }
-            arguments.push_back(variant);
+            d->arguments.push_back(variant);
         } else {
             if (adbus_iter_value(&i)) {
                   goto err;
             }
-            arguments.push_back(QVariant());
+            d->arguments.push_back(QVariant());
         }
     }
 
@@ -225,35 +194,35 @@ int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg, const 
     d->reset();
     d->getHeaders(msg);
 
-    adbus_Iterator i;
-    adbus_iter_args(&i, msg);
+    adbus_Iterator iter;
+    adbus_iter_args(&iter, msg);
 
     for (int i = 0; i < types.m_Args.size(); i++) {
         if (types.m_Args[i].inarg) {
 
-            QDBusArgumentType* type = &types.m_Args[i].type;
+            QDBusArgumentType* type = types.m_Args[i].type;
 
             /* Check that we aren't expecting more types than provided */
-            if (i.size == 0) {
+            if (iter.size == 0) {
                 goto argument_error;
             }
 
             /* Check that we can figure out the provided type */
-            const char* sigend = adbus_nextarg(i.sig);
-            if (!sig) {
+            const char* sigend = adbus_nextarg(iter.sig);
+            if (!sigend) {
                 goto parse_error;
             }
 
             /* Check that the provided type is as we expect */
-            if (    sigend - i.sig != type->m_DBusSignature.size() 
-                ||  qstrncmp(i.sig, type.m_DBusSignature.constData(), sigend - i.sig) != 0)
+            if (    sigend - iter.sig != type->m_DBusSignature.size() 
+                ||  qstrncmp(iter.sig, type->m_DBusSignature.constData(), sigend - iter.sig) != 0)
             {
                 goto argument_error;
             }
 
             /* Demarshall the argument */
             QVariant variant(type->m_TypeId, (const void*) NULL);
-            if (type->demarshall(&i, variant)) {
+            if (type->demarshall(&iter, variant)) {
                 goto parse_error;
             }
 
@@ -279,15 +248,15 @@ bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* ms
     QDBusMessagePrivate* d = q.d_ptr;
 
     adbus_msg_reset(msg);
-    adbus_msg_settype(msg, type);
-    adbus_msg_setflags(msg, flags);
+    adbus_msg_settype(msg, d->type);
+    adbus_msg_setflags(msg, d->flags);
 
     if (d->serial >= 0) {
-        adbus_msg_setserial(msg, (uint32_t) serial);
+        adbus_msg_setserial(msg, (uint32_t) d->serial);
     }
 
     if (d->replySerial >= 0) {
-        adbus_msg_setreply(msg, (uint32_t) replySerial);
+        adbus_msg_setreply(msg, (uint32_t) d->replySerial);
     }
 
     if (!d->path.isEmpty()) {
@@ -343,9 +312,23 @@ bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* ms
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** ret, const QDBusArgumentList& types) const
+void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** ret, const QDBusArgumentList& args)
 {
+    QDBusMessagePrivate* d = msg.d_ptr;
+
     if (*ret && !d->delayedReply) {
+        adbus_Buffer* buf = adbus_msg_argbuffer(*ret);
+
+        for (int i = 0; i < args.m_Args.size(); i++) {
+            QDBusArgumentType* type = args.m_Args[i].type;
+
+            if (!args.m_Args[i].inarg && type) {
+                type->marshall(buf, args.m_MetacallData[i], false);
+            }
+        }
+
+    } else {
+        *ret = NULL;
     }
 }
 
@@ -570,7 +553,26 @@ QString QDBusMessage::errorMessage() const
     }
 }
 
+
+
+
+
+
+
+
+
 /* ------------------------------------------------------------------------- */
 
+void qDBusReplyFill(const QDBusMessage &reply, QDBusError &error, QVariant &data)
+{
+    QList<QVariant> args = reply.arguments();
+    if (reply.type() == QDBusMessage::ReplyMessage && args.size() > 0) {
+        data = args.at(0);
+    } else if (reply.type() == QDBusMessage::ErrorMessage) {
+        error = QDBusError(reply);
+    } else {
+        error = QDBusError(QDBusError::Other, "nz.co.foobar.adbusqt.InvalidArguments");
+    }
+}
 
 
