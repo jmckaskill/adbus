@@ -24,7 +24,7 @@
  */
 
 #include "qdbusobject_p.hxx"
-#include "qdbusmessage_p.hxx"
+#include "qdbusmessage_p.h"
 #include "qdbusconnection_p.hxx"
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qmetaobject.h>
@@ -365,7 +365,7 @@ int QDBusObject::GetPropertyCallback(adbus_CbData* d)
             prop->propIndex,
             &prop->data);
 
-    prop->type->marshall(d->getprop, prop->data, false);
+    prop->type->marshall(d->getprop, prop->data, false, false);
 
     return 0;
 }

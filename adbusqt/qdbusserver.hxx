@@ -43,7 +43,7 @@
 
 #include <QtCore/qobject.h>
 #include <QtCore/qstring.h>
-#include "qdbusmacros.hxx"
+#include "qdbusmacros.h"
 
 QT_BEGIN_HEADER
 

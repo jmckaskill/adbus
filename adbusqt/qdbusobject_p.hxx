@@ -28,7 +28,7 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qcoreevent.h>
-#include "qdbusmessage_p.hxx"
+#include "qdbusmessage_p.h"
 #include "qdbusconnection.hxx"
 #include "dmem/list.h"
 
@@ -206,7 +206,7 @@ public:
     QDBusMessage            m_CurrentMessage;
     QDBusConnection         m_QConnection;
 
-public slots:
+public Q_SLOTS:
     void destroy();
 
 private:

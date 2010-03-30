@@ -23,8 +23,8 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbusabstractadaptor_p.hxx"
-#include <qmetaobject.h>
+#include "qdbusabstractadaptor_p.h"
+#include <QtCore/qmetaobject.h>
 
 
 #define QCLASSINFO_DBUS_INTROSPECTION   "D-Bus Introspection"

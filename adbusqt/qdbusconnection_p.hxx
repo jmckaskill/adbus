@@ -44,11 +44,11 @@ public:
 
     adbus_Connection* connection() {return m_Connection;}
 
-signals:
+Q_SIGNALS:
     void connected();
     void disconnected();
 
-private slots:
+private Q_SLOTS:
     void socketReadyRead();
     void socketConnected();
     void disconnect();

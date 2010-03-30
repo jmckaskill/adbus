@@ -23,7 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbusargument_p.hxx"
+#include "qdbusargument_p.h"
 #include "qsharedfunctions_p.h"
 #include <QtCore/qvariant.h>
 #include <QtCore/qhash.h>
@@ -63,7 +63,7 @@ void QDBusMetaType::registerMarshallOperators(
     type->m_Demarshall      = demarshall;
 
     adbus_Buffer* buf = adbus_buf_new();
-    type->marshall(buf, QVariant(typeId, (const void*) NULL), true);
+    type->marshall(buf, QVariant(typeId, (const void*) NULL), true, true);
     type->m_DBusSignature = adbus_buf_sig(buf, NULL);
     adbus_buf_free(buf);
 
@@ -137,15 +137,15 @@ Q_CONSTRUCTOR_FUNCTION(RegisterBuiltInTypes)
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentType::marshall(adbus_Buffer* b, const QVariant& variant, bool appendsig) const
+void QDBusArgumentType::marshall(adbus_Buffer* b, const QVariant& variant, bool appendsig, bool sigonly) const
 {
     Q_ASSERT(variant.userType() == m_TypeId);
-    marshall(b, variant.data(), appendsig);
+    marshall(b, variant.data(), appendsig, sigonly);
 }
 
-void QDBusArgumentType::marshall(adbus_Buffer* b, const void* data, bool appendsig) const
+void QDBusArgumentType::marshall(adbus_Buffer* b, const void* data, bool appendsig, bool sigonly) const
 {
-    QDBusArgument arg = QDBusArgumentPrivate::Create(b, appendsig);
+    QDBusArgument arg = QDBusArgumentPrivate::Create(b, appendsig, sigonly);
     m_Marshall(arg, data);
 }
 
@@ -199,12 +199,14 @@ int QDBusArgumentType::demarshall(adbus_Iterator* i, void* data) const
 
 /* ------------------------------------------------------------------------- */
 
-QDBusArgument QDBusArgumentPrivate::Create(adbus_Buffer* b, bool appendsig)
+QDBusArgument QDBusArgumentPrivate::Create(adbus_Buffer* b, bool appendsig, bool sigonly)
 {
     QDBusArgumentPrivate* d = new QDBusArgumentPrivate;
     d->err = 0;
     d->buf = b;
-    d->depth = appendsig ? 1 : 0;
+    d->iter = NULL;
+    d->depth = appendsig ? 0 : 1;
+    d->sigonly = sigonly;
     return QDBusArgument(d);
 }
 
@@ -214,8 +216,10 @@ QDBusArgument QDBusArgumentPrivate::Create(adbus_Iterator* i)
 {
     QDBusArgumentPrivate* d = new QDBusArgumentPrivate;
     d->err = 0;
+    d->buf = NULL;
     d->iter = i;
     d->depth = 0;
+    d->sigonly = false;
     return QDBusArgument(d);
 }
 
@@ -526,7 +530,7 @@ void QDBusArgument::appendVariant(const QVariant& variant)
 {
     if (d->canBuffer()) {
         QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
-        type->marshall(d->buf, variant, d->shouldAppendSignature());
+        type->marshall(d->buf, variant, d->shouldAppendSignature(), d->sigonly);
     }
 }
 
@@ -535,16 +539,25 @@ void QDBusArgument::appendVariant(const QVariant& variant)
 QDBusArgument& QDBusArgument::operator<<(const QDBusVariant& arg)
 {
     if (d->canBuffer()) {
-        QVariant variant = arg.variant();
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
-        
+        d->appendSignature("v");
+
         adbus_Buffer* b = d->buf;
         adbus_BufVariant v;
-        adbus_buf_beginvariant(b, &v, type->m_DBusSignature.constData(), -1);
-        
-        type->marshall(b, variant, false);
 
-        adbus_buf_endvariant(b, &v);
+        if (d->sigonly) {
+            adbus_buf_beginvariant(b, &v, "i", -1);
+            adbus_buf_i32(b, 0);
+            adbus_buf_endvariant(b, &v);
+
+        } else {
+            QVariant variant = arg.variant();
+            QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
+            Q_ASSERT(type);
+            
+            adbus_buf_beginvariant(b, &v, type->m_DBusSignature.constData(), -1);
+            type->marshall(b, variant, false, false);
+            adbus_buf_endvariant(b, &v);
+        }
     }
     return *this;
 }

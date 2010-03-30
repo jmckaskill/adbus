@@ -39,66 +39,85 @@
 **
 ****************************************************************************/
 
-#ifndef QDBUSSERVICEWATCHER_H
-#define QDBUSSERVICEWATCHER_H
+#ifndef QDBUSERROR_H
+#define QDBUSERROR_H
 
-#include <QtCore/qobject.h>
-#include <QtCore/qstringlist.h>
 #include "qdbusmacros.h"
+#include <QtCore/qstring.h>
 
 QT_BEGIN_HEADER
+
+struct DBusError;
 
 QT_BEGIN_NAMESPACE
 
 QT_MODULE(DBus)
 
-class QDBusConnection;
+class QDBusMessage;
 
-class QDBusServiceWatcherPrivate;
-class QDBUS_EXPORT QDBusServiceWatcher: public QObject
+class QDBUS_EXPORT QDBusError
 {
-    Q_OBJECT
-    Q_PROPERTY(QStringList watchedServices READ watchedServices WRITE setWatchedServices)
-    Q_PROPERTY(WatchMode watchMode READ watchMode WRITE setWatchMode)
 public:
-    enum WatchModeFlag {
-        WatchForRegistration = 0x01,
-        WatchForUnregistration = 0x02,
-        WatchForOwnerChange = 0x03
+    enum ErrorType {
+        NoError = 0,
+        Other = 1,
+        Failed,
+        NoMemory,
+        ServiceUnknown,
+        NoReply,
+        BadAddress,
+        NotSupported,
+        LimitsExceeded,
+        AccessDenied,
+        NoServer,
+        Timeout,
+        NoNetwork,
+        AddressInUse,
+        Disconnected,
+        InvalidArgs,
+        UnknownMethod,
+        TimedOut,
+        InvalidSignature,
+        UnknownInterface,
+        InternalError,
+        UnknownObject,
+        InvalidService,
+        InvalidObjectPath,
+        InvalidInterface,
+        InvalidMember,
+
+#ifndef Q_QDOC
+        // don't use this one!
+        LastErrorType = InvalidMember
+#endif
     };
-    Q_DECLARE_FLAGS(WatchMode, WatchModeFlag)
 
-    explicit QDBusServiceWatcher(QObject *parent = 0);
-    QDBusServiceWatcher(const QString &service, const QDBusConnection &connection,
-                        WatchMode watchMode = WatchForOwnerChange, QObject *parent = 0);
-    ~QDBusServiceWatcher();
+    QDBusError(const DBusError *error = 0);
+    QDBusError(const QDBusMessage& msg);
+    QDBusError(ErrorType error, const QString &message);
+    QDBusError(const QDBusError &other);
+    QDBusError &operator=(const QDBusError &other);
 
-    QStringList watchedServices() const;
-    void setWatchedServices(const QStringList &services);
-    void addWatchedService(const QString &newService);
-    bool removeWatchedService(const QString &service);
+    ErrorType type() const;
+    QString name() const;
+    QString message() const;
+    bool isValid() const;
 
-    WatchMode watchMode() const;
-    void setWatchMode(WatchMode mode);
-
-    QDBusConnection connection() const;
-    void setConnection(const QDBusConnection &connection);
-
-Q_SIGNALS:
-    void serviceRegistered(const QString &service);
-    void serviceUnregistered(const QString &service);
-    void serviceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
+    static QString errorString(ErrorType error);
 
 private:
-    Q_PRIVATE_SLOT(d_func(), void _q_serviceOwnerChanged(QString,QString,QString))
-    Q_DISABLE_COPY(QDBusServiceWatcher)
-    Q_DECLARE_PRIVATE(QDBusServiceWatcher)
+    ErrorType code;
+    QString msg;
+    QString nm;
+    void *unused;
 };
 
-Q_DECLARE_OPERATORS_FOR_FLAGS(QDBusServiceWatcher::WatchMode)
+#ifndef QT_NO_DEBUG_STREAM
+QDBUS_EXPORT QDebug operator<<(QDebug, const QDBusError &);
+#endif
 
 QT_END_NAMESPACE
 
 QT_END_HEADER
 
-#endif // QDBUSSERVICEWATCHER_H
+#endif

@@ -25,10 +25,10 @@
 
 #include "qdbusconnection_p.hxx"
 
-#include "qdbusmessage_p.hxx"
+#include "qdbusmessage_p.h"
 #include "qdbusobject_p.hxx"
 #include "qsharedfunctions_p.h"
-#include "qdbusabstractadaptor_p.hxx"
+#include "qdbusabstractadaptor_p.h"
 #include "qdbuspendingcall_p.hxx"
 #include "qdbusconnectioninterface.hxx"
 
@@ -47,6 +47,7 @@ QThreadStorage<QDBusProxy*> QDBusClient::m_Proxies;
 QDBusClient::QDBusClient(adbus_BusType type, bool connectToBus)
 :   m_ConnectToBus(connectToBus),
     m_Connected(false),
+    m_Authenticated(0),
     m_Auth(NULL),
     m_IODevice(NULL)
 {
@@ -73,6 +74,7 @@ QDBusClient::QDBusClient(adbus_BusType type, bool connectToBus)
 QDBusClient::QDBusClient(const char* envstr, bool connectToBus)
 :   m_ConnectToBus(connectToBus),
     m_Connected(false),
+    m_Authenticated(0),
     m_Auth(NULL),
     m_IODevice(NULL)
 {
@@ -321,6 +323,7 @@ void QDBusClient::disconnect()
     adbus_auth_free(m_Auth);
     m_Auth = NULL;
     m_Connected = false;
+    m_Authenticated = 0;
     emit disconnected();
 }
 
@@ -333,6 +336,7 @@ void QDBusClient::socketConnected()
     m_Auth = adbus_cauth_new(&Send, &Rand, this);
     adbus_cauth_external(m_Auth);
     adbus_cauth_start(m_Auth);
+    m_Authenticated = 0;
 }
 
 /* ------------------------------------------------------------------------- */

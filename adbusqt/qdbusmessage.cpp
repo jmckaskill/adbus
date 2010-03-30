@@ -23,8 +23,8 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbusmessage_p.hxx"
-#include "qdbusargument_p.hxx"
+#include "qdbusmessage_p.h"
+#include "qdbusargument_p.h"
 #include "qsharedfunctions_p.h"
 #include "qdbusreply.h"
 #include <QtCore/qthreadstorage.h>
@@ -304,7 +304,7 @@ bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* ms
             return false;
         }
 
-        type->marshall(buf, arg.data(), true);
+        type->marshall(buf, arg.data(), true, false);
     }
 
     return true;
@@ -323,7 +323,7 @@ void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** r
             QDBusArgumentType* type = args.m_Args[i].type;
 
             if (!args.m_Args[i].inarg && type) {
-                type->marshall(buf, args.m_MetacallData[i], false);
+                type->marshall(buf, args.m_MetacallData[i], false, false);
             }
         }
 
@@ -364,31 +364,31 @@ void QDBusMessagePrivate::getHeaders(adbus_Message* msg)
     }
 
     if (msg->signature) {
-        signature = QString::fromAscii(msg->signature, msg->signatureSize);
+        signature = QString::fromAscii(msg->signature, (int) msg->signatureSize);
     }
 
     if (msg->path) {
-        path = QString::fromAscii(msg->path, msg->pathSize);
+        path = QString::fromAscii(msg->path, (int) msg->pathSize);
     }
 
     if (msg->interface) {
-        interface = QString::fromAscii(msg->interface, msg->interfaceSize);
+        interface = QString::fromAscii(msg->interface, (int) msg->interfaceSize);
     }
 
     if (msg->member) {
-        member = QString::fromAscii(msg->member, msg->memberSize);
+        member = QString::fromAscii(msg->member, (int) msg->memberSize);
     }
 
     if (msg->error) {
-        error = QString::fromAscii(msg->error, msg->errorSize);
+        error = QString::fromAscii(msg->error, (int) msg->errorSize);
     }
 
     if (msg->destination) {
-        destination = QString::fromAscii(msg->destination, msg->destinationSize);
+        destination = QString::fromAscii(msg->destination, (int) msg->destinationSize);
     }
 
     if (msg->sender) {
-        sender = QString::fromAscii(msg->sender, msg->senderSize);
+        sender = QString::fromAscii(msg->sender, (int) msg->senderSize);
     }
 }
 

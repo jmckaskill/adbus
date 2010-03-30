@@ -39,12 +39,11 @@
 **
 ****************************************************************************/
 
-#ifndef QDBUSSERVICEWATCHER_H
-#define QDBUSSERVICEWATCHER_H
+#ifndef QDBUSCONTEXT_H
+#define QDBUSCONTEXT_H
 
-#include <QtCore/qobject.h>
-#include <QtCore/qstringlist.h>
-#include "qdbusmacros.h"
+#include <QtCore/qstring.h>
+#include "qdbuserror.h"
 
 QT_BEGIN_HEADER
 
@@ -53,52 +52,33 @@ QT_BEGIN_NAMESPACE
 QT_MODULE(DBus)
 
 class QDBusConnection;
+class QDBusMessage;
 
-class QDBusServiceWatcherPrivate;
-class QDBUS_EXPORT QDBusServiceWatcher: public QObject
+class QDBusContextPrivate;
+class QDBUS_EXPORT QDBusContext
 {
-    Q_OBJECT
-    Q_PROPERTY(QStringList watchedServices READ watchedServices WRITE setWatchedServices)
-    Q_PROPERTY(WatchMode watchMode READ watchMode WRITE setWatchMode)
 public:
-    enum WatchModeFlag {
-        WatchForRegistration = 0x01,
-        WatchForUnregistration = 0x02,
-        WatchForOwnerChange = 0x03
-    };
-    Q_DECLARE_FLAGS(WatchMode, WatchModeFlag)
+    QDBusContext();
+    ~QDBusContext();
 
-    explicit QDBusServiceWatcher(QObject *parent = 0);
-    QDBusServiceWatcher(const QString &service, const QDBusConnection &connection,
-                        WatchMode watchMode = WatchForOwnerChange, QObject *parent = 0);
-    ~QDBusServiceWatcher();
-
-    QStringList watchedServices() const;
-    void setWatchedServices(const QStringList &services);
-    void addWatchedService(const QString &newService);
-    bool removeWatchedService(const QString &service);
-
-    WatchMode watchMode() const;
-    void setWatchMode(WatchMode mode);
-
+    bool calledFromDBus() const;
     QDBusConnection connection() const;
-    void setConnection(const QDBusConnection &connection);
+    const QDBusMessage &message() const;
 
-Q_SIGNALS:
-    void serviceRegistered(const QString &service);
-    void serviceUnregistered(const QString &service);
-    void serviceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
+    // convenience methods
+    bool isDelayedReply() const;
+    // yes, they are const, so that you can use them even from const methods
+    void setDelayedReply(bool enable) const;
+    void sendErrorReply(const QString &name, const QString &msg = QString()) const;
+    void sendErrorReply(QDBusError::ErrorType type, const QString &msg = QString()) const;
 
 private:
-    Q_PRIVATE_SLOT(d_func(), void _q_serviceOwnerChanged(QString,QString,QString))
-    Q_DISABLE_COPY(QDBusServiceWatcher)
-    Q_DECLARE_PRIVATE(QDBusServiceWatcher)
+    QDBusContextPrivate *d_ptr;
+    friend class QDBusContextPrivate;
 };
-
-Q_DECLARE_OPERATORS_FOR_FLAGS(QDBusServiceWatcher::WatchMode)
 
 QT_END_NAMESPACE
 
 QT_END_HEADER
 
-#endif // QDBUSSERVICEWATCHER_H
+#endif

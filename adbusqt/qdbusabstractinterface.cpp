@@ -23,7 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbusabstractinterface_p.hxx"
+#include "qdbusabstractinterface_p.h"
 #include "qdbusconnection_p.hxx"
 #include "qdbuspendingcall_p.hxx"
 #include "qdbuspendingreply.h"
@@ -165,7 +165,7 @@ void QDBusAbstractInterface::internalPropSet(const char* propname, const QVarian
 
     adbus_BufVariant v;
     adbus_buf_beginvariant(b, &v, type->m_DBusSignature.constData(), type->m_DBusSignature.size());
-    type->marshall(b, value, false);
+    type->marshall(b, value, false, false);
     adbus_buf_endvariant(b, &v);
 
     adbus_msg_send(d->msg, d->connection);
@@ -225,7 +225,7 @@ static bool DoCall(
         if (!type) {
             return false;
         }
-        type->marshall(b, args[i], true);
+        type->marshall(b, args[i], true, false);
     }
     return true;
 }

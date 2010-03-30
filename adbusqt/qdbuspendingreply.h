@@ -43,8 +43,8 @@
 #define QDBUSPENDINGREPLY_H
 
 #include <QtCore/qglobal.h>
-#include "qdbusmacros.hxx"
-#include "qdbusargument.hxx"
+#include "qdbusmacros.h"
+#include "qdbusargument.h"
 #include "qdbuspendingcall.hxx"
 
 QT_BEGIN_HEADER

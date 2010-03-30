@@ -330,49 +330,49 @@ ADBUS_INLINE int adbusI_iter_sig(adbus_Iterator* i, char field)
     return 0;
 }
 
-ADBUS_INLINE int adbusI_iter_get8(adbus_Iterator* i, const uint8_t** v)
+ADBUS_INLINE int adbusI_iter_get8(adbus_Iterator* i, uint8_t* v)
 {
     if (i->size < 1)
         return -1;
 
     if (v)
-        *v = (const uint8_t*) i->data;
+        *v = *(const uint8_t*) i->data;
     i->data += 1;
     i->size -= 1;
     return 0;
 }
 
-ADBUS_INLINE int adbusI_iter_get16(adbus_Iterator* i, const uint16_t** v)
+ADBUS_INLINE int adbusI_iter_get16(adbus_Iterator* i, uint16_t* v)
 {
     if (adbus_iter_align(i, 2) || i->size < 2)
         return -1;
 
     if (v)
-        *v = (const uint16_t*) i->data;
+        *v = *(const uint16_t*) i->data;
     i->data += 2;
     i->size -= 2;
     return 0;
 }
 
-ADBUS_INLINE int adbusI_iter_get32(adbus_Iterator* i, const uint32_t** v)
+ADBUS_INLINE int adbusI_iter_get32(adbus_Iterator* i, uint32_t* v)
 {
     if (adbus_iter_align(i, 4) || i->size < 4)
         return -1;
 
     if (v)
-        *v = (const uint32_t*) i->data;
+        *v = *(const uint32_t*) i->data;
     i->data += 4;
     i->size -= 4;
     return 0;
 }
 
-ADBUS_INLINE int adbusI_iter_get64(adbus_Iterator* i, const uint64_t** v)
+ADBUS_INLINE int adbusI_iter_get64(adbus_Iterator* i, uint64_t* v)
 {
     if (adbus_iter_align(i, 8) || i->size < 8)
         return -1;
 
     if (v)
-        *v = (const uint64_t*) i->data;
+        *v = *(const uint64_t*) i->data;
     i->data += 8;
     i->size -= 8;
     return 0;
@@ -381,56 +381,62 @@ ADBUS_INLINE int adbusI_iter_get64(adbus_Iterator* i, const uint64_t** v)
 /** Pulls out a boolean (dbus sig "b").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, const adbus_Bool** v)
-{ return adbusI_iter_sig(i, 'b') || adbusI_iter_get32(i, (const uint32_t**) v); }
+ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, adbus_Bool* v)
+{ 
+    uint32_t u32;
+    if (adbusI_iter_sig(i, 'b') || adbusI_iter_get32(i, &u32))
+        return -1;
+    *v = (u32 != 0);
+    return 0;
+}
 
 /** Pulls out a uint8_t (dbus sig "y").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_u8(adbus_Iterator* i, const uint8_t** v)
+ADBUS_INLINE int adbus_iter_u8(adbus_Iterator* i, uint8_t* v)
 { return adbusI_iter_sig(i, 'y') || adbusI_iter_get8(i, v); }
 
 /** Pulls out a int16_t (dbus sig "n").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_i16(adbus_Iterator* i, const int16_t** v)
-{ return adbusI_iter_sig(i, 'n') || adbusI_iter_get16(i, (const uint16_t**) v); }
+ADBUS_INLINE int adbus_iter_i16(adbus_Iterator* i, int16_t* v)
+{ return adbusI_iter_sig(i, 'n') || adbusI_iter_get16(i, (uint16_t*) v); }
 
 /** Pulls out a uint16_t (dbus sig "q").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_u16(adbus_Iterator* i, const uint16_t** v)
+ADBUS_INLINE int adbus_iter_u16(adbus_Iterator* i, uint16_t* v)
 { return adbusI_iter_sig(i, 'q') || adbusI_iter_get16(i, v); }
 
 /** Pulls out a int32_t (dbus sig "i").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_i32(adbus_Iterator* i, const int32_t** v)
-{ return adbusI_iter_sig(i, 'i') || adbusI_iter_get32(i, (const uint32_t**) v); }
+ADBUS_INLINE int adbus_iter_i32(adbus_Iterator* i, int32_t* v)
+{ return adbusI_iter_sig(i, 'i') || adbusI_iter_get32(i, (uint32_t*) v); }
 
 /** Pulls out a uint32_t (dbus sig "u").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_u32(adbus_Iterator* i, const uint32_t** v)
+ADBUS_INLINE int adbus_iter_u32(adbus_Iterator* i, uint32_t* v)
 { return adbusI_iter_sig(i, 'u') || adbusI_iter_get32(i, v); }
 
 /** Pulls out a int64_t (dbus sig "x").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_i64(adbus_Iterator* i, const int64_t** v)
-{ return adbusI_iter_sig(i, 'x') || adbusI_iter_get64(i, (const uint64_t**) v); }
+ADBUS_INLINE int adbus_iter_i64(adbus_Iterator* i, int64_t* v)
+{ return adbusI_iter_sig(i, 'x') || adbusI_iter_get64(i, (uint64_t*) v); }
 
 /** Pulls out a uint64_t (dbus sig "t").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_u64(adbus_Iterator* i, const uint64_t** v)
+ADBUS_INLINE int adbus_iter_u64(adbus_Iterator* i, uint64_t* v)
 { return adbusI_iter_sig(i, 't') || adbusI_iter_get64(i, v); }
 
 /** Pulls out a double (dbus sig "d").
  *  \relates adbus_Iterator
  */
-ADBUS_INLINE int adbus_iter_double(adbus_Iterator* i, const double** v)
-{ return adbusI_iter_sig(i, 'd') || adbusI_iter_get64(i, (const uint64_t**) v); }
+ADBUS_INLINE int adbus_iter_double(adbus_Iterator* i, double* v)
+{ return adbusI_iter_sig(i, 'd') || adbusI_iter_get64(i, (uint64_t*) v); }
 
 ADBUS_INLINE int adbusI_iter_getstring(adbus_Iterator* i, size_t strsz, const char** pstr, size_t* pstrsz)
 {
@@ -453,10 +459,10 @@ ADBUS_INLINE int adbusI_iter_getstring(adbus_Iterator* i, size_t strsz, const ch
  */
 ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** str, size_t* strsz)
 {
-    const uint32_t* len;
+    uint32_t len;
     return adbusI_iter_sig(i, 's')
-        || adbusI_iter_get32(i, &len)
-        || adbusI_iter_getstring(i, *len, str, strsz);
+        || adbusI_iter_get32(i, len)
+        || adbusI_iter_getstring(i, len, str, strsz);
 }
 
 /** Pulls out a object path (dbus sig "o").
@@ -464,10 +470,10 @@ ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** str, size_t* 
  */
 ADBUS_INLINE int adbus_iter_objectpath(adbus_Iterator* i, const char** str, size_t* strsz)
 {
-    const uint32_t* len;
+    uint32_t len;
     return adbusI_iter_sig(i, 'o')
         || adbusI_iter_get32(i, &len)
-        || adbusI_iter_getstring(i, *len, str, strsz);
+        || adbusI_iter_getstring(i, len, str, strsz);
 }
 
 /** Pulls out a signature (dbus sig "g").
@@ -475,10 +481,10 @@ ADBUS_INLINE int adbus_iter_objectpath(adbus_Iterator* i, const char** str, size
  */
 ADBUS_INLINE int adbus_iter_signature(adbus_Iterator* i, const char** str, size_t* strsz)
 {
-    const uint8_t* len;
+    uint8_t len;
     return adbusI_iter_sig(i, 'g')
-        || adbusI_iter_get8(i, &len)
-        || adbusI_iter_getstring(i, *len, str, strsz);
+        || adbusI_iter_get8(i, len)
+        || adbusI_iter_getstring(i, len, str, strsz);
 }
 
 /** Data structure used by the array iterate functions.

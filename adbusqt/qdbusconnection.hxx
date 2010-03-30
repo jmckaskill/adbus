@@ -42,7 +42,7 @@
 #ifndef QDBUSCONNECTION_H
 #define QDBUSCONNECTION_H
 
-#include "qdbusmacros.hxx"
+#include "qdbusmacros.h"
 #include <QtCore/qstring.h>
 
 QT_BEGIN_HEADER

@@ -39,12 +39,11 @@
 **
 ****************************************************************************/
 
-#ifndef QDBUSSERVICEWATCHER_H
-#define QDBUSSERVICEWATCHER_H
+#ifndef QDBUSMETATYPE_H
+#define QDBUSMETATYPE_H
 
-#include <QtCore/qobject.h>
-#include <QtCore/qstringlist.h>
-#include "qdbusmacros.h"
+#include "QtCore/qmetatype.h"
+#include "qdbusargument.h"
 
 QT_BEGIN_HEADER
 
@@ -52,53 +51,47 @@ QT_BEGIN_NAMESPACE
 
 QT_MODULE(DBus)
 
-class QDBusConnection;
-
-class QDBusServiceWatcherPrivate;
-class QDBUS_EXPORT QDBusServiceWatcher: public QObject
+class QDBUS_EXPORT QDBusMetaType
 {
-    Q_OBJECT
-    Q_PROPERTY(QStringList watchedServices READ watchedServices WRITE setWatchedServices)
-    Q_PROPERTY(WatchMode watchMode READ watchMode WRITE setWatchMode)
 public:
-    enum WatchModeFlag {
-        WatchForRegistration = 0x01,
-        WatchForUnregistration = 0x02,
-        WatchForOwnerChange = 0x03
-    };
-    Q_DECLARE_FLAGS(WatchMode, WatchModeFlag)
+    typedef void (*MarshallFunction)(QDBusArgument &, const void *);
+    typedef void (*DemarshallFunction)(const QDBusArgument &, void *);
 
-    explicit QDBusServiceWatcher(QObject *parent = 0);
-    QDBusServiceWatcher(const QString &service, const QDBusConnection &connection,
-                        WatchMode watchMode = WatchForOwnerChange, QObject *parent = 0);
-    ~QDBusServiceWatcher();
+    static void registerMarshallOperators(int typeId, MarshallFunction, DemarshallFunction);
+    static bool marshall(QDBusArgument &, int id, const void *data);
+    static bool demarshall(const QDBusArgument &, int id, void *data);
 
-    QStringList watchedServices() const;
-    void setWatchedServices(const QStringList &services);
-    void addWatchedService(const QString &newService);
-    bool removeWatchedService(const QString &service);
-
-    WatchMode watchMode() const;
-    void setWatchMode(WatchMode mode);
-
-    QDBusConnection connection() const;
-    void setConnection(const QDBusConnection &connection);
-
-Q_SIGNALS:
-    void serviceRegistered(const QString &service);
-    void serviceUnregistered(const QString &service);
-    void serviceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
-
-private:
-    Q_PRIVATE_SLOT(d_func(), void _q_serviceOwnerChanged(QString,QString,QString))
-    Q_DISABLE_COPY(QDBusServiceWatcher)
-    Q_DECLARE_PRIVATE(QDBusServiceWatcher)
+    static int signatureToType(const char *signature);
+    static const char *typeToSignature(int type);
 };
 
-Q_DECLARE_OPERATORS_FOR_FLAGS(QDBusServiceWatcher::WatchMode)
+template<typename T>
+void qDBusMarshallHelper(QDBusArgument &arg, const T *t)
+{ arg << *t; }
+
+template<typename T>
+void qDBusDemarshallHelper(const QDBusArgument &arg, T *t)
+{ arg >> *t; }
+
+template<typename T>
+int qDBusRegisterMetaType(
+#ifndef qdoc
+    T * /* dummy */ = 0
+#endif
+)
+{
+    void (*mf)(QDBusArgument &, const T *) = qDBusMarshallHelper<T>;
+    void (*df)(const QDBusArgument &, T *) = qDBusDemarshallHelper<T>;
+
+    int id = qRegisterMetaType<T>(); // make sure it's registered
+    QDBusMetaType::registerMarshallOperators(id,
+        reinterpret_cast<QDBusMetaType::MarshallFunction>(mf),
+        reinterpret_cast<QDBusMetaType::DemarshallFunction>(df));
+    return id;
+}
 
 QT_END_NAMESPACE
 
 QT_END_HEADER
 
-#endif // QDBUSSERVICEWATCHER_H
+#endif

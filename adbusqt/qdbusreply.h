@@ -45,10 +45,10 @@
 #include <QtCore/qglobal.h>
 #include <QtCore/qvariant.h>
 
-#include "qdbusmacros.hxx"
-#include "qdbusmessage.hxx"
-#include "qdbuserror.hxx"
-#include "qdbusextratypes.hxx"
+#include "qdbusmacros.h"
+#include "qdbusmessage.h"
+#include "qdbuserror.h"
+#include "qdbusextratypes.h"
 #include "qdbuspendingreply.h"
 
 QT_BEGIN_HEADER

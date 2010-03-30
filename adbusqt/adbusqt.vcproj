@@ -30,7 +30,7 @@
 			<Tool
 				Name="MOC"
 				AdditionalOptions=""
-				QtCommandLine="/Od /I &quot;$(INPUTDIR)../include/c&quot; /I &quot;$(INPUTDIR)../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;QDBUS_MAKEDLL&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc80.pdb&quot; /W3 /WX /nologo /c /Wp64 /ZI /TP /errorReport:prompt"
+				QtCommandLine="/Od /I &quot;$(INPUTDIR)../include/c&quot; /I &quot;$(INPUTDIR)../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /I&quot;$(QTDIR)/include/Qt&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;QDBUS_MAKEDLL&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc80.pdb&quot; /W3 /WX /nologo /c /Wp64 /ZI /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QRC"
@@ -54,7 +54,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="../include/c;../deps/msvc;$(QTDIR)/include"
+				AdditionalIncludeDirectories="../include/c;../deps/msvc;&quot;$(QTDIR)/include&quot;;&quot;$(QTDIR)/include/Qt&quot;"
 				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;QDBUS_MAKEDLL"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -75,6 +75,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				AdditionalDependencies="QtCored4.lib QtNetworkd4.lib QtXmld4.lib"
+				OutputFile="$(OutDir)\QtDBusd4.dll"
+				AdditionalLibraryDirectories="$(QTDIR)/lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -116,7 +119,8 @@
 			/>
 			<Tool
 				Name="MOC"
-				AdditionalOptions="/O2 /GL /I &quot;../include&quot; /I &quot;../deps/msvc&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;NDEBUG&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /FD /EHsc /MD /Fo&quot;Release\\&quot; /Fd&quot;Release\vc80.pdb&quot; /W4 /WX /nologo /c /Wp64 /Zi /TP /errorReport:prompt"
+				AdditionalOptions=""
+				QtCommandLine="/O2 /GL /I &quot;../include/c&quot; /I &quot;../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /I&quot;$(QTDIR)/include/Qt&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;NDEBUG&quot; /D&quot;QDBUS_MAKEDLL&quot; /D &quot;_WINDLL&quot; /D &quot;_MBCS&quot; /FD /EHsc /MD /Fd&quot;Release\vc80.pdb&quot; /W3 /WX /nologo /c /Wp64 /Zi /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QRC"
@@ -138,10 +142,10 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="../include;../deps/msvc;$(QTDIR)/include"
-				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;NDEBUG"
+				AdditionalIncludeDirectories="../include/c;../deps/msvc;&quot;$(QTDIR)/include&quot;;&quot;$(QTDIR)/include/Qt&quot;"
+				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;NDEBUG;QDBUS_MAKEDLL"
 				RuntimeLibrary="2"
-				WarningLevel="4"
+				WarningLevel="3"
 				WarnAsError="true"
 				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="3"
@@ -157,6 +161,9 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				AdditionalDependencies="QtCore4.lib QtNetwork4.lib QtXml4.lib"
+				OutputFile="$(OutDir)\QtDBus4.dll"
+				AdditionalLibraryDirectories="$(QTDIR)/lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -203,7 +210,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\qdbusargument.hxx"
+				RelativePath=".\qdbusargument.h"
 				>
 			</File>
 			<File
@@ -215,15 +222,15 @@
 				>
 			</File>
 			<File
-				RelativePath=".\qdbuscontext.hxx"
+				RelativePath=".\qdbuscontext.h"
 				>
 			</File>
 			<File
-				RelativePath=".\qdbuserror.hxx"
+				RelativePath=".\qdbuserror.h"
 				>
 			</File>
 			<File
-				RelativePath=".\qdbusextratypes.hxx"
+				RelativePath=".\qdbusextratypes.h"
 				>
 			</File>
 			<File
@@ -231,20 +238,36 @@
 				>
 			</File>
 			<File
-				RelativePath=".\qdbusmacros.hxx"
+				RelativePath=".\qdbusmacros.h"
 				>
 			</File>
 			<File
-				RelativePath=".\qdbusmessage.hxx"
+				RelativePath=".\qdbusmessage.h"
 				>
 			</File>
 			<File
-				RelativePath=".\qdbusmetatype.hxx"
+				RelativePath=".\qdbusmetatype.h"
 				>
 			</File>
 			<File
 				RelativePath=".\qdbuspendingcall.hxx"
 				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="MOC"
+						QtMocCommandLine="-f../qdbuspendingcall_p.hxx"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="MOC"
+						QtMocCommandLine="-f../qdbuspendingcall_p.hxx"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\qdbuspendingreply.h"
@@ -261,6 +284,22 @@
 			<File
 				RelativePath=".\qdbusservicewatcher.hxx"
 				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="MOC"
+						QtMocCommandLine="-f../qdbusservicewatcher_p.h"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="MOC"
+						QtMocCommandLine="-f../qdbusservicewatcher_p.h"
+					/>
+				</FileConfiguration>
 			</File>
 		</Filter>
 		<File
@@ -268,7 +307,7 @@
 			>
 		</File>
 		<File
-			RelativePath=".\qdbusabstractadaptor_p.hxx"
+			RelativePath=".\qdbusabstractadaptor_p.h"
 			>
 		</File>
 		<File
@@ -276,7 +315,7 @@
 			>
 		</File>
 		<File
-			RelativePath=".\qdbusabstractinterface_p.hxx"
+			RelativePath=".\qdbusabstractinterface_p.h"
 			>
 		</File>
 		<File
@@ -284,7 +323,7 @@
 			>
 		</File>
 		<File
-			RelativePath=".\qdbusargument_p.hxx"
+			RelativePath=".\qdbusargument_p.h"
 			>
 		</File>
 		<File
@@ -308,7 +347,7 @@
 			>
 		</File>
 		<File
-			RelativePath=".\qdbusmessage_p.hxx"
+			RelativePath=".\qdbusmessage_p.h"
 			>
 		</File>
 		<File
@@ -325,6 +364,14 @@
 		</File>
 		<File
 			RelativePath=".\qdbuspendingcall_p.hxx"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusservicewatcher.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusservicewatcher_p.h"
 			>
 		</File>
 		<File

@@ -25,9 +25,9 @@
 
 #include "qdbuspendingcall_p.hxx"
 #include "qdbusconnection_p.hxx"
-#include "qdbuserror.hxx"
+#include "qdbuserror.h"
 #include "qsharedfunctions_p.h"
-#include "qdbusmessage_p.hxx"
+#include "qdbusmessage_p.h"
 #include "qdbuspendingreply.h"
 
 /* ------------------------------------------------------------------------- */

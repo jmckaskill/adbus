@@ -28,7 +28,7 @@
 #include "qdbuspendingcall.hxx"
 #include "qdbusobject_p.hxx"
 
-#include "qdbuserror.hxx"
+#include "qdbuserror.h"
 
 #include <Qt/private/qobject_p.h>
 #include <QtCore/qshareddata.h>
@@ -54,7 +54,7 @@ public:
     QDBusMessage        m_ErrorMessage;
     QDBusError          m_Error;
 
-signals:
+Q_SIGNALS:
     void finished();
 
 private:

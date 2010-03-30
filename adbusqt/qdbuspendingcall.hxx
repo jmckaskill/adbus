@@ -46,8 +46,8 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qshareddata.h>
 
-#include "qdbusmacros.hxx"
-#include "qdbusmessage.hxx"
+#include "qdbusmacros.h"
+#include "qdbusmessage.h"
 
 QT_BEGIN_HEADER
 

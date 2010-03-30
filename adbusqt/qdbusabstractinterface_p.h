@@ -23,45 +23,36 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "qdbuserror.h"
-#include "qdbusmessage.h"
+#pragma once
 
-/* ------------------------------------------------------------------------- */
+#include "qdbusabstractinterface.hxx"
+#include "qdbusobject_p.hxx"
+#include <QtCore/qmutex.h>
+#include <QtCore/qset.h>
+#include <Qt/private/qobject_p.h>
+#include <adbus.h>
 
-QDBusError::QDBusError(const DBusError* err)
-: code(NoError), unused(NULL)
-{ (void) err; }
 
-QDBusError::QDBusError(const QDBusMessage& m)
-: code(Other), msg(m.errorMessage()), nm(m.errorName()), unused(NULL)
-{}
-
-QDBusError::QDBusError(const QDBusError& other)
-: code(other.code), msg(other.msg), nm(other.nm), unused(other.unused)
-{}
-
-QDBusError::QDBusError(ErrorType type, const QString& message)
-: code(type), msg(message), nm("nz.co.foobar.adbusqt.Error"), unused(NULL)
-{}
-
-QDBusError& QDBusError::operator=(const QDBusError& other)
+class QDBusAbstractInterfacePrivate : public QObjectPrivate
 {
-    code = other.code;
-    msg = other.msg;
-    nm = other.nm;
-    unused = other.unused;
-    return *this;
-}
+public:
+    QDBusAbstractInterfacePrivate(const QDBusConnection& c);
+    ~QDBusAbstractInterfacePrivate();
 
-QString QDBusError::name() const
-{ return this->nm; }
+    QDBusConnection     qconnection;
+    adbus_Connection*   connection;
+    QDBusObject*        object;
+    QByteArray          remote;
+    QByteArray          path;
+    QString             remoteStr;
+    QString             pathStr;
+    QByteArray          interface;
+    QDBusError          lastError;
 
-QString QDBusError::message() const
-{ return this->msg; }
+    QMutex              matchLock;
+    QSet<QByteArray>    matches;
 
-bool QDBusError::isValid() const
-{ return this->code != NoError; }
+    mutable adbus_MsgFactory* msg;
+};
 
-QString QDBusError::errorString(ErrorType error)
-{ Q_UNUSED(error); return "other"; }
 

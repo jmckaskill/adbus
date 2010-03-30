@@ -1,27 +1,10 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<!--
-
-Copyright 2009 Daher Alfawares
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
--->
 <VisualStudioToolFile
 	Name="Qt GUI Toolkit Rules (by Daher Alfawares)"
 	Version="8.00"
 	>
 	<Rules>
-    <CustomBuildRule
+		<CustomBuildRule
 			Name="UIC"
 			DisplayName="Qt UI Compiler"
 			CommandLine="%QTDIR%\bin\uic.exe [inputs] -o &quot;[QtUicPrefix]$(InputName)[QtUicExt]&quot;"
@@ -29,8 +12,8 @@ limitations under the License.
 			FileExtensions="*.ui"
 			ExecutionDescription="$(InputName).ui"
 			>
-      <Properties>
-        <StringProperty
+			<Properties>
+				<StringProperty
 					Name="QtUicExt"
 					DisplayName="UI Header file extension"
 					Category="Output"
@@ -39,7 +22,7 @@ limitations under the License.
 					Switch="[value]"
 					DefaultValue=".hpp"
 				/>
-        <StringProperty
+				<StringProperty
 					Name="QtUicPrefix"
 					DisplayName="UI Header file prefix"
 					Category="Output"
@@ -48,28 +31,27 @@ limitations under the License.
 					Switch="[value]"
 					DefaultValue="ui_"
 				/>
-      </Properties>
-    </CustomBuildRule>
-    <CustomBuildRule
+			</Properties>
+		</CustomBuildRule>
+		<CustomBuildRule
 			Name="MOC"
 			DisplayName="Qt Meta Object Compiler"
-			CommandLine="%QTDIR%\bin\moc.exe [QtMocNoWarnings] [QtCoreLib] [QtShared] [QtThread] [QtUnicode] [QtLargeFile] [QtKeywords] [QtOpenGLLib] [QtNoDebug] [QtGuiLib] -DWIN32 -D_MSC_VER=1500 -DWIN32 [Inputs] -o&quot;$(IntDir)\$(InputName)[QtMocPfx].cpp&quot; &amp;&amp; cl.exe $(IntDir)\$(InputName)[QtMocPfx].cpp [QtCommandLine] /Fo&quot;$(IntDir)\$(InputName)[QtMocPfx].obj&quot;"
+			CommandLine="%QTDIR%\bin\moc.exe [QtMocNoWarnings] [QtCoreLib] [QtShared] [QtThread] [QtUnicode] [QtLargeFile] [QtKeywords] [QtOpenGLLib] [QtNoDebug] [QtGuiLib] -DWIN32 -D_MSC_VER=1500 -DWIN32 [QtMocCommandLine] [Inputs] -o&quot;$(IntDir)\$(InputName)[QtMocPfx].cpp&quot; &amp;&amp; cl.exe $(IntDir)\$(InputName)[QtMocPfx].cpp [QtCommandLine] /Fo&quot;$(IntDir)\$(InputName)[QtMocPfx].obj&quot;"
 			Outputs="$(IntDir)\$(InputName)[QtMocPfx].obj"
 			FileExtensions="*.hxx"
 			ExecutionDescription="$(InputName).hxx"
-      ShowOnlyRuleProperties="true"
 			>
-      <Properties>
-        <StringProperty
-          Name="QtMocPfx"
-          DisplayName="Output file postfix"
-          Category="Output"
-          Description="A postfix is added to the source and object files generated to prevent conflict with your source files. [Example: _moc leads to a.hxx -> a_moc.cpp]"
-          HelpURL="http://code.google.com/p/xr-qt-msvc/"
-          Switch="[value]"
-          DefaultValue="_moc"
+			<Properties>
+				<StringProperty
+					Name="QtMocPfx"
+					DisplayName="Output file postfix"
+					Category="Output"
+					Description="A postfix is added to the source and object files generated to prevent conflict with your source files. [Example: _moc leads to a.hxx -&gt; a_moc.cpp]"
+					HelpURL="http://code.google.com/p/xr-qt-msvc/"
+					Switch="[value]"
+					DefaultValue="_moc"
 				/>
-        <StringProperty
+				<StringProperty
 					Name="QtCommandLine"
 					DisplayName="C++ Command Line Options"
 					Category="General"
@@ -77,7 +59,7 @@ limitations under the License.
 					HelpURL="http://code.google.com/p/xr-qt-msvc/"
 					Switch="[value]"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtShared"
 					DisplayName="Use QT as a Shared Library?"
 					Category="Moc Definitions"
@@ -85,28 +67,28 @@ limitations under the License.
 					Switch="-DQT_SHARED"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtThread"
 					DisplayName="Multi-threaded Support?"
 					Category="Moc Definitions"
 					Switch="-DQT_THREAD_SUPPORT"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtUnicode"
 					DisplayName="Unicode Support?"
 					Category="Moc Definitions"
 					Switch="-DUNICODE"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtLargeFile"
 					DisplayName="Large File Support?"
 					Category="Moc Definitions"
 					Switch="-DQT_LARGEFILE_SUPPORT"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtKeywords"
 					DisplayName="Disable QT Keywords."
 					Category="Moc Definitions"
@@ -114,43 +96,50 @@ limitations under the License.
 					Switch="-DQT_NO_KEYWORDS"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtNoDebug"
 					DisplayName="Disable QT Debuging"
 					Category="Moc Definitions"
 					Switch="-DQT_NO_DEBUG"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtGuiLib"
 					DisplayName="Use QT Gui Library"
 					Category="QT Libraries"
 					Switch="-DQT_GUI_LIB"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtCoreLib"
 					DisplayName="Use QT Core Library"
 					Category="QT Libraries"
 					Switch="-DQT_CORE_LIB"
 					DefaultValue="true"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtOpenGLLib"
 					DisplayName="Use QT OpenGL Library"
 					Category="QT Libraries"
 					Switch="-DQT_OPENGL_LIB"
 				/>
-        <BooleanProperty
+				<BooleanProperty
 					Name="QtMocNoWarnings"
 					DisplayName="Do not display warnings"
 					Category="General"
 					Description="do not display warnings"
 					Switch="/nw"
 				/>
-      </Properties>
-    </CustomBuildRule>
-    <CustomBuildRule
+				<StringProperty
+					Name="QtMocCommandLine"
+					DisplayName="Extra MOC Arguments"
+					Category="General"
+					Description="Extra arguments to pass to moc."
+					Switch="[value]"
+				/>
+			</Properties>
+		</CustomBuildRule>
+		<CustomBuildRule
 			Name="QRC"
 			DisplayName="Qt Resource Compiler"
 			CommandLine="%QTDIR%\bin\rcc.exe [inputs] -o $(IntDir)\$(InputName)[QtQrcPfx].cpp &amp;&amp; cl.exe $(IntDir)\$(InputName)[QtQrcPfx].cpp [QtCommandLine] /Fo&quot;$(IntDir)\$(InputName)[QtQrcPfx].obj&quot;"
@@ -158,8 +147,8 @@ limitations under the License.
 			FileExtensions="*.qrc"
 			ExecutionDescription="$(InputName).qrc"
 			>
-      <Properties>
-        <StringProperty
+			<Properties>
+				<StringProperty
 					Name="QtCommandLine"
 					DisplayName="C++ Command Line Options"
 					Category="General"
@@ -167,16 +156,16 @@ limitations under the License.
 					HelpURL="http://code.google.com/p/xr-core/wiki/QtRules"
 					Switch="[value]"
 				/>
-        <StringProperty
-          Name="QtQrcPfx"
-          DisplayName="Output file postfix"
-          Category="Output"
-          Description="A postfix is added to the source and object files generated to prevent conflict with your source files. [Example: _qrc leads to a.qrc -> a_qrc.cpp]"
-          HelpURL="http://code.google.com/p/xr-qt-msvc/"
-          Switch="[value]"
-          DefaultValue="_qrc"
+				<StringProperty
+					Name="QtQrcPfx"
+					DisplayName="Output file postfix"
+					Category="Output"
+					Description="A postfix is added to the source and object files generated to prevent conflict with your source files. [Example: _qrc leads to a.qrc -&gt; a_qrc.cpp]"
+					HelpURL="http://code.google.com/p/xr-qt-msvc/"
+					Switch="[value]"
+					DefaultValue="_qrc"
 				/>
-      </Properties>
-    </CustomBuildRule>
-  </Rules>
+			</Properties>
+		</CustomBuildRule>
+	</Rules>
 </VisualStudioToolFile>

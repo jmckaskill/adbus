@@ -47,8 +47,8 @@
 #include <QtCore/qlist.h>
 #include <QtCore/qobject.h>
 
-#include "qdbusmessage.hxx"
-#include "qdbusextratypes.hxx"
+#include "qdbusmessage.h"
+#include "qdbusextratypes.h"
 #include "qdbusconnection.hxx"
 
 QT_BEGIN_HEADER

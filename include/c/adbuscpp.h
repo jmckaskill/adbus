@@ -46,7 +46,7 @@
 
 namespace adbus
 {
-    class Error
+    class Error : public std::exception
     {
     public:
         Error(const char* name, const char* msg = NULL) : m_Name(name), m_Message(msg ? msg : "") {}
@@ -123,12 +123,6 @@ namespace adbus
         adbus_buf_endarray(b, &a);
     }
 
-    template<class T1, class T2>
-    inline void operator>>(const std::pair<T1,T2>& pair, Buffer& b)
-    {
-      pair.first >> b;
-      pair.second >> b;
-    }
 
 
 
@@ -150,8 +144,7 @@ namespace adbus
 
     inline int operator<<(bool& v, Iterator& i)
     {
-        const adbus_Bool* pv;
-        i.Check(ADBUS_BOOLEAN);
+        adbus_Bool v;
         if (adbus_iter_bool(i, &pv))
             return -1;
         v = (*pv != 0);
@@ -161,7 +154,6 @@ namespace adbus
     inline int operator<<(uint8_t& v, Iterator& i)
     {
         const uint8_t* pv;
-        i.Check(ADBUS_UINT8);
         if (adbus_iter_u8(i, &pv))
             return -1;
         v = *pv;

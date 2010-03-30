@@ -39,66 +39,35 @@
 **
 ****************************************************************************/
 
-#ifndef QDBUSSERVICEWATCHER_H
-#define QDBUSSERVICEWATCHER_H
+#ifndef QDBUSMACROS_H
+#define QDBUSMACROS_H
 
-#include <QtCore/qobject.h>
-#include <QtCore/qstringlist.h>
-#include "qdbusmacros.h"
+#include <QtCore/qglobal.h>
+#include <QtCore/qmetatype.h>
+#include <QtCore/qvariant.h>
 
+#if defined(QDBUS_MAKEDLL)
+# define QDBUS_EXPORT Q_DECL_EXPORT
+#else
+# define QDBUS_EXPORT Q_DECL_IMPORT
+#endif
+
+#ifndef Q_MOC_RUN
+# define Q_NOREPLY
+#endif
+
+#ifdef Q_CC_MSVC
+#include <QtCore/qlist.h>
+#include <QtCore/qset.h>
+#include <QtCore/qhash.h>
+#include <QtCore/qvector.h>
+#endif
+
+// prevent syncqt complaints
 QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
-
 QT_MODULE(DBus)
-
-class QDBusConnection;
-
-class QDBusServiceWatcherPrivate;
-class QDBUS_EXPORT QDBusServiceWatcher: public QObject
-{
-    Q_OBJECT
-    Q_PROPERTY(QStringList watchedServices READ watchedServices WRITE setWatchedServices)
-    Q_PROPERTY(WatchMode watchMode READ watchMode WRITE setWatchMode)
-public:
-    enum WatchModeFlag {
-        WatchForRegistration = 0x01,
-        WatchForUnregistration = 0x02,
-        WatchForOwnerChange = 0x03
-    };
-    Q_DECLARE_FLAGS(WatchMode, WatchModeFlag)
-
-    explicit QDBusServiceWatcher(QObject *parent = 0);
-    QDBusServiceWatcher(const QString &service, const QDBusConnection &connection,
-                        WatchMode watchMode = WatchForOwnerChange, QObject *parent = 0);
-    ~QDBusServiceWatcher();
-
-    QStringList watchedServices() const;
-    void setWatchedServices(const QStringList &services);
-    void addWatchedService(const QString &newService);
-    bool removeWatchedService(const QString &service);
-
-    WatchMode watchMode() const;
-    void setWatchMode(WatchMode mode);
-
-    QDBusConnection connection() const;
-    void setConnection(const QDBusConnection &connection);
-
-Q_SIGNALS:
-    void serviceRegistered(const QString &service);
-    void serviceUnregistered(const QString &service);
-    void serviceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
-
-private:
-    Q_PRIVATE_SLOT(d_func(), void _q_serviceOwnerChanged(QString,QString,QString))
-    Q_DISABLE_COPY(QDBusServiceWatcher)
-    Q_DECLARE_PRIVATE(QDBusServiceWatcher)
-};
-
-Q_DECLARE_OPERATORS_FOR_FLAGS(QDBusServiceWatcher::WatchMode)
-
 QT_END_NAMESPACE
-
 QT_END_HEADER
 
-#endif // QDBUSSERVICEWATCHER_H
+#endif

@@ -47,7 +47,7 @@
 #include <QtDBus/QtDBus>
 
 #include "ping-common.h"
-#include "pong.h"
+#include "pong.hxx"
 
 QString Pong::ping(const QString &arg)
 {

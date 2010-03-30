@@ -242,11 +242,10 @@ struct adbus_Message
     adbus_MessageType       type;
     int                     flags;
     uint32_t                serial;
+    int64_t                 replySerial;
 
     const char*             signature;
     size_t                  signatureSize;
-
-    const uint32_t*         replySerial;
     const char*             path;
     size_t                  pathSize;
     const char*             interface;
@@ -694,32 +693,6 @@ ADBUS_API void adbus_mbr_setsetter(
 
 
 
-
-#ifdef DOC
-ADBUS_INLINE int adbus_iter_align(adbus_Iterator* i, int alignment);
-ADBUS_INLINE int adbus_iter_alignfield(adbus_Iterator* i, char field);
-ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, const adbus_Bool** v);
-ADBUS_INLINE int adbus_iter_u8(adbus_Iterator* i, const uint8_t** v);
-ADBUS_INLINE int adbus_iter_i16(adbus_Iterator* i, const int16_t** v);
-ADBUS_INLINE int adbus_iter_u16(adbus_Iterator* i, const uint16_t** v);
-ADBUS_INLINE int adbus_iter_i32(adbus_Iterator* i, const int32_t** v);
-ADBUS_INLINE int adbus_iter_u32(adbus_Iterator* i, const uint32_t** v);
-ADBUS_INLINE int adbus_iter_i64(adbus_Iterator* i, const int64_t** v);
-ADBUS_INLINE int adbus_iter_u64(adbus_Iterator* i, const uint64_t** v);
-ADBUS_INLINE int adbus_iter_double(adbus_Iterator* i, const double** v);
-ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** pstr, size_t* pstrsz);
-ADBUS_INLINE int adbus_iter_objectpath(adbus_Iterator* i, const char** str, size_t* strsz);
-ADBUS_INLINE int adbus_iter_signature(adbus_Iterator* i, const char** pstr, size_t* pstrsz);
-ADBUS_INLINE int adbus_iter_beginarray(adbus_Iterator* i, adbus_IterArray* a);
-ADBUS_INLINE adbus_Bool adbus_iter_inarray(adbus_Iterator* i, adbus_IterArray* a);
-ADBUS_INLINE int adbus_iter_endarray(adbus_Iterator* i, adbus_IterArray* a);
-ADBUS_INLINE int adbus_iter_begindictentry(adbus_Iterator* i);
-ADBUS_INLINE int adbus_iter_enddictentry(adbus_Iterator* i);
-ADBUS_INLINE int adbus_iter_beginstruct(adbus_Iterator* i);
-ADBUS_INLINE int adbus_iter_endstruct(adbus_Iterator* i);
-ADBUS_INLINE int adbus_iter_beginvariant(adbus_Iterator* i, adbus_IterVariant* v);;
-ADBUS_INLINE int adbus_iter_endvariant(adbus_Iterator* i, adbus_IterVariant* v);;
-#endif
 
 ADBUS_API int adbus_iter_value(adbus_Iterator* i);
 ADBUS_API void adbus_iter_buffer(adbus_Iterator* i, const adbus_Buffer* buf);
