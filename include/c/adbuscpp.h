@@ -40,6 +40,7 @@
 #define ADBUSCPP_MULTI_CLASSES      2
 #define ADBUSCPP_MULTI_INTERFACES   3
 #define ADBUSCPP_MULTI_BIND         4
+#define ADBUSCPP_MULTI_CALL         5
 
 #define ADBUSCPP_NOT_COPYABLE(x) x(const x&); x& operator=(const x&)
 
@@ -50,6 +51,7 @@ namespace adbus
     {
     public:
         Error(const char* name, const char* msg = NULL) : m_Name(name), m_Message(msg ? msg : "") {}
+        ~Error() throw() {}
         virtual const char* name() const {return m_Name.c_str();}
         virtual const char* message() const {return m_Message.empty() ? NULL : m_Message.c_str();}
     private:
@@ -57,15 +59,18 @@ namespace adbus
         std::string m_Message;
     };
 
-    class ArgumentError
-    {};
+    class ArgumentError : public Error
+    {
+    public:
+        ArgumentError() : Error("nz.co.foobar.adbuscpp.ArgumentError") {}
+    };
 
     class Buffer
     {
     public:
-        adbus_Buffer* b;
-
+        Buffer(adbus_Buffer* b_) : b(b_) {}
         operator adbus_Buffer*() const {return b;}
+        adbus_Buffer* b;
     };
 
     inline void operator>>(bool v, Buffer& b)
@@ -131,128 +136,72 @@ namespace adbus
     class Iterator
     {
     public:
-        adbus_Iterator i;
+        Iterator()
+        { i.data = i.sig = NULL; i.size = 0; }
+
+        Iterator(adbus_Message* msg)
+        { adbus_iter_args(&i, msg); }
 
         operator adbus_Iterator*() {return &i;}
+        adbus_Iterator i;
 
-        void Check(char ch)
+        int Check(char ch)
         {
             if (!i.sig || *i.sig != ch)
                 throw ArgumentError();
+            return 0;
         }
     };
 
     inline int operator<<(bool& v, Iterator& i)
-    {
-        adbus_Bool v;
-        if (adbus_iter_bool(i, &pv))
-            return -1;
-        v = (*pv != 0);
-        return 0;
-    }
+    { return i.Check(ADBUS_BOOLEAN) || adbus_iter_bool(i, &v); }
 
     inline int operator<<(uint8_t& v, Iterator& i)
-    {
-        const uint8_t* pv;
-        if (adbus_iter_u8(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_UINT8) || adbus_iter_u8(i, &v); }
 
     inline int operator<<(int16_t& v, Iterator& i)
-    {
-        const int16_t* pv;
-        i.Check(ADBUS_INT16);
-        if (adbus_iter_i16(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_INT16) || adbus_iter_i16(i, &v); }
 
     inline int operator<<(uint16_t& v, Iterator& i)
-    {
-        const uint16_t* pv;
-        i.Check(ADBUS_UINT16);
-        if (adbus_iter_u16(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_UINT16) || adbus_iter_u16(i, &v); }
+
     inline int operator<<(int32_t& v, Iterator& i)
-    {
-        const int32_t* pv;
-        i.Check(ADBUS_INT32);
-        if (adbus_iter_i32(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_INT32) || adbus_iter_i32(i, &v); }
+
     inline int operator<<(uint32_t& v, Iterator& i)
-    {
-        const uint32_t* pv;
-        i.Check(ADBUS_UINT32);
-        if (adbus_iter_u32(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_UINT32) || adbus_iter_u32(i, &v); }
+
     inline int operator<<(int64_t& v, Iterator& i)
-    {
-        const int64_t* pv;
-        i.Check(ADBUS_INT64);
-        if (adbus_iter_i64(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_INT64) || adbus_iter_i64(i, &v); }
+
     inline int operator<<(uint64_t& v, Iterator& i)
-    {
-        const uint64_t* pv;
-        i.Check(ADBUS_UINT64);
-        if (adbus_iter_u64(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_UINT64) || adbus_iter_u64(i, &v); }
+
     inline int operator<<(double& v, Iterator& i)
-    {
-        const double* pv;
-        i.Check(ADBUS_DOUBLE);
-        if (adbus_iter_double(i, &pv))
-            return -1;
-        v = *pv;
-        return 0;
-    }
+    { return i.Check(ADBUS_DOUBLE) || adbus_iter_double(i, &v); }
+
     inline int operator<<(const char*& v, Iterator& i)
-    {
-        i.Check(ADBUS_STRING);
-        return adbus_iter_string(i, &v, NULL);
-    }
+    { return i.Check(ADBUS_STRING) || adbus_iter_string(i, &v, NULL); }
+
     inline int operator<<(std::string& v, Iterator& i)
     {
-        const char* s;
+        size_t sz;
+        const char* str;
         i.Check(ADBUS_STRING);
-        if (adbus_iter_string(i, &s, NULL))
+        if (adbus_iter_string(i, &str, &sz))
             return -1;
-        v = s;
+        v.assign(str, sz);
         return 0;
-    }
-    inline int operator<<(MessageEnd& v, Iterator& i)
-    { 
-      (void) v;
-      if (i.i.sig && *i.i.sig)
-          throw ArgumentError();
-      return 0;
     }
 
     template<class T>
     inline int operator<<(std::vector<T>& v, Iterator& i)
     {
         adbus_IterArray a;
-        i.Check(ADBUS_ARRAY_BEGIN);
-        if (adbus_iter_beginarray(i, &a))
+        i.Check(ADBUS_ARRAY);
+        if (adbus_iter_beginarray(i, &a)) {
             return -1;
+        }
         while (adbus_iter_inarray(i, &a)) {
             v.resize(v.size() + 1);
             if (v[v.size() - 1] << i)
@@ -265,19 +214,22 @@ namespace adbus
     inline int operator<<(std::map<K,V>& map, Iterator& i)
     {
         adbus_IterArray a;
-        i.Check(ADBUS_ARRAY_BEGIN);
-        if (adbus_iter_beginarray(i, &a))
+        i.Check(ADBUS_ARRAY);
+        if (adbus_iter_beginarray(i, &a)) {
             return -1;
+        }
         while (adbus_iter_inarray(i, &a)) {
-            if (adbus_iter_begindictentry(i))
-                return -1;
             K key;
             V val;
+            i.Check(ADBUS_DICTENTRY_BEGIN);
+            if (adbus_iter_begindictentry(i))
+                return -1;
             if (key << i || val << i)
                 return -1;
-            map[key] = val;
+            i.Check(ADBUS_DICTENTRY_END);
             if (adbus_iter_enddictentry(i))
                 return -1;
+            map[key] = val;
         }
         return adbus_iter_endarray(i, &a);
     }
@@ -301,12 +253,12 @@ namespace adbus
         int operator<<(Iterator& i)
         {
             adbus_IterArray a;
-            i.Check(ADBUS_ARRAY_BEGIN);
-            if (adbus_iter_beginarray(i, &a))
+            i.Check(ADBUS_ARRAY);
+            if (adbus_iter_beginarray(i, &a) || adbus_iter_endarray(i, &a))
                 return -1;
             data = (const T*) a.data;
             size = a.size / sizeof(T);
-            return adbus_iter_endarray(i, &a);
+            return 0;
         }
 
         const T*    data;
@@ -316,57 +268,51 @@ namespace adbus
     class VariantRef
     {
     public:
-        VariantRef() : m_Signature(NULL), m_Data(NULL), m_Size(0) {}
+        VariantRef()
+        { 
+            m_V.origsig = m_V.sig = m_V.data = NULL;
+            m_V.size = 0;
+        }
 
         void operator>>(Buffer& b) const
         {
             adbus_BufVariant v;
-            adbus_buf_beginvariant(b, &v, m_Signature, -1);
-            adbus_buf_append(b, m_Data, m_Size);
+            adbus_buf_beginvariant(b, &v, m_V.sig, -1);
+            adbus_buf_append(b, m_V.data, m_V.size);
             adbus_buf_endvariant(b, &v);
         }
 
         int operator<<(Iterator& i)
         {
-            adbus_IterVariant iv;
-            m_Signature = NULL;
-            m_Data = NULL;
-            m_Size = 0;
-            i.Check(ADBUS_VARIANT_BEGIN);
-            if (adbus_iter_beginvariant(i, &iv))
+            i.Check(ADBUS_VARIANT);
+            if (adbus_iter_beginvariant(i, &m_V))
                 return -1;
             if (adbus_iter_value(i))
                 return -1;
-            if (adbus_iter_endvariant(i, &iv))
+            if (adbus_iter_endvariant(i, &m_V))
                 return -1;
-
-            m_Signature = iv.sig;
-            m_Data = iv.data;
-            m_Size = iv.size;
 
             return 0;
         }
 
         Iterator iterator() const
         {
-          Iterator i;
-          i.i.data = m_Data;
-          i.i.size = m_Size;
-          i.i.sig  = m_Signature;
-          return i;
+            Iterator i;
+            i.i.data = m_V.data;
+            i.i.size = m_V.size;
+            i.i.sig  = m_V.sig;
+            return i;
         }
 
     private:
-        const char* m_Signature;
-        const char* m_Data;
-        size_t      m_Size;
+        adbus_IterVariant   m_V;
     };
 
     class Variant
     {
         ADBUSCPP_NOT_COPYABLE(Variant);
     public:
-        Variant() { m_Buf.b = adbus_buf_new(); }
+        Variant() : m_Buf(adbus_buf_new()) {}
 
         ~Variant() { adbus_buf_free(m_Buf.b); }
 
@@ -382,7 +328,7 @@ namespace adbus
         {
             adbus_IterVariant iv;
             adbus_buf_reset(m_Buf);
-            i.Check(ADBUS_VARIANT_BEGIN);
+            i.Check(ADBUS_VARIANT);
             if (adbus_iter_beginvariant(i, &iv))
                 return -1;
             if (adbus_iter_value(i))
@@ -420,7 +366,7 @@ namespace adbus
     {
         ADBUSCPP_NOT_COPYABLE(Any);
     public:
-        Any() {m_Buf.b = adbus_buf_new();}
+        Any() : m_Buf(adbus_buf_new()) {}
         ~Any() {adbus_buf_free(m_Buf.b);}
 
         int operator<<(Iterator& i)
@@ -524,6 +470,9 @@ namespace adbus
       std::string m_Path;
     };
 
+    template<class T> inline
+    void* CreateUser()
+    { return (T*) malloc(sizeof(T)); }
 
     template<class T> inline
     void* CreateUser(const T& data)
@@ -549,13 +498,9 @@ namespace adbus
 
         void reset() {adbus_match_init(this);}
 
-#ifdef DOC
-        template<class A0 ..., class MF, class O>
-        void setCallbackX(O* o, MF mf);
-#else
 #define ADBUSCPP_MULTI ADBUSCPP_MULTI_MATCH
 #include "adbuscpp-multi.h"
-#endif
+
     };
 
 
@@ -574,9 +519,6 @@ namespace adbus
                 t >> b;
             } catch (Error& e) {
                 adbus_error(d, e.name(), -1, e.message(), -1);
-            } catch (ArgumentError& e) {
-                (void) e;
-                adbus_error_argument(d);
             }
             return 0;
         }
@@ -598,9 +540,6 @@ namespace adbus
 
             } catch (Error& e) {
                 adbus_error(d, e.name(), -1, e.message(), -1);
-            } catch (ArgumentError& e) {
-                (void) e;
-                adbus_error_argument(d);
             }
             return 0;
         }
@@ -701,17 +640,6 @@ namespace adbus
         ~Interface() 
         { adbus_iface_free(m_I); }
 
-#ifdef DOC
-        template<class A0...>
-        MethodMember addMethodX(const std::string& name);
-
-        template<class A0...>
-        SignalMember addSignalX(const std::string& name);
-#else
-#define ADBUSCPP_MULTI ADBUSCPP_MULTI_INTERFACES
-#include "adbuscpp-multi.h"
-#endif
-
         template<class T>
         detail::PropertyMember<O, T> addProperty(const std::string& name)
         {
@@ -728,6 +656,10 @@ namespace adbus
 
         adbus_Interface* interface() {return m_I;}
         operator adbus_Interface*()  {return m_I;}
+
+#define ADBUSCPP_MULTI ADBUSCPP_MULTI_INTERFACES
+#include "adbuscpp-multi.h"
+
     private:
         adbus_Interface* m_I;
     };
@@ -969,33 +901,65 @@ namespace adbus
         }
     }
 
+    class Call : public adbus_Call
+    {
+    public:
+        Call() 
+        {
+            this->timeoutms = -1;
+            this->cuser = NULL;
+            this->euser = NULL;
+        }
+
+        void send()
+        { adbus_call_send(this); }
+
+        template<class T>
+        Call& arg(const T& arg)
+        {
+            Buffer b = adbus_msg_argbuffer(this->msg);
+
+            std::string sig = adbus_type_string((T*) NULL);
+            adbus_buf_appendsig(b, sig.c_str(), (int) sig.size());
+
+            arg >> b;
+
+            return *this;
+        }
+
+        template<class MF, class O>
+        Call& setError(MF mf, O* o)
+        {
+            assert(!euser);
+            this->error         = &detail::ErrorCallback<MF, O>;
+            this->euser         = CreateUser2<MF,O*>(mf, o);
+            this->release[0]    = &free;
+            this->ruser[0]      = this->euser;
+            return *this;
+        }
+
+#define ADBUSCPP_MULTI ADBUSCPP_MULTI_CALL
+#include "adbuscpp-multi.h"
+
+    };
+
     class Proxy
     {
         ADBUSCPP_NOT_COPYABLE(Proxy);
     public:
         Proxy(State* o) 
-        : m_Callback(NULL), m_CUser(NULL), m_Error(NULL), m_EUser(NULL)
-        { 
-            m_Proxy = adbus_proxy_new(o->state()); 
-        }
+        { m_Proxy = adbus_proxy_new(o->state()); }
 
         Proxy(adbus_State* state) 
-        : m_Callback(NULL), m_CUser(NULL), m_Error(NULL), m_EUser(NULL)
-        { 
-            m_Proxy = adbus_proxy_new(state); 
-        }
+        { m_Proxy = adbus_proxy_new(state); }
 
         ~Proxy()
-        { 
-            reset(); 
-            adbus_proxy_free(m_Proxy); 
-        }
+        { adbus_proxy_free(m_Proxy); }
 
         void init(adbus_Connection* connection,
                   const std::string& service,
                   const std::string& path)
         {
-            reset();
             adbus_proxy_init(m_Proxy, connection, service.c_str(), (int) service.size(), path.c_str(), (int) path.size());
         }
 
@@ -1003,7 +967,6 @@ namespace adbus
                   const std::string& service,
                   const Path& path)
         {
-            reset();
             adbus_proxy_init(m_Proxy, connection, service.c_str(), (int) service.size(), path.c_str(), (int) path.size());
         }
 
@@ -1029,7 +992,6 @@ namespace adbus
                   const char* service,
                   const char* path)
         {
-            reset();
             adbus_proxy_init(m_Proxy, connection, service, -1, path, -1);
         }
 
@@ -1042,41 +1004,32 @@ namespace adbus
             adbus_proxy_setinterface(m_Proxy, interface, -1);
         }
 
-
-        template<class MF, class O>
-        void setErrorCallback(MF mf, O* o)
+        template <class T>
+        Call setProperty(const char* property, const T& arg)
         {
-            m_EUser  = CreateUser2<MF,O*>(mf, o);
-            m_Error  = &detail::ErrorCallback<MF, O>;
+            Call call;
+
+            std::string signature = adbus_type_string((T*) NULL);
+            adbus_proxy_setproperty(m_Proxy, &call, property, -1, signature.c_str(), -1);
+
+            Buffer b = adbus_msg_argbuffer(call.msg);
+            arg >> b;
+
+            return call;
         }
 
-#ifdef DOC
-        template<class A0 ..., class MF, class O>
-        void setCallbackX(O* o, MF mf);
+        Call getProperty(const char* property)
+        {
+            Call call;
+            adbus_proxy_getproperty(m_Proxy, &call, property, -1);
+            return call;
+        }
 
-        template<class A0 ...>
-        uint32_t call(const std::string& member, const A0& a0 ...);
-#else
 #define ADBUSCPP_MULTI ADBUSCPP_MULTI_PROXY
 #include "adbuscpp-multi.h"
-#endif
+
     private:
-        void reset()
-        {
-            if (m_CUser) 
-                free(m_CUser);
-            if (m_EUser)
-                free(m_EUser);
-            m_Callback = m_Error = NULL;
-            m_CUser = m_EUser = NULL;
-        }
-
         adbus_Proxy*        m_Proxy;
-
-        adbus_MsgCallback   m_Callback;
-        void*               m_CUser;
-        adbus_MsgCallback   m_Error;
-        void*               m_EUser;
     };
 
 

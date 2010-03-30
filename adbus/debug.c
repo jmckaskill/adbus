@@ -106,15 +106,15 @@ static int LogVariant(d_String* str, adbus_Iterator* i)
 
 static int LogField(d_String* str, adbus_Iterator* i)
 {
-    const adbus_Bool*     b;
-    const uint8_t*        u8;
-    const int16_t*        i16;
-    const uint16_t*       u16;
-    const int32_t*        i32;
-    const uint32_t*       u32;
-    const int64_t*        i64;
-    const uint64_t*       u64;
-    const double*         d;
+    adbus_Bool      b;
+    uint8_t         u8;
+    int16_t         i16;
+    uint16_t        u16;
+    int32_t         i32;
+    uint32_t        u32;
+    int64_t         i64;
+    uint64_t        u64;
+    double          d;
     const char*     string;
     size_t          size;
 
@@ -123,47 +123,47 @@ static int LogField(d_String* str, adbus_Iterator* i)
     case ADBUS_BOOLEAN:
         if (adbus_iter_bool(i, &b))
             return -1;
-        ds_cat_f(str, "%s", *b ? "true" : "false");
+        ds_cat_f(str, "%s", b ? "true" : "false");
         break;
     case ADBUS_UINT8:
         if (adbus_iter_u8(i, &u8))
             return -1;
-        ds_cat_f(str, "%" PRIu8, *u8);
+        ds_cat_f(str, "%" PRIu8, u8);
         break;
     case ADBUS_INT16:
         if (adbus_iter_i16(i, &i16))
             return -1;
-        ds_cat_f(str, "%" PRIi16, *i16);
+        ds_cat_f(str, "%" PRIi16, i16);
         break;
     case ADBUS_UINT16:
         if (adbus_iter_u16(i, &u16))
             return -1;
-        ds_cat_f(str, "%" PRIu16, *u16);
+        ds_cat_f(str, "%" PRIu16, u16);
         break;
     case ADBUS_INT32:
         if (adbus_iter_i32(i, &i32))
             return -1;
-        ds_cat_f(str, "%" PRIi32, *i32);
+        ds_cat_f(str, "%" PRIi32, i32);
         break;
     case ADBUS_UINT32:
         if (adbus_iter_u32(i, &u32))
             return -1;
-        ds_cat_f(str, "%" PRIu32, *u32);
+        ds_cat_f(str, "%" PRIu32, u32);
         break;
     case ADBUS_INT64:
         if (adbus_iter_i64(i, &i64))
             return -1;
-        ds_cat_f(str, "%" PRIi64, *i64);
+        ds_cat_f(str, "%" PRIi64, i64);
         break;
     case ADBUS_UINT64:
         if (adbus_iter_u64(i, &u64))
             return -1;
-        ds_cat_f(str, "%" PRIu64, *u64);
+        ds_cat_f(str, "%" PRIu64, u64);
         break;
     case ADBUS_DOUBLE:
         if (adbus_iter_double(i, &d))
             return -1;
-        ds_cat_f(str, "%.15g", *d);
+        ds_cat_f(str, "%.15g", d);
         break;
     case ADBUS_STRING:
         if (adbus_iter_string(i, &string, &size))
@@ -189,11 +189,11 @@ static int LogField(d_String* str, adbus_Iterator* i)
         if (*i->sig != ADBUS_DICTENTRY_END)
             return -1;
         break;
-    case ADBUS_ARRAY_BEGIN:
+    case ADBUS_ARRAY:
         return LogArray(str, i);
     case ADBUS_STRUCT_BEGIN:
         return LogStruct(str, i);
-    case ADBUS_VARIANT_BEGIN:
+    case ADBUS_VARIANT:
         return LogVariant(str, i);
     default:
         assert(0);
@@ -221,8 +221,8 @@ static int MsgSummary(d_String* str, const adbus_Message* m)
             (int) m->size,
             (int) m->serial);
 
-    if (m->replySerial) {
-        ds_cat_f(str, "%-15s %u\n", "Reply serial", *m->replySerial);
+    if (m->replySerial >= 0) {
+        ds_cat_f(str, "%-15s %u\n", "Reply serial", (unsigned int) m->replySerial);
     }
 
     PrintStringField(str, m->sender, "Sender");

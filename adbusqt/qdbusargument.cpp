@@ -649,11 +649,7 @@ void QDBusArgument::endStructure() const
 const QDBusArgument& QDBusArgument::operator>>(uchar& arg) const
 {
     if (d->canIterate()) {
-        const uint8_t* data = NULL;
-        d->err = adbus_iter_u8(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_u8(d->iter, &arg);
     }
     return *this;
 }
@@ -663,11 +659,7 @@ const QDBusArgument& QDBusArgument::operator>>(uchar& arg) const
 const QDBusArgument& QDBusArgument::operator>>(bool& arg) const
 {
     if (d->canIterate()) {
-        const adbus_Bool* data = NULL;
-        d->err = adbus_iter_bool(d->iter, &data);
-        if (!d->err) {
-            arg = (*data == 0);
-        }
+        d->err = adbus_iter_bool(d->iter, &arg);
     }
     return *this;
 }
@@ -677,11 +669,7 @@ const QDBusArgument& QDBusArgument::operator>>(bool& arg) const
 const QDBusArgument& QDBusArgument::operator>>(short& arg) const
 {
     if (d->canIterate()) {
-        const int16_t* data = NULL;
-        d->err = adbus_iter_i16(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_i16(d->iter, &arg);
     }
     return *this;
 }
@@ -691,11 +679,7 @@ const QDBusArgument& QDBusArgument::operator>>(short& arg) const
 const QDBusArgument& QDBusArgument::operator>>(ushort& arg) const
 {
     if (d->canIterate()) {
-        const uint16_t* data = NULL;
-        d->err = adbus_iter_u16(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_u16(d->iter, &arg);
     }
     return *this;
 }
@@ -705,11 +689,7 @@ const QDBusArgument& QDBusArgument::operator>>(ushort& arg) const
 const QDBusArgument& QDBusArgument::operator>>(int& arg) const
 {
     if (d->canIterate()) {
-        const int32_t* data = NULL;
-        d->err = adbus_iter_i32(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_i32(d->iter, &arg);
     }
     return *this;
 }
@@ -719,11 +699,7 @@ const QDBusArgument& QDBusArgument::operator>>(int& arg) const
 const QDBusArgument& QDBusArgument::operator>>(uint& arg) const
 {
     if (d->canIterate()) {
-        const uint32_t* data = NULL;
-        d->err = adbus_iter_u32(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_u32(d->iter, &arg);
     }
     return *this;
 }
@@ -733,11 +709,7 @@ const QDBusArgument& QDBusArgument::operator>>(uint& arg) const
 const QDBusArgument& QDBusArgument::operator>>(qlonglong& arg) const
 {
     if (d->canIterate()) {
-        const int64_t* data = NULL;
-        d->err = adbus_iter_i64(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_i64(d->iter, (int64_t*) &arg);
     }
     return *this;
 }
@@ -747,11 +719,7 @@ const QDBusArgument& QDBusArgument::operator>>(qlonglong& arg) const
 const QDBusArgument& QDBusArgument::operator>>(qulonglong& arg) const
 {
     if (d->canIterate()) {
-        const uint64_t* data = NULL;
-        d->err = adbus_iter_u64(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_u64(d->iter, (uint64_t*) &arg);
     }
     return *this;
 }
@@ -761,11 +729,7 @@ const QDBusArgument& QDBusArgument::operator>>(qulonglong& arg) const
 const QDBusArgument& QDBusArgument::operator>>(double& arg) const
 {
     if (d->canIterate()) {
-        const double* data = NULL;
-        d->err = adbus_iter_double(d->iter, &data);
-        if (!d->err) {
-            arg = *data;
-        }
+        d->err = adbus_iter_double(d->iter, &arg);
     }
     return *this;
 }

@@ -58,9 +58,18 @@
 #define CLASS_NAME(x)           A ## x
 #define SB_CLASS_NAMES          REPEAT(CLASS_NAME, COMMA, <, >)
 
-// creates: A0 a0; a0 << *d->args; ...
-#define DEMARSHALL_ARG(x)       A ## x a ## x; if (a ## x << i) {return -1;}
+#define DECL_ARG(x)             A##x a##x;
+#define DECL_ARGS               REP(DECL_ARG)
+
+#define DEMARSHALL_POINTER_ARG(x)   if (*(o->a##x) << i) {return -1;}
+#define DEMARSHALL_POINTER_ARGS     REP(DEMARSHALL_POINTER_ARG)
+
+// creates: a0 << *d->args; ...
+#define DEMARSHALL_ARG(x)       if (a ## x << i) {return -1;}
 #define DEMARSHALL_ARGS         REP(DEMARSHALL_ARG)
+
+#define ASSIGN_ARG(x)           o->a##x = a##x;
+#define ASSIGN_ARGS             REP(ASSIGN_ARG)
 
 // creates: signature += adbus_type_string((A##x*) NULL);
 #define APPEND_SIG(x)           signature += adbus_type_string((A##x*) NULL);
@@ -106,20 +115,17 @@
             adbus_iter_args(i, d->msg);
 
             try {
-                // A0 a0; if (a0 << i) {return -1;}
-                // ...
-                DEMARSHALL_ARGS;
+                // A0 a0; ...
+                DECL_ARGS;
 
-                adbus::MessageEnd end;
-                end << i;
+                // if (a0 << i) {return -1;} ...
+                DEMARSHALL_ARGS;
 
                 // (o->*mf)( a0, a1, a2 ...);
                 (o->*mf)( ARGS );
+
             } catch (Error& e) {
                 adbus_error(d, e.name(), -1, e.message(), -1);
-            } catch (ArgumentError& e) {
-                (void) e;
-                adbus_error_argument(d);
             }
 
             return 0;
@@ -135,15 +141,15 @@
             adbus_iter_args(i, d->msg);
 
             try {
-                // A0 a0; a0 << i;
-                // ...
-                DEMARSHALL_ARGS;
+                // A0 a0; ...
+                DECL_ARGS;
 
-                adbus::MessageEnd end;
-                end << i;
+                // if (a0 << i) {return -1;} ...
+                DEMARSHALL_ARGS;
 
                 // (o->*mf)( a0, a1, a2 ...);
                 R r = (o->*mf)( ARGS );
+
                 if (d->ret) {
                     Buffer b;
                     b.b = adbus_msg_argbuffer(d->ret);
@@ -152,11 +158,9 @@
                     adbus_buf_appendsig(b.b, type.c_str(), (int) type.size());
                     r >> b;
                 }
+
             } catch (Error& e) {
                 adbus_error(d, e.name(), -1, e.message(), -1);
-            } catch (ArgumentError& e) {
-                (void) e;
-                adbus_error_argument(d);
             }
 
             return 0;
@@ -172,18 +176,43 @@
             adbus_iter_args(i, d->msg);
 
             try {
-                // A0 a0; if (a0 << i) {return -1;}
-                // ...
-                DEMARSHALL_ARGS;
+                // A0 a0; ...
+                DECL_ARGS;
 
-                adbus::MessageEnd end;
-                end << i;
+                // if (a0 << i) {return -1;} ...
+                DEMARSHALL_ARGS;
 
                 // (o->*mf)( a0, a1, a2 ...);
                 (o->*mf)( ARGS );
+
             } catch (Error& e) {
                 (void) e;
-            } catch (ArgumentError& e) {
+            }
+
+            return 0;
+        }
+
+        TEMPLATE_CLASS_DECLS
+        struct NUM(GetReturnsData)
+        {
+            // A0 a0; ...
+            DECL_ARGS;
+        };
+
+        TEMPLATE_CLASS_DECLS inline
+        int NUM(GetReturnsCallback) (adbus_CbData* d)
+        {
+            typedef NUM(GetReturnsData) SB_CLASS_NAMES Data;
+            Data* o = (Data*) d->user1;
+            (void) o;
+
+            Iterator i = d->msg;
+
+            try {
+                // if (*(o->a0) << i) {return -1;}
+                DEMARSHALL_POINTER_ARGS;
+
+            } catch (Error& e) {
                 (void) e;
             }
 
@@ -198,6 +227,7 @@
         template<CLASS_DECLS_TC class MF, class O>
         void NUM(setCallback) (MF function, O* object)
         {
+            assert(!cuser);
             this->callback      = &NUM(detail::MFMatchCallback) <MF, O CLASS_NAMES_LC>;
             this->cuser         = CreateUser2<MF,O*>(function, object);
             this->release[0]    = &free;
@@ -206,68 +236,70 @@
 
 
 /* -------------------------------------------------------------------------- */
-#elif ADBUSCPP_MULTI == ADBUSCPP_MULTI_PROXY
-
-
-        template<CLASS_DECLS_TC class MF, class O>
-        void NUM(setCallback) (MF function, O* object)
-        {
-            assert(!m_CUser);
-            m_Callback  = &NUM(detail::MFMatchCallback) <MF, O CLASS_NAMES_LC>;
-            m_CUser     = CreateUser2<MF, O*>(function, object);
-        }
+#elif ADBUSCPP_MULTI == ADBUSCPP_MULTI_CALL
 
         template<CLASS_DECLS_TC class MF, class O>
-        void NUM(connect) (const std::string& signal, MF function, O* object)
+        Call& NUM(setCallback) (MF function, O* object)
         {
-            Match m;
-            m.NUM(setCallback) <CLASS_NAMES_TC MF, O> (function, object);
-
-            adbus_proxy_signal(m_Proxy, &m, signal.c_str(), (int) signal.size());
-
-            reset();
+            assert(!cuser);
+            this->callback      = &NUM(detail::MFMatchCallback) <MF, O CLASS_NAMES_LC>;
+            this->cuser         = CreateUser2<MF, O*>(function, object);
+            this->release[0]    = &free;
+            this->ruser[0]      = this->cuser;
+            return *this;
         }
 
         TEMPLATE_CLASS_DECLS
-        void call (const std::string& method CONST_REF_ARGS_LC)
+        void block(CONST_REF_ARGS)  // A0* a0, ...
         {
-            adbus_Call call;
-            adbus_proxy_method(m_Proxy, &call, method.c_str(), (int) method.size());
+            assert(!cuser);
+            if (NUM() > 0) {
+                typedef NUM(detail::GetReturnsData) SB_CLASS_NAMES Data;
 
-            if (!call.msg)
-              return;
+                this->callback  = &NUM(detail::GetReturnsCallback) SB_CLASS_NAMES;
+                this->cuser     = CreateUser<Data>();
 
-            Buffer b;
-            b.b = adbus_msg_argbuffer(call.msg);
+                Data* o = (Data*) this->cuser;
+                (void) o;
 
-            std::string signature;
+                // o->a0 = a0;
+                ASSIGN_ARGS;
+            }
+
+            adbus_call_block(this);
+        }
+
+
+
+
+/* -------------------------------------------------------------------------- */
+#elif ADBUSCPP_MULTI == ADBUSCPP_MULTI_PROXY
+
+        template<CLASS_DECLS_TC class MF, class O>
+        void NUM(connect) (const char* signal, MF function, O* object)
+        {
+            Match m;
+            m.NUM(setCallback) <CLASS_NAMES_TC MF, O> (function, object);
+            adbus_proxy_signal(m_Proxy, &m, signal, -1);
+        }
+        
+        TEMPLATE_CLASS_DECLS
+        Call method(const char* method CONST_REF_ARGS_LC)
+        {
+            Call call;
+            adbus_proxy_method(m_Proxy, &call, method, -1);
+
+            Buffer b = adbus_msg_argbuffer(call.msg);
+
             // signature += adbus_type_string((A0*) NULL); ...
+            std::string signature;
             APPEND_SIGS;
             adbus_buf_appendsig(b, signature.c_str(), (int) signature.size());
 
             // a0 >> b; ...
             APPEND_ARGS;
 
-            call.callback   = m_Callback;
-            call.error      = m_Error;
-
-            if (m_CUser) {
-                call.cuser      = m_CUser;
-                call.release[0] = &free;
-                call.ruser[0]   = m_CUser;
-                m_CUser         = NULL;
-            }
-
-            if (m_EUser) {
-                call.euser      = m_EUser;
-                call.release[1] = &free;
-                call.ruser[1]   = m_EUser;
-                m_EUser         = NULL;
-            }
-
-            adbus_call_send(&call);
-
-            reset();
+            return call;
         }
 
 /* -------------------------------------------------------------------------- */
@@ -300,8 +332,7 @@
         {
             adbus_MsgFactory* m = adbus_sig_msg(m_Signal);
 
-            Buffer b;
-            b.b = adbus_msg_argbuffer(m);
+            Buffer b = adbus_msg_argbuffer(m);
 
             // a0 >> b; ...
             APPEND_ARGS;
@@ -407,8 +438,17 @@
 #undef CLASS_NAME
 #undef SB_CLASS_NAMES
 
+#undef DECL_ARG
+#undef DECL_ARGS
+
+#undef DEMARSHALL_POINTER_ARG
+#undef DEMARSHALL_POINTER_ARGS
+
 #undef DEMARSHALL_ARG
 #undef DEMARSHALL_ARGS
+
+#undef ASSIGN_ARG
+#undef ASSIGN_ARGS
 
 #undef APPEND_ARG
 #undef APPEND_ARGS

@@ -36,6 +36,9 @@ void Caller::connected()
 {
     adbus::Proxy bus(this);
     bus.init(m_Client->connection(), "org.freedesktop.DBus", "/");
-    bus.call("RequestName", "nz.co.foobar.adbus.ClientQtTest", uint32_t(0));
+    bus.method("RequestName")
+        .arg("nz.co.foobar.adbus.ClientQtTest")
+        .arg(uint32_t(0))
+        .send();
 }
 

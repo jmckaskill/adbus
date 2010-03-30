@@ -320,18 +320,16 @@ void adbus_conn_removereply(
 int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
 {
     dh_Iter ii;
-    uint32_t serial;
     adbus_ConnReply* reply;
     const char *sender, *unique;
     size_t sendsz, uniqsz;
 
-    if (!d->msg->replySerial)
+    if (d->msg->replySerial < 0)
         return 0;
 
     /* Lookup the reply */
 
-    serial = *d->msg->replySerial;
-    ii = dh_get(Reply, &c->replies.lookup, serial);
+    ii = dh_get(Reply, &c->replies.lookup, (uint32_t) d->msg->replySerial);
     if (ii == dh_end(&c->replies.lookup))
         return 0;
 

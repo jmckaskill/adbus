@@ -106,11 +106,11 @@ int main(int argc, char* argv[])
         {
         case ADBUS_UINT8:
             {
-                const uint8_t* v;
+                uint8_t v;
                 if (adbus_iter_u8(&i, &v)) {
                     error();
                 } else {
-                    printf("U8 %d %d\n", DIFF(v, begin), (int) *v);
+                    printf("U8 %d\n", (int) v);
                     print_iter(&i);
                 }
             }
@@ -118,11 +118,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_BOOLEAN:
             {
-                const adbus_Bool* v;
+                adbus_Bool v;
                 if (adbus_iter_bool(&i, &v)) {
                     error();
                 } else {
-                    printf("BOOL %d %d\n", DIFF(v, begin), (int) *v);
+                    printf("BOOL %d\n", (int) v);
                     print_iter(&i);
                 }
             }
@@ -130,11 +130,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_INT16:
             {
-                const int16_t* v;
+                int16_t v;
                 if (adbus_iter_i16(&i, &v)) {
                     error();
                 } else {
-                    printf("I16 %d %d\n", DIFF(v, begin), (int) *v);
+                    printf("I16 %d\n", (int) v);
                     print_iter(&i);
                 }
             }
@@ -142,11 +142,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_UINT16:
             {
-                const uint16_t* v;
+                uint16_t v;
                 if (adbus_iter_u16(&i, &v)) {
                     error();
                 } else {
-                    printf("U16 %d %d\n", DIFF(v, begin), (int) *v);
+                    printf("U16 %d\n", (int) v);
                     print_iter(&i);
                 }
             }
@@ -154,11 +154,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_INT32:
             {
-                const int32_t* v;
+                int32_t v;
                 if (adbus_iter_i32(&i, &v)) {
                     error();
                 } else {
-                    printf("I32 %d %d\n", DIFF(v, begin), (int) *v);
+                    printf("I32 %d\n", (int) v);
                     print_iter(&i);
                 }
             }
@@ -166,11 +166,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_UINT32:
             {
-                const uint32_t* v;
+                uint32_t v;
                 if (adbus_iter_u32(&i, &v)) {
                     error();
                 } else {
-                    printf("U32 %d %u\n", DIFF(v, begin), (int) *v);
+                    printf("U32 %u\n", (int) v);
                     print_iter(&i);
                 }
             }
@@ -178,11 +178,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_INT64:
             {
-                const int64_t* v;
+                int64_t v;
                 if (adbus_iter_i64(&i, &v)) {
                     error();
                 } else {
-                    printf("I64 %d %"PRId64"\n", DIFF(v, begin), *v);
+                    printf("I64 %"PRId64"\n", v);
                     print_iter(&i);
                 }
             }
@@ -190,11 +190,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_UINT64:
             {
-                const uint64_t* v;
+                uint64_t v;
                 if (adbus_iter_u64(&i, &v)) {
                     error();
                 } else {
-                    printf("U64 %d %"PRIu64"\n", DIFF(v, begin), *v);
+                    printf("U64 %"PRIu64"\n", v);
                     print_iter(&i);
                 }
             }
@@ -202,11 +202,11 @@ int main(int argc, char* argv[])
 
         case ADBUS_DOUBLE:
             {
-                const double* v;
+                double v;
                 if (adbus_iter_double(&i, &v)) {
                     error();
                 } else {
-                    printf("DOUBLE %d %.30f\n", DIFF(v, begin), *v);
+                    printf("DOUBLE %.30f\n", v);
                     print_iter(&i);
                 }
             }
@@ -296,7 +296,7 @@ int main(int argc, char* argv[])
             break;
 
 
-        case ADBUS_ARRAY_BEGIN:
+        case ADBUS_ARRAY:
             {
                 static d_Vector(Array) arrays = {};
 
@@ -337,7 +337,7 @@ int main(int argc, char* argv[])
             }
             break;
 
-        case ADBUS_VARIANT_BEGIN:
+        case ADBUS_VARIANT:
             {
                 static d_Vector(Variant) variants = {};
 

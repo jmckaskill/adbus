@@ -358,10 +358,7 @@ void QDBusMessagePrivate::getHeaders(adbus_Message* msg)
     type = msg->type;
     flags = msg->flags;
     serial = msg->serial;
-
-    if (msg->replySerial) {
-        replySerial = *msg->replySerial;
-    }
+    replySerial = msg->replySerial;
 
     if (msg->signature) {
         signature = QString::fromAscii(msg->signature, (int) msg->signatureSize);

@@ -116,7 +116,7 @@
  */
 
 /** \var adbus_Message::replySerial
- *  Pointer to reply serial value of NULL if not present.
+ *  Pointer to reply serial value of -1 if not present.
  */
 
 /** \var adbus_Message::path
@@ -278,7 +278,8 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
         return -1;
 
     while (adbus_iter_inarray(&i, &a)) {
-        const uint8_t* code;
+        uint8_t code;
+        uint32_t replySerial;
         adbus_IterVariant v;
         const char** pstr;
         size_t* psize;
@@ -290,7 +291,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
             return -1;
         }
 
-        switch (*code) {
+        switch (code) {
             case ADBUSI_HEADER_INVALID:
                 return -1;
 
@@ -349,10 +350,11 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
             case ADBUSI_HEADER_REPLY_SERIAL:
                 if (    i.sig[0] != 'u' 
                     ||  i.sig[1] != '\0'
-                    ||  adbus_iter_u32(&i, &m->replySerial))
+                    ||  adbus_iter_u32(&i, &replySerial))
                 {
                     return -1;
                 }
+                m->replySerial = replySerial;
                 break;
 
             default:
@@ -373,7 +375,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     /* Check that we have the required fields */
     if (m->type == ADBUS_MSG_METHOD && (!m->path || !m->member)) {
         return -1;
-    } else if (m->type == ADBUS_MSG_RETURN && !m->replySerial) {
+    } else if (m->type == ADBUS_MSG_RETURN && m->replySerial < 0) {
         return -1;
     } else if (m->type == ADBUS_MSG_ERROR && !m->error) {
         return -1;
@@ -482,8 +484,6 @@ void adbus_clonedata(adbus_Message* from, adbus_Message* to)
     to->error += off;
     to->destination += off;
     to->sender += off;
-
-    to->replySerial = (uint32_t*) (off + (char*) to->replySerial);
 
     if (from->arguments) {
         size_t i;

@@ -247,10 +247,10 @@ const char* adbus_nextarg(const char* sig)
         case ADBUS_STRING:
         case ADBUS_OBJECT_PATH:
         case ADBUS_SIGNATURE:
-        case ADBUS_VARIANT_BEGIN:
+        case ADBUS_VARIANT:
             return sig+1;
 
-        case ADBUS_ARRAY_BEGIN:
+        case ADBUS_ARRAY:
             return adbus_nextarg(sig + 1);
 
         case ADBUS_STRUCT_BEGIN:
@@ -487,7 +487,7 @@ adbus_Bool adbusI_matchesMessage(const adbus_Match* match, adbus_Message* msg)
 {
     if (match->type == ADBUS_MSG_INVALID && match->type != msg->type) {
         return 0;
-    } else if (match->replySerial >= 0 && (!msg->replySerial || (uint32_t) match->replySerial != *msg->replySerial)) {
+    } else if (match->replySerial >= 0 && (msg->replySerial < 0 || match->replySerial != msg->replySerial)) {
         return 0;
     } else if (!StringMatches(match->path, match->pathSize, msg->path, msg->pathSize)) {
         return 0;

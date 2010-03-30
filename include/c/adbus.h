@@ -109,10 +109,10 @@ enum adbus_FieldType
     ADBUS_STRING            = 's',
     ADBUS_OBJECT_PATH       = 'o',
     ADBUS_SIGNATURE         = 'g',
-    ADBUS_ARRAY_BEGIN       = 'a',
+    ADBUS_ARRAY             = 'a',
     ADBUS_STRUCT_BEGIN      = '(',
     ADBUS_STRUCT_END        = ')',
-    ADBUS_VARIANT_BEGIN     = 'v',
+    ADBUS_VARIANT           = 'v',
     ADBUS_DICTENTRY_BEGIN   = '{',
     ADBUS_DICTENTRY_END     = '}'
 };
@@ -170,7 +170,12 @@ typedef enum adbus_BlockType            adbus_BlockType;
 typedef enum adbus_BusType              adbus_BusType;
 typedef enum adbus_FieldType            adbus_FieldType;
 typedef enum adbus_MessageType          adbus_MessageType;
-typedef uint32_t                        adbus_Bool;
+
+#ifdef __cplusplus
+    typedef bool adbus_Bool;
+#else
+    typedef unsigned char adbus_Bool;
+#endif
 
 #ifdef _WIN32
     typedef uintptr_t   adbus_Socket;

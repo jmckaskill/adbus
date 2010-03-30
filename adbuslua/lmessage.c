@@ -329,8 +329,8 @@ int adbuslua_to_argument(
             adbus_buf_signature(buffer, str, (int) size);
             return 0;
 
-        case ADBUS_ARRAY_BEGIN:
-            if (sig[1] == '{')
+        case ADBUS_ARRAY:
+            if (sig[1] == ADBUS_DICTENTRY_BEGIN)
                 return AppendMap(L, index, buffer);
             else
                 return AppendArray(L, index, buffer);
@@ -338,7 +338,7 @@ int adbuslua_to_argument(
         case ADBUS_STRUCT_BEGIN:
             return AppendStruct(L, index, buffer);
 
-        case ADBUS_VARIANT_BEGIN:
+        case ADBUS_VARIANT:
             return AppendVariant(L, index, buffer);
 
         default:
@@ -669,15 +669,15 @@ static int PushMap(lua_State* L, adbus_Iterator* i)
 // __tostring, but I don't really see the point of that)
 static int PushNextField(lua_State* L, adbus_Iterator* i)
 {
-    const adbus_Bool*     b;
-    const uint8_t*        u8;
-    const int16_t*        i16;
-    const uint16_t*       u16;
-    const int32_t*        i32;
-    const uint32_t*       u32;
-    const int64_t*        i64;
-    const uint64_t*       u64;
-    const double*         d;
+    adbus_Bool      b;
+    uint8_t         u8;
+    int16_t         i16;
+    uint16_t        u16;
+    int32_t         i32;
+    uint32_t        u32;
+    int64_t         i64;
+    uint64_t        u64;
+    double          d;
     const char*     string;
     size_t          size;
 
@@ -689,47 +689,47 @@ static int PushNextField(lua_State* L, adbus_Iterator* i)
     case ADBUS_BOOLEAN:
         if (adbus_iter_bool(i, &b))
             return -1;
-        lua_pushboolean(L, *b);
+        lua_pushboolean(L, b);
         return 0;
     case ADBUS_UINT8:
         if (adbus_iter_u8(i, &u8))
             return -1;
-        lua_pushnumber(L, (lua_Number) *u8);
+        lua_pushnumber(L, (lua_Number) u8);
         return 0;
     case ADBUS_INT16:
         if (adbus_iter_i16(i, &i16))
             return -1;
-        lua_pushnumber(L, (lua_Number) *i16);
+        lua_pushnumber(L, (lua_Number) i16);
         return 0;
     case ADBUS_UINT16:
         if (adbus_iter_u16(i, &u16))
             return -1;
-        lua_pushnumber(L, (lua_Number) *u16);
+        lua_pushnumber(L, (lua_Number) u16);
         return 0;
     case ADBUS_INT32:
         if (adbus_iter_i32(i, &i32))
             return -1;
-        lua_pushnumber(L, (lua_Number) *i32);
+        lua_pushnumber(L, (lua_Number) i32);
         return 0;
     case ADBUS_UINT32:
         if (adbus_iter_u32(i, &u32))
             return -1;
-        lua_pushnumber(L, (lua_Number) *u32);
+        lua_pushnumber(L, (lua_Number) u32);
         return 0;
     case ADBUS_INT64:
         if (adbus_iter_i64(i, &i64))
             return -1;
-        lua_pushnumber(L, (lua_Number) *i64);
+        lua_pushnumber(L, (lua_Number) i64);
         return 0;
     case ADBUS_UINT64:
         if (adbus_iter_u64(i, &u64))
             return -1;
-        lua_pushnumber(L, (lua_Number) *u64);
+        lua_pushnumber(L, (lua_Number) u64);
         return 0;
     case ADBUS_DOUBLE:
         if (adbus_iter_double(i, &d))
             return -1;
-        lua_pushnumber(L, (lua_Number) *d);
+        lua_pushnumber(L, (lua_Number) d);
         return 0;
     case ADBUS_STRING:
         if (adbus_iter_string(i, &string, &size))
@@ -746,14 +746,14 @@ static int PushNextField(lua_State* L, adbus_Iterator* i)
             return -1;
         lua_pushlstring(L, string, size);
         return 0;
-    case ADBUS_ARRAY_BEGIN:
+    case ADBUS_ARRAY:
         if (i->sig[1] == ADBUS_DICTENTRY_BEGIN)
             return PushMap(L, i);
         else
             return PushArray(L, i);
     case ADBUS_STRUCT_BEGIN:
         return PushStruct(L, i);
-    case ADBUS_VARIANT_BEGIN:
+    case ADBUS_VARIANT:
         return PushVariant(L, i);
     default:
         return -1;
@@ -816,8 +816,8 @@ static int PushMessage(
     lua_pushnumber(L, msg->serial);
     lua_setfield(L, table, "serial");
 
-    if (msg->replySerial) {
-        lua_pushnumber(L, *msg->replySerial);
+    if (msg->replySerial >= 0) {
+        lua_pushnumber(L, msg->replySerial);
         lua_setfield(L, table, "reply_serial");
     }
     SetStringField(L, table, "path", msg->path, msg->pathSize);

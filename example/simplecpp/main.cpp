@@ -26,6 +26,8 @@
 #include <adbuscpp.h>
 #include <memory>
 
+#include <stdio.h>
+
 class Main : public adbus::State
 {
 public:
@@ -36,6 +38,9 @@ public:
 
 private:
     static adbus::Interface<Main>* Interface();
+
+    void NameRequested(uint32_t ret);
+    void NameError(const char* err, const char* msg);
 
     adbus_Connection*   m_Connection;
     void*               m_Block;
@@ -60,7 +65,24 @@ Main::Main(adbus_Connection* c)
 
     adbus::Proxy bus(this);
     bus.init(c, "org.freedesktop.DBus", "/");
-    bus.call("RequestName", "nz.co.foobar.adbus.SimpleCppTest", uint32_t(0));
+
+    bus.method("RequestName")
+        .arg("nz.co.foobar.adbus.SimpleCppTest")
+        .arg(uint32_t(0))
+        .setCallback1<uint32_t>(&Main::NameRequested, this)
+        .setError(&Main::NameError, this)
+        .send();
+}
+
+void Main::NameRequested(uint32_t ret)
+{
+    fprintf(stderr, "RequestName returned %d", (int) ret);
+}
+
+void Main::NameError(const char* err, const char* msg)
+{
+    fprintf(stderr, "Error %s: %s\n", err, msg);
+    exit(-1);
 }
 
 int main()

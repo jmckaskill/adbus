@@ -357,10 +357,10 @@ void adbus_check_end(adbus_CbData* d)
  */
 adbus_Bool adbus_check_bool(adbus_CbData* d)
 {
-    const adbus_Bool* ret;
+    adbus_Bool ret;
     Sig(d, 'b');
     Iter(d, adbus_iter_bool(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a uint8
@@ -368,10 +368,10 @@ adbus_Bool adbus_check_bool(adbus_CbData* d)
  */
 uint8_t adbus_check_u8(adbus_CbData* d)
 {
-    const uint8_t* ret;
+    uint8_t ret;
     Sig(d, 'y');
     Iter(d, adbus_iter_u8(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a int16
@@ -379,10 +379,10 @@ uint8_t adbus_check_u8(adbus_CbData* d)
  */
 int16_t adbus_check_i16(adbus_CbData* d)
 {
-    const int16_t* ret;
+    int16_t ret;
     Sig(d, 'n');
     Iter(d, adbus_iter_i16(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a uint16
@@ -390,10 +390,10 @@ int16_t adbus_check_i16(adbus_CbData* d)
  */
 uint16_t adbus_check_u16(adbus_CbData* d)
 {
-    const uint16_t* ret;
+    uint16_t ret;
     Sig(d, 'q');
     Iter(d, adbus_iter_u16(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a int32
@@ -401,10 +401,10 @@ uint16_t adbus_check_u16(adbus_CbData* d)
  */
 int32_t adbus_check_i32(adbus_CbData* d)
 {
-    const int32_t* ret;
+    int32_t ret;
     Sig(d, 'i');
     Iter(d, adbus_iter_i32(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a uint32
@@ -412,10 +412,10 @@ int32_t adbus_check_i32(adbus_CbData* d)
  */
 uint32_t adbus_check_u32(adbus_CbData* d)
 {
-    const uint32_t* ret;
+    uint32_t ret;
     Sig(d, 'u');
     Iter(d, adbus_iter_u32(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a int64
@@ -423,10 +423,10 @@ uint32_t adbus_check_u32(adbus_CbData* d)
  */
 int64_t adbus_check_i64(adbus_CbData* d)
 {
-    const int64_t* ret;
+    int64_t ret;
     Sig(d, 'x');
     Iter(d, adbus_iter_i64(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a uint64
@@ -434,10 +434,10 @@ int64_t adbus_check_i64(adbus_CbData* d)
  */
 uint64_t adbus_check_u64(adbus_CbData* d)
 {
-    const uint64_t* ret;
+    uint64_t ret;
     Sig(d, 't');
     Iter(d, adbus_iter_u64(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a double
@@ -445,10 +445,10 @@ uint64_t adbus_check_u64(adbus_CbData* d)
  */
 double adbus_check_double(adbus_CbData* d)
 {
-    const double* ret;
+    double ret;
     Sig(d, 'd');
     Iter(d, adbus_iter_double(&d->checkiter, &ret));
-    return *ret;
+    return ret;
 }
 
 /** Pull out a string

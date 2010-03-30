@@ -53,7 +53,7 @@ template<class T>
 inline int operator<<(QList<T>& v, adbus::Iterator& i)
 {
     adbus_IterArray a;
-    i.Check(ADBUS_ARRAY_BEGIN);
+    i.Check(ADBUS_ARRAY);
     if (adbus_iter_beginarray(i, &a))
         return -1;
     while (adbus_iter_inarray(i, &a)) {

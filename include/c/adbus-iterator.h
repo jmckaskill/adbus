@@ -461,7 +461,7 @@ ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** str, size_t* 
 {
     uint32_t len;
     return adbusI_iter_sig(i, 's')
-        || adbusI_iter_get32(i, len)
+        || adbusI_iter_get32(i, &len)
         || adbusI_iter_getstring(i, len, str, strsz);
 }
 
@@ -483,7 +483,7 @@ ADBUS_INLINE int adbus_iter_signature(adbus_Iterator* i, const char** str, size_
 {
     uint8_t len;
     return adbusI_iter_sig(i, 'g')
-        || adbusI_iter_get8(i, len)
+        || adbusI_iter_get8(i, &len)
         || adbusI_iter_getstring(i, len, str, strsz);
 }
 
@@ -508,12 +508,12 @@ ADBUS_API const char* adbus_nextarg(const char* sig);
  */
 ADBUS_INLINE int adbus_iter_beginarray(adbus_Iterator* i, adbus_IterArray* a)
 {
+    uint32_t len;
     const char* sigend;
-    const uint32_t* len;
     if (adbusI_iter_sig(i, 'a') || adbusI_iter_get32(i, &len))
         return -1;
 
-    if (*len > ADBUS_MAXIMUM_ARRAY_LENGTH)
+    if (len > ADBUS_MAXIMUM_ARRAY_LENGTH)
         return -1;
 
     if (adbus_iter_alignfield(i, *i->sig))
@@ -524,7 +524,7 @@ ADBUS_INLINE int adbus_iter_beginarray(adbus_Iterator* i, adbus_IterArray* a)
         return -1;
 
     a->data  = i->data;
-    a->size  = *len;
+    a->size  = len;
     a->sig   = i->sig;
     a->sigsz = sigend - a->sig;
     return 0;
@@ -593,11 +593,11 @@ struct adbus_IterVariant
  */
 ADBUS_INLINE int adbus_iter_beginvariant(adbus_Iterator* i, adbus_IterVariant* v)
 { 
+    uint8_t len;
     const char* vsig;
-    const uint8_t* len;
     if (    adbusI_iter_sig(i, 'v')
         ||  adbusI_iter_get8(i, &len)
-        ||  adbusI_iter_getstring(i, *len, &vsig, NULL)
+        ||  adbusI_iter_getstring(i, len, &vsig, NULL)
         ||  adbus_iter_alignfield(i, *vsig))
     {
         return -1;

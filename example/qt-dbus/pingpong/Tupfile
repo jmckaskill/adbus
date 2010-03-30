@@ -2,7 +2,7 @@ include_rules
 
 CFLAGS += $(CFLAGS_QT_CORE) $(CFLAGS_QT_DBUS)
 
-: pong.h |> !moc |> moc_%B.cpp
+: pong.hxx |> !moc |> moc_%B.cpp
 : ping.cpp |> !cpp |> ping_%B.o
 : foreach moc_pong.cpp pong.cpp |> !cpp |> pong_%B.o
 

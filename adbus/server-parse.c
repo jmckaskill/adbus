@@ -113,11 +113,12 @@ static int ServerParse(adbus_Remote* r, adbus_Buffer* b, adbus_Message* m, const
         return -1;
 
     while (adbus_iter_inarray(&i, &a)) {
-        const uint8_t* code;
+        uint8_t code;
         adbus_IterVariant v;
         const char** pstr;
         size_t* psize;
         const char *fieldBegin, *fieldEnd;
+        uint32_t replySerial;
 
         if (adbus_iter_beginstruct(&i))
             return -1;
@@ -130,7 +131,7 @@ static int ServerParse(adbus_Remote* r, adbus_Buffer* b, adbus_Message* m, const
             return -1;
         }
 
-        switch (*code) {
+        switch (code) {
             case ADBUSI_HEADER_INVALID:
                 return -1;
 
@@ -187,11 +188,11 @@ static int ServerParse(adbus_Remote* r, adbus_Buffer* b, adbus_Message* m, const
             case ADBUSI_HEADER_REPLY_SERIAL:
                 if (    i.sig[0] != 'u' 
                     ||  i.sig[1] != '\0'
-                    ||  adbus_iter_u32(&i, &m->replySerial))
+                    ||  adbus_iter_u32(&i, &replySerial))
                 {
                     return -1;
                 }
-                m->replySerial = (uint32_t*) ((char*) m->replySerial - (uintptr_t) bdata);
+                m->replySerial = replySerial;
                 goto finish;
 
             default:
@@ -256,10 +257,6 @@ static int ServerParse(adbus_Remote* r, adbus_Buffer* b, adbus_Message* m, const
 
         if (m->signature) {
             m->signature += (uintptr_t) bdata;
-        }
-
-        if (m->replySerial) {
-            m->replySerial = (uint32_t*) ((uintptr_t) m->replySerial + bdata);
         }
 
         if (m->path) {
