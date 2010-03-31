@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="Windows-1252"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="8.00"
+	Version="9.00"
 	Name="adbusqt"
 	ProjectGUID="{DD9AC11E-3867-49ED-A6D7-29284EC7E24F}"
 	RootNamespace="adbusqt"
+	TargetFrameworkVersion="131072"
 	>
 	<Platforms>
 		<Platform
@@ -30,7 +31,7 @@
 			<Tool
 				Name="MOC"
 				AdditionalOptions=""
-				QtCommandLine="/Od /I &quot;$(INPUTDIR)../include/c&quot; /I &quot;$(INPUTDIR)../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /I&quot;$(QTDIR)/include/Qt&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;QDBUS_MAKEDLL&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc80.pdb&quot; /W3 /WX /nologo /c /Wp64 /ZI /TP /errorReport:prompt"
+				QtCommandLine="/Od /I &quot;$(INPUTDIR)../include/c&quot; /I &quot;$(INPUTDIR)../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /I&quot;$(QTDIR)/include/Qt&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;QDBUS_MAKEDLL&quot; /D &quot;_MBCS&quot; /D &quot;_WINDLL&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc80.pdb&quot; /W3 /WX /nologo /c /ZI /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QRC"
@@ -61,7 +62,6 @@
 				RuntimeLibrary="3"
 				WarningLevel="3"
 				WarnAsError="true"
-				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -79,6 +79,8 @@
 				OutputFile="$(OutDir)\QtDBusd4.dll"
 				AdditionalLibraryDirectories="$(QTDIR)/lib"
 				GenerateDebugInformation="true"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -100,9 +102,6 @@
 				Name="VCAppVerifierTool"
 			/>
 			<Tool
-				Name="VCWebDeploymentTool"
-			/>
-			<Tool
 				Name="VCPostBuildEventTool"
 			/>
 		</Configuration>
@@ -120,7 +119,7 @@
 			<Tool
 				Name="MOC"
 				AdditionalOptions=""
-				QtCommandLine="/O2 /GL /I &quot;../include/c&quot; /I &quot;../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /I&quot;$(QTDIR)/include/Qt&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;NDEBUG&quot; /D&quot;QDBUS_MAKEDLL&quot; /D &quot;_WINDLL&quot; /D &quot;_MBCS&quot; /FD /EHsc /MD /Fd&quot;Release\vc80.pdb&quot; /W3 /WX /nologo /c /Wp64 /Zi /TP /errorReport:prompt"
+				QtCommandLine="/O2 /GL /I &quot;../include/c&quot; /I &quot;../deps/msvc&quot; /I &quot;$(QTDIR)/include&quot; /I&quot;$(QTDIR)/include/Qt&quot; /D &quot;_CRT_SECURE_NO_DEPRECATE&quot; /D &quot;ADBUS_SHARED_LIBRARY&quot; /D &quot;NDEBUG&quot; /D&quot;QDBUS_MAKEDLL&quot; /D &quot;_WINDLL&quot; /D &quot;_MBCS&quot; /FD /EHsc /MD /Fd&quot;Release\vc80.pdb&quot; /W3 /WX /nologo /c /Zi /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QRC"
@@ -147,7 +146,6 @@
 				RuntimeLibrary="2"
 				WarningLevel="3"
 				WarnAsError="true"
-				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="3"
 			/>
 			<Tool
@@ -167,6 +165,8 @@
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
+				RandomizedBaseAddress="1"
+				DataExecutionPrevention="0"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -186,9 +186,6 @@
 			/>
 			<Tool
 				Name="VCAppVerifierTool"
-			/>
-			<Tool
-				Name="VCWebDeploymentTool"
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"

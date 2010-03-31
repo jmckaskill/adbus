@@ -257,7 +257,7 @@ int adbuslua_to_argument(
         case ADBUS_BOOLEAN:
             if (lua_type(L, index) != LUA_TBOOLEAN)
                 return Error(L, "Invalid value - expected a boolean");
-            adbus_buf_bool(buffer, lua_toboolean(L, index));
+			adbus_buf_bool(buffer, lua_toboolean(L, index) ? ADBUS_TRUE : ADBUS_FALSE);
             return 0;
 
         case ADBUS_UINT8:

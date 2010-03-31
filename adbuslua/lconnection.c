@@ -303,7 +303,7 @@ static int AddMatch(lua_State* L)
 
     lua_getfield(L, 3, "add_to_bus");
     if (lua_isboolean(L, -1)) {
-        m.addMatchToBusDaemon = lua_toboolean(L, -1);
+		m.addMatchToBusDaemon = lua_toboolean(L, -1) ? ADBUS_TRUE : ADBUS_FALSE;
     } else if (!lua_isnil(L, -1)) {
         return luaL_error(L, "Expected a boolean for 'reply_serial'");
     }

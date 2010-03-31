@@ -80,7 +80,7 @@ int adbusluaI_boolField(lua_State* L, int table, const char* field, adbus_Bool* 
 {
     lua_getfield(L, table, field);
     if (lua_isboolean(L, -1)) {
-        *val = lua_toboolean(L, -1);
+		*val = lua_toboolean(L, -1) ? ADBUS_TRUE : ADBUS_FALSE;
         lua_pop(L, 1);
         return 0;
     } else if (lua_isnil(L, -1)) {

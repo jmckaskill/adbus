@@ -39,8 +39,10 @@ class QDBusClient : public QDBusProxy
 {
     Q_OBJECT
 public:
-    QDBusClient(adbus_BusType type, bool connectToBus = true);
-    QDBusClient(const char* envstr, bool connectToBus = true);
+    QDBusClient();
+
+    bool connectToServer(adbus_BusType type, bool connectToBus = true);
+    bool connectToServer(const char* envstr, bool connectToBus = true);
 
     adbus_Connection* connection() {return m_Connection;}
 
@@ -66,8 +68,6 @@ private:
     static void             ConnectedToBus(void* u);
     static void             Free(void* u);
 
-    bool connectToServer(const char* envstr);
-
     static QThreadStorage<QDBusProxy*>  m_Proxies;
 
     bool                                m_ConnectToBus;
@@ -88,10 +88,14 @@ public:
     static void             RemoveObject(const QDBusConnection& c, QObject* object);
     static QDBusConnection  BusConnection(adbus_BusType type);
     static void             SetLastError(const QDBusConnection& c, QDBusError err);
+	static QDBusConnection	GetConnection(const QString& name);
+	static QDBusConnection	GetConnection(adbus_BusType type);
+
 
     QDBusConnectionPrivate();
     ~QDBusConnectionPrivate();
 
+	QDBusClient*							client;
     adbus_Connection*                       connection;
     QDBusConnectionInterface*               interface;
 

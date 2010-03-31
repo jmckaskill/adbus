@@ -227,7 +227,8 @@ static bool DoCall(
         }
         type->marshall(b, args[i], true, false);
     }
-    return true;
+
+	return adbus_msg_send(d->msg, d->connection) == 0;
 }
 
 /* ------------------------------------------------------------------------- */

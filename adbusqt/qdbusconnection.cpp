@@ -44,8 +44,8 @@ QThreadStorage<QDBusProxy*> QDBusClient::m_Proxies;
 
 /* ------------------------------------------------------------------------- */
 
-QDBusClient::QDBusClient(adbus_BusType type, bool connectToBus)
-:   m_ConnectToBus(connectToBus),
+QDBusClient::QDBusClient()
+:   m_ConnectToBus(false),
     m_Connected(false),
     m_Authenticated(0),
     m_Auth(NULL),
@@ -62,34 +62,6 @@ QDBusClient::QDBusClient(adbus_BusType type, bool connectToBus)
 
     m_Connection = adbus_conn_new(&cbs, this);
     m_Buffer = adbus_buf_new();
-
-    char buf[255];
-    if (!adbus_connect_address(type, buf, sizeof(buf))) {
-        connectToServer(buf);
-    }
-}
-
-/* ------------------------------------------------------------------------- */
-
-QDBusClient::QDBusClient(const char* envstr, bool connectToBus)
-:   m_ConnectToBus(connectToBus),
-    m_Connected(false),
-    m_Authenticated(0),
-    m_Auth(NULL),
-    m_IODevice(NULL)
-{
-    adbus_ConnectionCallbacks cbs = {};
-    cbs.release       = &QDBusClient::Free;
-    cbs.send_message  = &QDBusClient::SendMsg;
-    cbs.proxy         = &QDBusProxy::ProxyCallback;
-    cbs.should_proxy  = &QDBusClient::ShouldProxy;
-    cbs.get_proxy     = &QDBusClient::GetProxy;
-    cbs.block         = &QDBusClient::Block;
-
-    m_Connection = adbus_conn_new(&cbs, this);
-    m_Buffer = adbus_buf_new();
-
-    connectToServer(envstr);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -186,6 +158,9 @@ int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms
     {
     case ADBUS_WAIT_FOR_CONNECTED:
         {
+			if (d->m_Connected)
+				return 0;
+
             QEventLoop loop;
             *data = &loop;
 
@@ -258,9 +233,22 @@ void QDBusClient::Free(void* u)
 
 /* ------------------------------------------------------------------------- */
 
-bool QDBusClient::connectToServer(const char* envstr)
+bool QDBusClient::connectToServer(adbus_BusType type, bool connectToBus /* = true */)
+{
+    char buf[255];
+    if (adbus_connect_address(type, buf, sizeof(buf))) {
+		return false;
+    }
+
+    return connectToServer(buf, connectToBus);
+}
+
+/* ------------------------------------------------------------------------- */
+
+bool QDBusClient::connectToServer(const char* envstr, bool connectToBus)
 {
     disconnect();
+	m_ConnectToBus = connectToBus;
 
     QString s = QString::fromAscii(envstr);
     QStringList l1 = s.split(':');
@@ -404,8 +392,10 @@ void QDBusConnectionPrivate::RemoveObject(const QDBusConnection& c, QObject* obj
 }
 
 QDBusConnectionPrivate::QDBusConnectionPrivate()
-: connection(NULL)
-{ interface = new QDBusConnectionInterface(QDBusConnection(this), NULL); } 
+: interface(NULL), client(new QDBusClient)
+{
+	connection = client->connection();
+} 
 
 QDBusConnectionPrivate::~QDBusConnectionPrivate()
 { 
@@ -420,49 +410,46 @@ static QHash<QString, QDBusConnectionPrivate*> sNamedConnections;
 static QDBusConnectionPrivate* sConnection[ADBUS_BUS_NUM];
 
 
-QDBusConnectionPrivate* GetConnection(const QString& name)
+QDBusConnection QDBusConnectionPrivate::GetConnection(const QString& name)
 {
-    if (name.isEmpty())
-        return NULL;
-
     QMutexLocker lock(&sConnectionLock);
 
     QDBusConnectionPrivate*& p = sNamedConnections[name];
-    if (p == NULL) {
-        p = new QDBusConnectionPrivate;
-    }
-    return p;
+	if (p == NULL) {
+		p = new QDBusConnectionPrivate();
+		QDBusConnection c(p);
+		p->interface = new QDBusConnectionInterface(c, NULL);
+		// Decrement the refcount since p->interface holds a connection
+		qDestructSharedData(p);
+		return c;
+	} else {
+		return QDBusConnection(p);
+	}
 }
 
-QDBusConnectionPrivate* GetConnection(adbus_BusType type)
+QDBusConnection QDBusConnectionPrivate::GetConnection(adbus_BusType type)
 {
     QMutexLocker lock(&sConnectionLock);
     QDBusConnectionPrivate*& p = sConnection[type];
-    if (p == NULL) {
-        p = new QDBusConnectionPrivate;
-    }
-    return p;
+	if (p == NULL) {
+		p = new QDBusConnectionPrivate();
+		QDBusConnection c(p);
+		p->interface = new QDBusConnectionInterface(c, NULL);
+		// Decrement the refcount since p->interface holds a connection
+		qDestructSharedData(p);
+		return c;
+	} else {
+		return QDBusConnection(p);
+	}
 }
 
 /* ------------------------------------------------------------------------- */
 
 QDBusConnection::QDBusConnection(QDBusConnectionPrivate *dd)
-{ 
-    void* handle = NULL;
-    qCopySharedData(d, dd); 
-    if (d->connection) {
-        adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1);
-    }
-}
+{ qCopySharedData(d, dd); }
 
 QDBusConnection::QDBusConnection(const QString& name)
-{
-    void* handle = NULL;
-    qCopySharedData(d, GetConnection(name));
-    if (d->connection) {
-        adbus_conn_block(d->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1);
-    }
-}
+{ *this = QDBusConnectionPrivate::GetConnection(name); }
 
 QDBusConnection::QDBusConnection(const QDBusConnection& other)
 { qCopySharedData(d, other.d); }
@@ -477,39 +464,42 @@ QDBusConnection::~QDBusConnection()
 
 QDBusConnection QDBusConnection::connectToBus(const QString& address, const QString &name)
 {
-    QDBusConnectionPrivate* p = GetConnection(name);
-    if (!p->connection) {
-        QDBusClient* c = new QDBusClient(address.toLocal8Bit().constData());
-        p->connection = c->connection();
-    }
+	QDBusConnection c = QDBusConnectionPrivate::GetConnection(name);
 
-    return QDBusConnection(p);
+	if (c.d->client->connectToServer(address.toLocal8Bit().constData(), true)) {
+		void* block = NULL;
+		adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
+	}
+
+    return c;
 }
 
 /* ------------------------------------------------------------------------- */
 
 QDBusConnection QDBusConnection::connectToBus(BusType type, const QString &name)
 {
-    QDBusConnectionPrivate* p = GetConnection(name);
-    if (!p->connection) {
-        QDBusClient* c = new QDBusClient(type == SystemBus ? ADBUS_SYSTEM_BUS : ADBUS_DEFAULT_BUS);
-        p->connection = c->connection();
-    }
+	QDBusConnection c = QDBusConnectionPrivate::GetConnection(name);
 
-    return QDBusConnection(p);
+	if (c.d->client->connectToServer(type == SystemBus ? ADBUS_SYSTEM_BUS : ADBUS_DEFAULT_BUS, true)) {
+		void* block = NULL;
+		adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
+	}
+
+    return c;
 }
 
 /* ------------------------------------------------------------------------- */
 
 QDBusConnection QDBusConnectionPrivate::BusConnection(adbus_BusType type)
 {
-    QDBusConnectionPrivate* p = GetConnection(type);
-    if (!p->connection) {
-        QDBusClient* c = new QDBusClient(type);
-        p->connection = c->connection();
-    }
+	QDBusConnection c = QDBusConnectionPrivate::GetConnection(type);
 
-    return QDBusConnection(p);
+	if (c.d->client->connectToServer(type, true)) {
+		void* block = NULL;
+		adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
+	}
+
+    return c;
 }
 
 QDBusConnection QDBusConnection::sessionBus()

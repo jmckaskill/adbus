@@ -49,6 +49,10 @@
 #include "ping-common.h"
 #include "pong.hxx"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 QString Pong::ping(const QString &arg)
 {
     QMetaObject::invokeMethod(QCoreApplication::instance(), "quit");
@@ -57,6 +61,10 @@ QString Pong::ping(const QString &arg)
 
 int main(int argc, char **argv)
 {
+#if !defined NDEBUG && defined _WIN32
+	Sleep(2000);
+#endif
+
     QCoreApplication app(argc, argv);
 
     if (!QDBusConnection::sessionBus().isConnected()) {

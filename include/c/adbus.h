@@ -172,8 +172,12 @@ typedef enum adbus_FieldType            adbus_FieldType;
 typedef enum adbus_MessageType          adbus_MessageType;
 
 #ifdef __cplusplus
+#	define ADBUS_TRUE true
+#	define ADBUS_FALSE false
     typedef bool adbus_Bool;
 #else
+#	define ADBUS_TRUE 1
+#	define ADBUS_FALSE 0
     typedef unsigned char adbus_Bool;
 #endif
 
