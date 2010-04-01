@@ -22,6 +22,7 @@ ifeq (@(ADBUS_RELEASE),y)
     LDFLAGS += --strip-all
 else
     CFLAGS += -DDEBUG -g -O0
+    LDFLAGS += -rdynamic
 endif
 
 !cc = |> ^ CC %f^ $(CC) -c `pwd`/%f -o %o $(CFLAGS) $(CFLAGS_%f)|>

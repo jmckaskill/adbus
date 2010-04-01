@@ -26,27 +26,188 @@
 #include "debug.h"
 #include "interface.h"
 #include <inttypes.h>
+#include <stdio.h>
+
+#ifdef _WIN32
+#   include <windows.h>
+#else
+#   include <unistd.h>
+#endif
+
+#ifdef __GNUC__
+#   include <execinfo.h>
+#endif
+
+#undef interface
 
 /* -------------------------------------------------------------------------- */
 
-adbus_LogCallback sLogFunction;
-
-void adbus_set_logger(adbus_LogCallback cb)
-{ sLogFunction = cb; }
-
-/* -------------------------------------------------------------------------- */
-
-static void PrintStringField(
-        d_String* str,
-        const char* field,
-        const char* what)
-{
-    if (field)
-        ds_cat_f(str, "%-15s \"%s\"\n", what,  field);
+static void logerr(const char* str, size_t sz)
+{ 
+#if !defined _WIN32
+    fprintf(stderr, "[adbus.so/%d] %.*s", (int) getpid(), (int) sz, str); 
+#elif !defined _WIN32_WCE && !defined NDEBUG
+    OutputDebugStringA(str);
+#else
+    (void) str;
+    (void) sz;
+#endif
 }
 
-static int LogField(d_String* str, adbus_Iterator* i);
-static int LogArray(d_String* str, adbus_Iterator* i)
+int adbusI_loglevel = -1;
+
+static int sEnableColors = 0;
+static int sLogLevel = -1;
+static adbus_LogCallback sLogFunction = &logerr;
+
+void adbusI_initlog()
+{
+    if (sLogLevel == -1) {
+        const char* logenv = getenv("ADBUS_DEBUG");
+        const char* colenv = getenv("ADBUS_COLOR");
+        sLogLevel = logenv ? strtol(logenv, NULL, 10) : 0;
+        sEnableColors = colenv && strcmp(colenv, "1") == 0;
+        adbusI_loglevel = sLogFunction ? sLogLevel : -1;
+    }
+}
+
+void adbus_set_loglevel(int level)
+{
+    adbusI_initlog();
+    sLogLevel = level;
+    adbusI_loglevel = sLogFunction ? sLogLevel : -1;
+}
+
+void adbus_set_logger(adbus_LogCallback cb)
+{ 
+    adbusI_initlog();
+    sLogFunction = cb; 
+    adbusI_loglevel = sLogFunction ? sLogLevel : -1;
+}
+
+/* -------------------------------------------------------------------------- */
+
+#define BLACK   (sEnableColors ? "\033[30m" : "")
+#define RED     (sEnableColors ? "\033[31m" : "")
+#define GREEN   (sEnableColors ? "\033[32m" : "")
+#define YELLOW  (sEnableColors ? "\033[33m" : "")
+#define BLUE    (sEnableColors ? "\033[34m" : "")
+#define MAGENTA (sEnableColors ? "\033[35m" : "")
+#define CYAN    (sEnableColors ? "\033[36m" : "")
+#define WHITE   (sEnableColors ? "\033[37m" : "")
+#define NORMAL  (sEnableColors ? "\033[m" : "")
+
+/* -------------------------------------------------------------------------- */
+
+#define LEADING   8
+#define KEY_WIDTH 16
+
+static void Header(d_String* s, const char* format, ...) ADBUSI_PRINTF(2, 3);
+
+static void Header(d_String* s, const char* format, ...)
+{
+    int spaces;
+
+    va_list ap;
+    va_start(ap, format);
+    ds_cat_char(s, '\n');
+    ds_cat_char_n(s, ' ', LEADING);
+    ds_cat(s, RED);
+
+    spaces = ds_size(s) + KEY_WIDTH - 2; /* -2 for ': ' below */
+    ds_cat_vf(s, format, ap);
+    spaces -= ds_size(s);
+
+    ds_cat_f(s, ":%s ", NORMAL);
+
+    if (spaces > 0) {
+        ds_cat_char_n(s, ' ', spaces);
+    }
+}
+
+static void Number_(d_String* s, const char* field, int num)
+{
+    if (num >= 0) {
+        Header(s, "%s", field);
+        ds_cat_f(s, "%d", num);
+    }
+}
+
+#define Number(s, field, num) Number_(s, field, (int) num)
+
+static void String(d_String* s, const char* field, const char* value)
+{
+    if (value) {
+        Header(s, "%s", field);
+        ds_cat_f(s, "%s", value);
+    }
+}
+
+static void Callback_(d_String* s, const char* field, void* cb, void* user)
+{
+    if (cb) {
+        Header(s, "%s", field);
+
+#ifdef __GNUC__
+        {
+            char** sym = backtrace_symbols(&cb, 1);
+            ds_cat_f(s, "%s, %p", *sym, user);
+            free(sym);
+        }
+
+#else
+        ds_cat_f(s, "%p, %p", cb, user);
+#endif
+    }
+}
+
+#define Callback(s, field, cb, user) Callback_(s, field, (void*) (uintptr_t) cb, user)
+
+/* -------------------------------------------------------------------------- */
+
+static const char* TypeString(adbus_MessageType type)
+{
+    if (type == ADBUS_MSG_METHOD) {
+        return "method_call";
+    } else if (type == ADBUS_MSG_RETURN) {
+        return "method_return";
+    } else if (type == ADBUS_MSG_ERROR) {
+        return "error";
+    } else if (type == ADBUS_MSG_SIGNAL) {
+        return "signal";
+    } else {
+        return "unknown";
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+
+static void InsertLeading(d_String* s, size_t begin, int spaces)
+{
+    while (begin < ds_size(s)) {
+        const char* nl = (const char*) memchr(ds_cstr(s) + begin, '\n', ds_size(s) - begin);
+        if (nl == NULL) {
+            break;
+        }
+
+        begin = nl - ds_cstr(s) + 1;
+        ds_insert_char_n(s, begin, ' ', spaces);
+    }
+}
+
+static void Append(d_String* s, int spaces, const char* format, ...)
+{
+    size_t begin = ds_size(s);
+
+    va_list ap;
+    va_start(ap, format);
+
+    ds_cat_vf(s, format, ap);
+    InsertLeading(s, begin, spaces);
+}
+
+static int LogField(d_String* s, adbus_Iterator* i, int spaces);
+static int LogArray(d_String* s, adbus_Iterator* i, int spaces)
 {
     adbus_IterArray a;
     adbus_Bool first = 1;
@@ -56,55 +217,55 @@ static int LogArray(d_String* str, adbus_Iterator* i)
         return -1;
 
     map = (*i->sig == ADBUS_DICTENTRY_BEGIN);
-    ds_cat(str, map ? "{" : "[");
+    Append(s, spaces + 2, map ? "{\n" : "[\n");
 
     while (adbus_iter_inarray(i, &a)) {
         if (!first)
-            ds_cat(str, ", ");
+            Append(s, spaces + 2, ",\n");
         first = 0;
-        if (LogField(str, i)) {
+        if (LogField(s, i, spaces + 2)) {
               return -1;
         }
     }
 
-    ds_cat_f(str, map ? "}" : "]");
+    Append(s, spaces, map ? "\n}" : "\n]");
     return adbus_iter_endarray(i, &a);
 }
 
-static int LogStruct(d_String* str, adbus_Iterator* i)
+static int LogStruct(d_String* s, adbus_Iterator* i, int spaces)
 {
     adbus_Bool first = 1;
     if (adbus_iter_beginstruct(i))
         return -1;
-    ds_cat_f(str, "(");
+    ds_cat_f(s, "(");
     while (*i->sig != ADBUS_STRUCT_END) {
         if (!first)
-            ds_cat(str, ", ");
+            ds_cat(s, ", ");
         first = 0;
-        if (LogField(str, i)) {
+        if (LogField(s, i, spaces)) {
               return -1;
         }
     }
-    ds_cat_f(str, ")");
+    ds_cat_f(s, ")");
     return adbus_iter_endstruct(i);
 }
 
-static int LogVariant(d_String* str, adbus_Iterator* i)
+static int LogVariant(d_String* s, adbus_Iterator* i, int spaces)
 {
     adbus_IterVariant v;
     if (adbus_iter_beginvariant(i, &v))
         return -1;
-    ds_cat_f(str, "<%s>{", i->sig);
-    if (LogField(str, i))
+    ds_cat_f(s, "<%s>{", i->sig);
+    if (LogField(s, i, spaces))
         return -1;
     if (*i->sig != '\0')
         return -1;
-    ds_cat_f(str, "}");
+    ds_cat_f(s, "}");
     return adbus_iter_endvariant(i, &v);
 }
 
 
-static int LogField(d_String* str, adbus_Iterator* i)
+static int LogField(d_String* s, adbus_Iterator* i, int spaces)
 {
     adbus_Bool      b;
     uint8_t         u8;
@@ -123,78 +284,80 @@ static int LogField(d_String* str, adbus_Iterator* i)
     case ADBUS_BOOLEAN:
         if (adbus_iter_bool(i, &b))
             return -1;
-        ds_cat_f(str, "%s", b ? "true" : "false");
+        ds_cat_f(s, "%s", b ? "true" : "false");
         break;
     case ADBUS_UINT8:
         if (adbus_iter_u8(i, &u8))
             return -1;
-        ds_cat_f(str, "%" PRIu8, u8);
+        ds_cat_f(s, "%" PRIu8, u8);
         break;
     case ADBUS_INT16:
         if (adbus_iter_i16(i, &i16))
             return -1;
-        ds_cat_f(str, "%" PRIi16, i16);
+        ds_cat_f(s, "%" PRIi16, i16);
         break;
     case ADBUS_UINT16:
         if (adbus_iter_u16(i, &u16))
             return -1;
-        ds_cat_f(str, "%" PRIu16, u16);
+        ds_cat_f(s, "%" PRIu16, u16);
         break;
     case ADBUS_INT32:
         if (adbus_iter_i32(i, &i32))
             return -1;
-        ds_cat_f(str, "%" PRIi32, i32);
+        ds_cat_f(s, "%" PRIi32, i32);
         break;
     case ADBUS_UINT32:
         if (adbus_iter_u32(i, &u32))
             return -1;
-        ds_cat_f(str, "%" PRIu32, u32);
+        ds_cat_f(s, "%" PRIu32, u32);
         break;
     case ADBUS_INT64:
         if (adbus_iter_i64(i, &i64))
             return -1;
-        ds_cat_f(str, "%" PRIi64, i64);
+        ds_cat_f(s, "%" PRIi64, i64);
         break;
     case ADBUS_UINT64:
         if (adbus_iter_u64(i, &u64))
             return -1;
-        ds_cat_f(str, "%" PRIu64, u64);
+        ds_cat_f(s, "%" PRIu64, u64);
         break;
     case ADBUS_DOUBLE:
         if (adbus_iter_double(i, &d))
             return -1;
-        ds_cat_f(str, "%.15g", d);
+        ds_cat_f(s, "%.15g", d);
         break;
     case ADBUS_STRING:
         if (adbus_iter_string(i, &string, &size))
             return -1;
-        ds_cat_f(str, "\"%*s\"", (int) size, string);
+        Append(s, spaces, "\"%*s\"", (int) size, string);
         break;
     case ADBUS_OBJECT_PATH:
         if (adbus_iter_objectpath(i, &string, &size))
             return -1;
-        ds_cat_f(str, "\"%*s\"", (int) size, string);
+        Append(s, spaces, "\"%*s\"", (int) size, string);
         break;
     case ADBUS_SIGNATURE:
         if (adbus_iter_signature(i, &string, &size))
             return -1;
-        ds_cat_f(str, "\"%*s\"", (int) size, string);
+        Append(s, spaces, "\"%*s\"", (int) size, string);
         break;
     case ADBUS_DICTENTRY_BEGIN:
-        if (LogField(str, i))
+        if (adbus_iter_begindictentry(i))
             return -1;
-        ds_cat_f(str, " = ");
-        if (LogField(str, i))
+        if (LogField(s, i, spaces))
             return -1;
-        if (*i->sig != ADBUS_DICTENTRY_END)
+        ds_cat_f(s, " = ");
+        if (LogField(s, i, spaces))
+            return -1;
+        if (*i->sig != ADBUS_DICTENTRY_END || adbus_iter_enddictentry(i))
             return -1;
         break;
     case ADBUS_ARRAY:
-        return LogArray(str, i);
+        return LogArray(s, i, spaces);
     case ADBUS_STRUCT_BEGIN:
-        return LogStruct(str, i);
+        return LogStruct(s, i, spaces);
     case ADBUS_VARIANT:
-        return LogVariant(str, i);
+        return LogVariant(s, i, spaces);
     default:
         assert(0);
         return -1;
@@ -202,115 +365,79 @@ static int LogField(d_String* str, adbus_Iterator* i)
     return 0;
 }
 
-static int MsgSummary(d_String* str, const adbus_Message* m)
+static int MsgSummary(d_String* s, const adbus_Message* m)
 {
-    if (m->type == ADBUS_MSG_METHOD) {
-        ds_cat_f(str, "Method call: ");
-    } else if (m->type == ADBUS_MSG_RETURN) {
-        ds_cat_f(str, "Return: ");
-    } else if (m->type == ADBUS_MSG_ERROR) {
-        ds_cat_f(str, "Error: ");
-    } else if (m->type == ADBUS_MSG_SIGNAL) {
-        ds_cat_f(str, "Signal: ");
-    } else {
-        ds_cat_f(str, "Unknown (%d): ", (int) m->type);
-    }
-
-    ds_cat_f(str, "Flags %d, Length %d, Serial %d\n",
-            (int) m->flags,
-            (int) m->size,
-            (int) m->serial);
-
-    if (m->replySerial >= 0) {
-        ds_cat_f(str, "%-15s %u\n", "Reply serial", (unsigned int) m->replySerial);
-    }
-
-    PrintStringField(str, m->sender, "Sender");
-    PrintStringField(str, m->destination, "Destination");
-    PrintStringField(str, m->path, "Path");
-    PrintStringField(str, m->interface, "Interface");
-    PrintStringField(str, m->member, "Member");
-    PrintStringField(str, m->error, "Error");
-    PrintStringField(str, m->signature, "Signature");
+    String(s, "type", TypeString(m->type));
+    Number(s, "flags", m->flags);
+    Number(s, "length", m->size);
+    Number(s, "serial", m->serial);
+    Number(s, "reply_serial", m->replySerial);
+    String(s, "sender", m->sender);
+    String(s, "destination", m->destination);
+    String(s, "path", m->path);
+    String(s, "interface", m->interface);
+    String(s, "member", m->member);
+    String(s, "error", m->error);
+    String(s, "signature", m->signature);
 
     {
         int argnum = 0;
         adbus_Iterator i;
         adbus_iter_args(&i, m);
         while (i.sig && *i.sig) {
-            ds_cat_f(str, "Argument %2d     ", argnum++);
-            if (LogField(str, &i))
+            Header(s, "argument[%d]", argnum++);
+            if (LogField(s, &i, KEY_WIDTH + LEADING))
                 return -1;
-            ds_cat_char(str, '\n');
         }
     }
 
     return 0;
 }
 
-void adbusI_logmsg(const char* header, const adbus_Message* msg)
+void adbusI_logmsg(const adbus_Message* msg, const char* format, ...)
 {
-    d_String str;
-    ZERO(str);
-    ds_cat_f(&str, "%s ", header);
-    MsgSummary(&str, msg);
-    sLogFunction(ds_cstr(&str), ds_size(&str));
-    ds_free(&str);
+    va_list ap;
+    d_String s;
+    ZERO(s);
+    va_start(ap, format);
+    ds_cat_vf(&s, format, ap);
+    MsgSummary(&s, msg);
+    ds_cat(&s, "\n\n");
+    sLogFunction(ds_cstr(&s), ds_size(&s));
+    ds_free(&s);
 }
-
-/* -------------------------------------------------------------------------- */
-
-static void Append(d_String* s, const char* field, const char* value, int vsize)
-{
-    if (value) {
-        if (vsize < 0)
-            vsize = strlen(value);
-        ds_cat_f(s, "%-15s \"%*s\"\n", field, vsize, value);
-    }
-}
-
-static const char* TypeString(adbus_MessageType type)
-{
-    if (type == ADBUS_MSG_METHOD) {
-        return "method_call";
-    } else if (type == ADBUS_MSG_RETURN) {
-        return "method_return";
-    } else if (type == ADBUS_MSG_ERROR) {
-        return "error";
-    } else if (type == ADBUS_MSG_SIGNAL) {
-        return "signal";
-    } else {
-        return "unknown";
-    }
-}
-
 
 /* -------------------------------------------------------------------------- */
 
 static void BindString(d_String* s, const adbus_Bind* b)
 {
-    Append(s, "Path", b->path, b->pathSize);
+    String(s, "path", b->path);
+
     if (b->interface) {
-        ds_cat_f(s, "%-15s %p %s\n", "Interface", (void*) b->interface, b->interface->name.str);
-    } else {
-        ds_cat_f(s, "%-15s %p\n", "Interface", (void*) b->interface);
+        Header(s, "interface");
+        ds_cat_f(s, "\"%s\" (%p)", b->interface->name.str, (void*) b->interface);
     }
 
-    ds_cat_f(s, "%-15s %p\n", "User2", b->cuser2);
-    if (b->release[0])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 0", (void*) (uintptr_t) b->release[0], b->ruser[0]);
-    if (b->release[1])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 1", (void*) (uintptr_t) b->release[1], b->ruser[1]);
+    if (b->cuser2) {
+        Header(s, "cuser2");
+        ds_cat_f(s, "%p", b->cuser2);
+    }
+
+    Callback(s, "release[0]", b->release[0], b->ruser[0]);
+    Callback(s, "release[1]", b->release[1], b->ruser[1]);
 }
 
-void adbusI_logbind(const char* header, const adbus_Bind* b)
+void adbusI_logbind(const adbus_Bind* b, const char* format, ...)
 {
-    d_String str;
-    ZERO(str);
-    ds_cat_f(&str, "%s ", header);
-    BindString(&str, b);
-    sLogFunction(ds_cstr(&str), ds_size(&str));
-    ds_free(&str);
+    va_list ap;
+    d_String s;
+    ZERO(s);
+    va_start(ap, format);
+    ds_cat_vf(&s, format, ap);
+    BindString(&s, b);
+    ds_cat(&s, "\n\n");
+    sLogFunction(ds_cstr(&s), ds_size(&s));
+    ds_free(&s);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -318,84 +445,136 @@ void adbusI_logbind(const char* header, const adbus_Bind* b)
 static void MatchString(d_String* s, const adbus_Match* m)
 {
     size_t i;
-    if (m->addMatchToBusDaemon)
-        ds_cat_f(s, "Add to bus\n");
-    if (m->callback)
-        ds_cat_f(s, "%-15s %p %p\n", "Callback", (void*) (uintptr_t) m->callback, m->cuser);
-    if (m->release[0])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 0", (void*) (uintptr_t) m->release[0], m->ruser[0]);
-    if (m->release[1])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 1", (void*) (uintptr_t) m->release[1], m->ruser[1]);
 
-    if (m->type)
-        ds_cat_f(s, "%-15s %s\n", "Type", TypeString(m->type));
-    if (m->replySerial >= 0)
-        ds_cat_f(s, "%-15s %u\n", "Reply serial", (unsigned int) m->replySerial);
-
-    Append(s, "Sender", m->sender, m->senderSize);
-    Append(s, "Destination", m->destination, m->destinationSize);
-    Append(s, "Interface", m->interface, m->interfaceSize);
-    Append(s, "Path", m->path, m->pathSize);
-    Append(s, "Member", m->member, m->memberSize);
-    Append(s, "Error", m->error, m->errorSize);
+    Number(s, "add to bus", m->addMatchToBusDaemon);
+    String(s, "type", TypeString(m->type));
+    Number(s, "reply_serial", m->replySerial);
+    String(s, "sender", m->sender);
+    String(s, "destination", m->destination);
+    String(s, "path", m->path);
+    String(s, "interface", m->interface);
+    String(s, "member", m->member);
+    String(s, "error", m->error);
+    Callback(s, "callback", m->callback, m->cuser);
+    Callback(s, "release[0]", m->release[0], m->ruser[0]);
+    Callback(s, "release[1]", m->release[1], m->ruser[1]);
 
     for (i = 0; i < m->argumentsSize; ++i) {
         adbus_Argument* arg = &m->arguments[i];
         if (arg->value) {
-            if (arg->size >= 0) {
-                ds_cat_f(s, "Argument %-2d     \"%*s\"\n", (int) i, (int) arg->size, arg->value);
-            } else {
-                ds_cat_f(s, "Argument %-2d     \"%s\"\n", (int) i, arg->value);
-            }
+            Header(s, "argument[%d]", (int) i);
+            ds_cat_f(s, "\"%s\"", arg->value);
         }
     }
 }
 
-void adbusI_logmatch(const char* header, const adbus_Match* m)
+void adbusI_logmatch(const adbus_Match* m, const char* format, ...)
 {
-    d_String str;
-    ZERO(str);
-    ds_cat_f(&str, "%s ", header);
-    MatchString(&str, m);
-    sLogFunction(ds_cstr(&str), ds_size(&str));
-    ds_free(&str);
+    va_list ap;
+    d_String s;
+    ZERO(s);
+    va_start(ap, format);
+    ds_cat_vf(&s, format, ap);
+    MatchString(&s, m);
+    ds_cat(&s, "\n\n");
+    sLogFunction(ds_cstr(&s), ds_size(&s));
+    ds_free(&s);
 }
 
 /* -------------------------------------------------------------------------- */
 
 static void ReplyString(d_String* s, const adbus_Reply* r)
 {
-    ds_cat_f(s, "%-15s %u\n", "Serial", (unsigned int) r->serial);
-    Append(s, "Remote", r->remote, r->remoteSize);
-    if (r->callback)
-        ds_cat_f(s, "%-15s %p %p\n", "Callback", (void*) (uintptr_t) r->callback, r->cuser);
-    if (r->error)
-        ds_cat_f(s, "%-15s %p %p\n", "Error", (void*) (uintptr_t) r->error, r->euser);
-    if (r->release[0])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 0", (void*) (uintptr_t) r->release[0], r->ruser[0]);
-    if (r->release[1])
-        ds_cat_f(s, "%-15s %p %p\n", "Release 1", (void*) (uintptr_t) r->release[1], r->ruser[1]);
+    Number(s, "serial", r->serial);
+    String(s, "remote", r->remote);
+    Callback(s, "callback", r->callback, r->cuser);
+    Callback(s, "error", r->error, r->euser);
+    Callback(s, "release[0]", r->release[0], r->ruser[0]);
+    Callback(s, "release[1]", r->release[1], r->ruser[1]);
 }
 
-void adbusI_logreply(const char* header, const adbus_Reply* r)
+void adbusI_logreply(const adbus_Reply* r, const char* format, ...)
 {
-    d_String str;
-    ZERO(str);
-    ds_cat_f(&str, "%s ", header);
-    ReplyString(&str, r);
-    sLogFunction(ds_cstr(&str), ds_size(&str));
-    ds_free(&str);
+    va_list ap;
+    d_String s;
+    ZERO(s);
+    va_start(ap, format);
+    ds_cat_vf(&s, format, ap);
+    ReplyString(&s, r);
+    ds_cat(&s, "\n\n");
+    sLogFunction(ds_cstr(&s), ds_size(&s));
+    ds_free(&s);
 }
+
+/* -------------------------------------------------------------------------- */
+
+#ifndef min
+#   define min(x, y) ((x < y) ? (x) : (y))
+#endif
+
+#define IsPrintable(ch) (' ' <= ch && ch <= '~')
+
+static void AppendData(d_String* s, const uint8_t* buf, size_t sz)
+{
+    size_t i, j;
+    for (i = 0; i < sz; i += 16) {
+        size_t spaces = 40;
+        size_t end = min(i + 16, sz);
+
+        ds_cat(s, NORMAL);
+        ds_cat_char(s, '\n');
+        ds_cat_char_n(s, ' ', LEADING);
+        ds_cat_f(s, "%s0x%04x    ", CYAN, (int) i);
+        for (j = i; j < end; j++) {
+            spaces -= 2;
+            ds_cat_f(s, "%s%02x", IsPrintable(buf[j]) ? NORMAL : RED, (int) buf[j]);
+            if (j > 0 && j % 2) {
+                spaces -= 1;
+                ds_cat_char(s, ' ');
+            }
+        }
+
+        ds_cat_char_n(s, ' ', spaces);
+
+        for (j = i; j < end; j++) {
+            if (IsPrintable(buf[j])) {
+                ds_cat_f(s, "%s%c", NORMAL, (int) buf[j]);
+            } else {
+                ds_cat_f(s, "%s.", RED);
+            }
+        }
+    }
+}
+
+void adbusI_logdata(const char* buf, int sz, const char* format, ...)
+{
+    if (sz > 0) {
+        va_list ap;
+        d_String s;
+        ZERO(s);
+        va_start(ap, format);
+
+        ds_cat_vf(&s, format, ap);
+        AppendData(&s, (const uint8_t*) buf, sz);
+        ds_cat_f(&s, "%s\n\n", NORMAL);
+
+        sLogFunction(ds_cstr(&s), ds_size(&s));
+        ds_free(&s);
+    }
+}
+
+
 
 /* -------------------------------------------------------------------------- */
 
 void adbusI_log(const char* format, ...)
 {
-    d_String str;
+    d_String s;
     va_list ap;
-    ZERO(str);
+    ZERO(s);
     va_start(ap, format);
-    ds_set_vf(&str, format, ap);
-    sLogFunction(ds_cstr(&str), ds_size(&str));
-    ds_free(&str);
+    ds_cat_vf(&s, format, ap);
+    ds_cat_char(&s, '\n');
+    sLogFunction(ds_cstr(&s), ds_size(&s));
+    ds_free(&s);
 }

@@ -202,6 +202,7 @@ typedef int             (*adbus_ProxyMsgCallback)(void*,adbus_MsgCallback,adbus_
 
 typedef void (*adbus_LogCallback)(const char*, size_t);
 ADBUS_API void adbus_set_logger(adbus_LogCallback cb);
+ADBUS_API void adbus_set_loglevel(int level);
 
 
 

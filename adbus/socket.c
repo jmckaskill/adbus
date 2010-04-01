@@ -769,6 +769,8 @@ adbus_Connection* adbus_sock_busconnect_s(
     char buf[256];
     void* handle = NULL;
 
+    adbusI_initlog();
+
     d->txbuf = adbus_buf_new();
     d->sock = adbus_sock_connect_s(envstr, size);
     if (d->sock == ADBUS_SOCK_INVALID)

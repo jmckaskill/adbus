@@ -265,7 +265,7 @@ adbus_ConnMatch* adbus_conn_addmatch(
     CloneMatch(reg, &m->m);
 
     assert(reg->callback);
-    ADBUSI_LOG_MATCH("Add match", reg);
+    ADBUSI_LOG_MATCH_1(reg, "add match (connection %p)", (void*) c);
 
     if (m->m.sender) {
         m->sender = adbusI_getTrackedRemote(c, reg->sender, reg->senderSize);
@@ -342,7 +342,7 @@ void adbus_conn_removematch(
         adbus_ConnMatch*      m)
 {
     if (m) {
-        ADBUSI_LOG_MATCH("Remove match", &m->m);
+        ADBUSI_LOG_MATCH_1(&m->m, "remove match (connection %p)", (void*) c);
 
         if (m->m.addMatchToBusDaemon) {
             adbus_Call f;

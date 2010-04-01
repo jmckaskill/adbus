@@ -196,7 +196,7 @@ adbus_ConnReply* adbus_conn_addreply(
     adbus_ConnReply* reply;
     uint32_t serial = (uint32_t) reg->serial;
 
-    ADBUSI_LOG_REPLY("Add reply", reg);
+    ADBUSI_LOG_REPLY_2(reg, "add reply (connection %p)", (void*) c);
 
     assert(reg->serial >= 0);
     assert(reg->remote);
@@ -209,19 +209,8 @@ adbus_ConnReply* adbus_conn_addreply(
     reply                   = NEW(adbus_ConnReply);
     reply->set              = &c->replies;
     reply->remote           = remote;
-    reply->serial           = serial;
-    reply->callback         = reg->callback;
-    reply->cuser            = reg->cuser;
-    reply->error            = reg->error;
-    reply->euser            = reg->euser;
-    reply->proxy            = reg->proxy;
-    reply->puser            = reg->puser;
-    reply->release[0]       = reg->release[0];
-    reply->ruser[0]         = reg->ruser[0];
-    reply->release[1]       = reg->release[1];
-    reply->ruser[1]         = reg->ruser[1];
-    reply->relproxy         = reg->relproxy;
-    reply->relpuser         = reg->relpuser;
+    reply->r                = *reg;
+    reply->r.remote         = NULL;
 
     dh_key(&c->replies.lookup, ii) = serial;
     dh_val(&c->replies.lookup, ii) = reply;
@@ -238,7 +227,7 @@ static void FreeReply(adbus_ConnReply* r)
     /* Disconnect from hash table */
     if (r->set) {
         d_Hash(Reply)* h = &r->set->lookup;
-        dh_Iter ii = dh_get(Reply, h, r->serial);
+        dh_Iter ii = dh_get(Reply, h, r->r.serial);
         if (ii != dh_end(h)) {
             dh_del(Reply, h, ii);
         }
@@ -249,22 +238,22 @@ static void FreeReply(adbus_ConnReply* r)
     dil_remove(Reply, r, &r->hl);
 
     /* Call release callbacks */
-    if (r->release[0]) {
-        if (r->relproxy) {
-            r->relproxy(r->relpuser, NULL, r->release[0], r->ruser[0]);
+    if (r->r.release[0]) {
+        if (r->r.relproxy) {
+            r->r.relproxy(r->r.relpuser, NULL, r->r.release[0], r->r.ruser[0]);
         } else {
-            r->release[0](r->ruser[0]);
+            r->r.release[0](r->r.ruser[0]);
         }
-        r->release[0] = NULL;
+        r->r.release[0] = NULL;
     }
 
-    if (r->release[1]) {
-        if (r->relproxy) {
-            r->relproxy(r->relpuser, NULL, r->release[1], r->ruser[1]);
+    if (r->r.release[1]) {
+        if (r->r.relproxy) {
+            r->r.relproxy(r->r.relpuser, NULL, r->r.release[1], r->r.ruser[1]);
         } else {
-            r->release[1](r->ruser[1]);
+            r->r.release[1](r->r.ruser[1]);
         }
-        r->release[1] = NULL;
+        r->r.release[1] = NULL;
     }
 
     /* If we are in the callback, we will come back and do this once the
@@ -309,6 +298,7 @@ void adbus_conn_removereply(
 {
     if (reply) {
         UNUSED(c);
+        ADBUSI_LOG_REPLY_1(&reply->r, "remove reply (connection %p)", (void*) c);
         FreeReply(reply);
     }
 }
@@ -361,17 +351,19 @@ int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
         reply->set = NULL;
         reply->incallback = 1;
 
+        ADBUSI_LOG_REPLY_2(&reply->r, "dispatch reply (connection %p)", (void*) c);
+
         if (d->msg->type == ADBUS_MSG_RETURN) {
-            cb = reply->callback;
-            d->user1 = reply->cuser;
+            cb = reply->r.callback;
+            d->user1 = reply->r.cuser;
         } else {
-            cb = reply->error;
-            d->user1 = reply->euser;
+            cb = reply->r.error;
+            d->user1 = reply->r.euser;
         }
 
         if (cb) {
-            if (reply->proxy) {
-                ret = reply->proxy(reply->puser, cb, d);
+            if (reply->r.proxy) {
+                ret = reply->r.proxy(reply->r.puser, cb, d);
             } else {
                 ret = adbus_dispatch(cb, d);
             }

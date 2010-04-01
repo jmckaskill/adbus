@@ -34,14 +34,7 @@ struct adbus_ConnBind
 {
     d_IList(Bind)           hl;
     adbusI_ObjectNode*      node;
-    adbus_Interface*        interface;
-    void*                   cuser2;
-    adbus_ProxyMsgCallback  proxy;
-    void*                   puser;
-    adbus_Callback          release[2];
-    void*                   ruser[2];
-    adbus_ProxyCallback     relproxy;
-    void*                   relpuser;
+    adbus_Bind              b;
 };
 
 DLIST_INIT(ObjectNode, adbusI_ObjectNode)

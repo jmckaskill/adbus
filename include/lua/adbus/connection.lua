@@ -41,10 +41,11 @@ DEBUG = false
 function _M.enable_debug(dbg)
     if dbg == nil or dbg then
         DEBUG = true
+        adbuslua_core.set_log_level(2)
     else
         DEBUG = false
+        adbuslua_core.set_log_level(0)
     end
-    adbuslua_core.enable_debug(dbg)
 end
 
 --- Creates a connection

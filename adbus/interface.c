@@ -318,8 +318,9 @@ adbus_Interface* adbus_iface_new(
     adbus_Interface* i  = NEW(adbus_Interface);
     i->name.sz          = (size >= 0) ? size : strlen(name);
     i->name.str         = adbusI_strndup(name, i->name.sz);
+    i->ref              = 1;
 
-    adbus_iface_ref(i);
+    ADBUSI_LOG_1("new: \"%s\" (interface %p)", i->name.str, (void*) i);
 
     return i;  
 }
@@ -329,8 +330,11 @@ adbus_Interface* adbus_iface_new(
 /** Refs an interface.
  *  \relates adbus_Interface
  */
-void adbus_iface_ref(adbus_Interface* interface)
-{ adbusI_InterlockedIncrement(&interface->ref); }
+void adbus_iface_ref(adbus_Interface* i)
+{ 
+    long ref = adbusI_InterlockedIncrement(&i->ref); 
+    ADBUSI_LOG_1("ref: %d, \"%s\" (interface %p)", (int) ref, i->name.str, (void*) i);
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -341,19 +345,27 @@ static void FreeMember(adbus_Member* member);
  */
 void adbus_iface_deref(adbus_Interface* i)
 {
-    if (i && adbusI_InterlockedDecrement(&i->ref) == 0) {
-        dh_Iter ii;
+    long ref;
+    dh_Iter ii;
 
-        for (ii = dh_begin(&i->members); ii != dh_end(&i->members); ++ii) {
-            if (dh_exist(&i->members, ii)) {
-                FreeMember(dh_val(&i->members, ii));
-            }
+    if (i == NULL)
+        return;
+
+    ref = adbusI_InterlockedDecrement(&i->ref);
+    ADBUSI_LOG_1("deref: %d, \"%s\" (interface %p)", (int) ref, i->name.str, (void*) i);
+   
+    if (ref != 0)
+        return;
+
+    for (ii = dh_begin(&i->members); ii != dh_end(&i->members); ++ii) {
+        if (dh_exist(&i->members, ii)) {
+            FreeMember(dh_val(&i->members, ii));
         }
-        dh_free(Member, &i->members);
-
-        free((char*) i->name.str);
-        free(i);
     }
+    dh_free(Member, &i->members);
+
+    free((char*) i->name.str);
+    free(i);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -740,10 +752,10 @@ int adbus_mbr_call(
 
     adbus_iface_ref(mbr->interface);
     d->user1 = mbr;
-    d->user2 = bind->cuser2;
+    d->user2 = bind->b.cuser2;
 
-    if (bind->proxy) {
-        return bind->proxy(bind->puser, &DoCall, d);
+    if (bind->b.proxy) {
+        return bind->b.proxy(bind->b.puser, &DoCall, d);
     } else {
         return DoCall(d);
     }
@@ -766,7 +778,7 @@ static void IntrospectArguments(adbus_Member* m, d_String* out)
     const char* arg = ds_cstr(&m->argsig);
     while (arg && *arg) {
         const char* next = adbus_nextarg(arg);
-        ds_cat(out, "\t\t\t<arg type=\"");
+        ds_cat(out, "      <arg type=\"");
         ds_cat_n(out, arg, next - arg);
         if (argi < dv_size(&m->arguments)) {
             ds_cat(out, "\" name=\"");
@@ -782,7 +794,7 @@ static void IntrospectArguments(adbus_Member* m, d_String* out)
     arg = ds_cstr(&m->retsig);
     while (arg && *arg) {
         const char* next = adbus_nextarg(arg);
-        ds_cat(out, "\t\t\t<arg type=\"");
+        ds_cat(out, "      <arg type=\"");
         ds_cat_n(out, arg, next - arg);
         if (argi < dv_size(&m->returns)) {
             ds_cat(out, "\" name=\"");
@@ -803,7 +815,7 @@ static void IntrospectAnnotations(adbus_Member* m, d_String* out)
     dh_Iter ai;
     for (ai = dh_begin(&m->annotations); ai != dh_end(&m->annotations); ++ai) {
         if (dh_exist(&m->annotations, ai)) {
-            ds_cat(out, "\t\t\t<annotation name=\"");
+            ds_cat(out, "      <annotation name=\"");
             ds_cat(out, dh_key(&m->annotations, ai));
             ds_cat(out, "\" value=\"");
             ds_cat(out, dh_val(&m->annotations, ai));
@@ -822,7 +834,7 @@ static void IntrospectMember(adbus_Member* m, d_String* out)
                 adbus_Bool read  = (m->getPropertyCallback != NULL);
                 adbus_Bool write = (m->setPropertyCallback != NULL);
 
-                ds_cat(out, "\t\t<property name=\"");
+                ds_cat(out, "    <property name=\"");
                 ds_cat_n(out, m->name.str, m->name.sz);
                 ds_cat(out, "\" type=\"");
                 ds_cat(out, m->propertyType);
@@ -842,32 +854,32 @@ static void IntrospectMember(adbus_Member* m, d_String* out)
                 } else {
                     ds_cat(out, "\">\n");
                     IntrospectAnnotations(m, out);
-                    ds_cat(out, "\t\t</property>\n");
+                    ds_cat(out, "    </property>\n");
                 }
             }
             break;
         case ADBUSI_METHOD:
             {
-                ds_cat(out, "\t\t<method name=\"");
+                ds_cat(out, "    <method name=\"");
                 ds_cat_n(out, m->name.str, m->name.sz);
                 ds_cat(out, "\">\n");
 
                 IntrospectAnnotations(m, out);
                 IntrospectArguments(m, out);
 
-                ds_cat(out, "\t\t</method>\n");
+                ds_cat(out, "    </method>\n");
             }
             break;
         case ADBUSI_SIGNAL:
             {
-                ds_cat(out, "\t\t<signal name=\"");
+                ds_cat(out, "    <signal name=\"");
                 ds_cat_n(out, m->name.str, m->name.sz);
                 ds_cat(out, "\">\n");
 
                 IntrospectAnnotations(m, out);
                 IntrospectArguments(m, out);
 
-                ds_cat(out, "\t\t</signal>\n");
+                ds_cat(out, "    </signal>\n");
             }
             break;
         default:
@@ -880,7 +892,7 @@ void adbusI_introspectInterface(adbus_Interface* i, d_String* out)
 {
     dh_Iter mi;
 
-    ds_cat(out, "\t<interface name=\"");
+    ds_cat(out, "  <interface name=\"");
     ds_cat_n(out, i->name.str, i->name.sz);
     ds_cat(out, "\">\n");
 
@@ -890,7 +902,7 @@ void adbusI_introspectInterface(adbus_Interface* i, d_String* out)
         }
     }
 
-    ds_cat(out, "\t</interface>\n");
+    ds_cat(out, "  </interface>\n");
 }
 
 

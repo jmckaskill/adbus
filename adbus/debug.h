@@ -27,16 +27,49 @@
 
 #include "internal.h"
 
-ADBUSI_DATA adbus_LogCallback sLogFunction;
+/* Log levels:
+ * 1. Low - Low rate application debugging 
+ *      - Binds
+ *      - Matches
+ *      - Connection create/free
+ *      - Interface create/free
+ *      - State create/free
+ *      - Proxy create/free
+ *
+ * 2. Medium - High rate application debugging
+ *      - Replies
+ *      - State create/free
+ *      - Message send, receive, and dispatch
+ *      - Callback dispatch
+ *
+ * 3. High - Internal debugging
+ *      - Message parsing
+ *
+ */
 
-ADBUSI_FUNC void adbusI_logmsg(const char* header, const adbus_Message* msg);
-ADBUSI_FUNC void adbusI_logbind(const char* header, const adbus_Bind* bind);
-ADBUSI_FUNC void adbusI_logmatch(const char* header, const adbus_Match* match);
-ADBUSI_FUNC void adbusI_logreply(const char* header, const adbus_Reply* reply);
-ADBUSI_FUNC void adbusI_log(const char* format, ...);
+#ifdef __GNUC__
+#   define ADBUSI_PRINTF(FORMAT, VARGS) __attribute__ ((format (printf, FORMAT, VARGS)))
+#else
+#   define ADBUSI_PRINTF(FORMAT, VARGS)
+#endif
 
-#define ADBUSI_LOG_MSG(header, msg)     if (!sLogFunction) {} else adbusI_logmsg(header, msg)
-#define ADBUSI_LOG_BIND(header, bind)   if (!sLogFunction) {} else adbusI_logbind(header, bind)
-#define ADBUSI_LOG_MATCH(header, match) if (!sLogFunction) {} else adbusI_logmatch(header, match)
-#define ADBUSI_LOG_REPLY(header, reply) if (!sLogFunction) {} else adbusI_logreply(header, reply)
-#define ADBUSI_LOG                      if (!sLogFunction) {} else adbusI_log
+ADBUSI_DATA int adbusI_loglevel;
+
+ADBUSI_FUNC void adbusI_initlog();
+ADBUSI_FUNC void adbusI_logmsg(const adbus_Message* msg, const char* format, ...) ADBUSI_PRINTF(2,3);
+ADBUSI_FUNC void adbusI_logbind(const adbus_Bind* bind, const char* format, ...) ADBUSI_PRINTF(2,3);
+ADBUSI_FUNC void adbusI_logmatch(const adbus_Match* match, const char* format, ...) ADBUSI_PRINTF(2,3);
+ADBUSI_FUNC void adbusI_logreply(const adbus_Reply* reply, const char* format, ...) ADBUSI_PRINTF(2,3);
+ADBUSI_FUNC void adbusI_logdata(const char* buf, int sz, const char* format, ...) ADBUSI_PRINTF(3,4);
+ADBUSI_FUNC void adbusI_log(const char* format, ...) ADBUSI_PRINTF(1,2);
+
+#define ADBUSI_LOG_MSG_1    if (adbusI_loglevel < 1) {} else adbusI_logmsg
+#define ADBUSI_LOG_MSG_2    if (adbusI_loglevel < 2) {} else adbusI_logmsg
+#define ADBUSI_LOG_BIND_1   if (adbusI_loglevel < 1) {} else adbusI_logbind
+#define ADBUSI_LOG_MATCH_1  if (adbusI_loglevel < 1) {} else adbusI_logmatch
+#define ADBUSI_LOG_REPLY_1  if (adbusI_loglevel < 1) {} else adbusI_logreply
+#define ADBUSI_LOG_REPLY_2  if (adbusI_loglevel < 2) {} else adbusI_logreply
+#define ADBUSI_LOG_DATA_3   if (adbusI_loglevel < 3) {} else adbusI_logdata
+#define ADBUSI_LOG_1        if (adbusI_loglevel < 1) {} else adbusI_log
+#define ADBUSI_LOG_2        if (adbusI_loglevel < 2) {} else adbusI_log
+#define ADBUSI_LOG_3        if (adbusI_loglevel < 3) {} else adbusI_log

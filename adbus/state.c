@@ -203,6 +203,8 @@ void adbus_state_bind(
     d->u.bind = *b;
     d->err = -1;
 
+    ADBUSI_LOG_BIND_1(b, "bind (state %p)", (void*) s);
+
     assert(!b->proxy && !b->relproxy);
 
     if (adbus_conn_shouldproxy(c)) {
@@ -293,6 +295,8 @@ void adbus_state_addmatch(
     LookupConnection(s, d, c);
     d->u.match = *m;
     d->err = -1;
+
+    ADBUSI_LOG_MATCH_1(m, "add match (state %p)", (void*) s);
 
     assert(!m->proxy && !m->relproxy);
 
@@ -385,6 +389,8 @@ void adbus_state_addreply(
     d->u.reply = *r;
     d->err = -1;
 
+    ADBUSI_LOG_REPLY_2(r, "add reply (state %p)", (void*) s);
+
     assert(!r->proxy && !r->relproxy);
 
     if (adbus_conn_shouldproxy(c)) {
@@ -414,6 +420,7 @@ adbus_State* adbus_state_new(void)
 {
     adbus_State* s = NEW(adbus_State);
     s->refConnection = 1;
+    ADBUSI_LOG_1("new (state %p)", (void*) s);
     return s;
 }
 
@@ -490,6 +497,8 @@ static void FreeConn(void* user)
 void adbus_state_reset(adbus_State* s)
 {
     adbusI_StateConn* c;
+    ADBUSI_LOG_1("reset (state %p)", (void*) s);
+
     DIL_FOREACH(StateConn, c, &s->connections, hl) {
         dil_remove(StateConn, c, &c->hl);
         if (adbus_conn_shouldproxy(c->connection)) {
@@ -499,6 +508,7 @@ void adbus_state_reset(adbus_State* s)
             FreeConn(c);
         }
     }
+
     assert(dil_isempty(&s->connections));
 }
 
@@ -510,7 +520,20 @@ void adbus_state_reset(adbus_State* s)
 void adbus_state_free(adbus_State* s)
 {
     if (s) {
-        adbus_state_reset(s);
+        adbusI_StateConn* c;
+        ADBUSI_LOG_1("free (state %p)", (void*) s);
+
+        DIL_FOREACH(StateConn, c, &s->connections, hl) {
+            dil_remove(StateConn, c, &c->hl);
+            if (adbus_conn_shouldproxy(c->connection)) {
+                adbus_conn_proxy(c->connection, &ResetConn, &FreeConn, c);
+            } else {
+                ResetConn(c);
+                FreeConn(c);
+            }
+        }
+
+        assert(dil_isempty(&s->connections));
         free(s);
     }
 }

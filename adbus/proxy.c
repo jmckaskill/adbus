@@ -457,7 +457,6 @@ int adbus_call_send(adbus_Call* call)
 struct ProxyBlockData
 {
     adbus_Connection*   connection;
-    adbus_Bool          valid;
     void*               block;
     adbus_MsgCallback   callback;
     void*               cuser;
@@ -473,13 +472,11 @@ static void ProxyBlockRelease(void* user)
     struct ProxyBlockData* d = (struct ProxyBlockData*) user;
 
     /* No need to proxy this as we have already been proxied */
-    if (d->valid) {
-        if (d->release[0]) {
-            d->release[0](d->ruser[0]);
-        }
-        if (d->release[1]) {
-            d->release[1](d->ruser[1]);
-        }
+    if (d->release[0]) {
+        d->release[0](d->ruser[0]);
+    }
+    if (d->release[1]) {
+        d->release[1](d->ruser[1]);
     }
 
     free(d);
@@ -491,13 +488,11 @@ static int ProxyBlockCallback(adbus_CbData* d)
     int ret = 0;
 
     /* No need to proxy this as we have already been proxied */
-    if (s->valid) {
-        if (s->callback) {
-            d->user1 = s->cuser;
-            ret = s->callback(d);
-        }        
-        adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
-    }
+    if (s->callback) {
+        d->user1 = s->cuser;
+        ret = s->callback(d);
+    }        
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
 
     return ret;
 }
@@ -508,14 +503,12 @@ static int ProxyBlockError(adbus_CbData* d)
     int ret = 0;
 
     /* No need to proxy this as we have already been proxied */
-    if (s->valid) {
-        if (s->error) {
-            d->user1 = s->euser;
-            ret = s->error(d);
-        }        
-        *s->ret = 1;
-        adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
-    }
+    if (s->error) {
+        d->user1 = s->euser;
+        ret = s->error(d);
+    }        
+    *s->ret = 1;
+    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
 
     return ret;
 }
@@ -543,7 +536,6 @@ int adbus_call_block(adbus_Call* call)
     call->release[1]    = NULL;
     call->ruser[1]      = NULL;
 
-    d->valid            = 1;
     d->connection       = call->proxy->connection;
     d->ret              = &ret;
 

@@ -167,6 +167,15 @@ DMEM_INLINE void ds_cat_char(d_String* s, int ch)
     dest[1] = '\0';
 }
 
+DMEM_INLINE void ds_cat_char_n(d_String* s, int ch, size_t n)
+{
+    char* dest = (dv_size(s) == 0)
+               ? dv_push(dstring, s, n + 1)
+               : dv_push(dstring, s, n) - 1;
+    memset(dest, ch, n);
+    dv_a(s, dv_size(s) - 1) = '\0';
+}
+
 /* ------------------------------------------------------------------------- */
 
 DMEM_INLINE void ds_insert_n(d_String* s, size_t index, const char* r, size_t n)
@@ -194,6 +203,17 @@ DMEM_INLINE void ds_insert_char(d_String* s, size_t index, int ch)
     } else {
         char* dest = dv_insert(dstring, s, index, 1);
         *dest = (unsigned char) ch;
+    }
+}
+
+DMEM_INLINE void ds_insert_char_n(d_String* s, size_t index, int ch, size_t n)
+{
+    assert(index <= ds_size(s));
+    if (index == ds_size(s)) {
+        ds_cat_char_n(s, ch, n);
+    } else {
+        char* dest = dv_insert(dstring, s, index, n);
+        memset(dest, ch, n);
     }
 }
 
@@ -261,6 +281,8 @@ DMEM_INLINE DS_BOOL ds_ends_with_s(const d_String* s, const d_String* r)
 
 DMEM_INLINE DS_BOOL ds_ends_with(const d_String* s, const char* r)
 { return ds_ends_with_n(s, r, strlen(r)); }
+
+/* ------------------------------------------------------------------------- */
 
 #ifdef __cplusplus
 }

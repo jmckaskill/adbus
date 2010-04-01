@@ -49,12 +49,8 @@ void Main::NameRequested(uint code)
 void Main::Error()
 { qDebug("Error"); }
 
-static void Log(const char* str, size_t sz)
-{ qDebug("%.*s", (int) sz, str); }
-
 int main(int argc, char* argv[])
 {
-    adbus_set_logger(&Log);
     QCoreApplication app(argc, argv);
 
     QDBusConnection c = QDBusConnection::sessionBus();

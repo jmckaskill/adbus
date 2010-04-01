@@ -35,7 +35,7 @@ static int ConnectCallback(adbus_CbData* d)
     size_t uniqueSize;
     const char* unique = adbus_check_string(d, &uniqueSize);
 
-    ADBUSI_LOG("Connected %*s", uniqueSize, unique);
+    ADBUSI_LOG_1("connected: \"%s\" (connection %p)", unique, (void*) c);
 
     assert(!c->connect.unique);
     adbusI_InterlockedExchangePointer((void* volatile*) &c->connect.unique, adbusI_strdup(unique));
@@ -52,7 +52,7 @@ void adbus_conn_connect(
         adbus_Callback          callback,
         void*                   user)
 {
-    ADBUSI_LOG("Connecting");
+    ADBUSI_LOG_1("connecting (connection %p)", (void*) c);
 
     assert(!c->connect.unique && !c->connect.cb);
 

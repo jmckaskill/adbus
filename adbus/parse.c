@@ -263,6 +263,8 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     h->endianness = adbusI_nativeEndianness();
 
     memset(m, 0, sizeof(adbus_Message));
+    m->replySerial = -1;
+
     m->data     = data;
     m->size     = ADBUS_ALIGN(h->headerFieldLength + sizeof(adbusI_ExtendedHeader), 8) + h->length;
     m->argsize  = h->length;

@@ -32,27 +32,10 @@ DILIST_INIT(Reply, adbus_ConnReply)
 struct adbus_ConnReply
 {
     d_IList(Reply)              hl;
-
     adbusI_ReplySet*            set;
-
     adbusI_TrackedRemote*       remote;
-    uint32_t                    serial;
+    adbus_Reply                 r;
     adbus_Bool                  incallback;
-
-    adbus_MsgCallback           callback;
-    void*                       cuser;
-
-    adbus_MsgCallback           error;
-    void*                       euser;
-
-    adbus_ProxyMsgCallback      proxy;
-    void*                       puser;
-
-    adbus_Callback              release[2];
-    void*                       ruser[2];
-
-    adbus_ProxyCallback         relproxy;
-    void*                       relpuser;
 };
 
 DHASH_MAP_INIT_UINT32(Reply, adbus_ConnReply*)

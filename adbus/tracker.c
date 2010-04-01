@@ -37,7 +37,7 @@ static int GetNameOwner(adbus_CbData* d)
     const char* unique = adbus_check_string(d, &uniquesz);
     adbus_check_end(d);
 
-    ADBUSI_LOG("Got service %s [%s]", t->service.str, unique);
+    ADBUSI_LOG_1("got service '%s' as '%s' (connection %p)", t->service.str, unique, (void*) d->connection);
 
     assert(!t->unique.str);
     t->unique.str = adbusI_strndup(unique, uniquesz);
@@ -59,7 +59,7 @@ static int NameOwnerChanged(adbus_CbData* d)
     to = adbus_check_string(d, &tosz);
     adbus_check_end(d);
 
-    ADBUSI_LOG("Service changed %s [%s -> %s]", t->service.str, t->unique.str, to);
+    ADBUSI_LOG_1("service '%s' changed from '%s' to '%s' (connection %p)", t->service.str, t->unique.str, to, (void*) d->connection);
 
     free((char*) t->unique.str);
     t->unique.str = adbusI_strndup(to, tosz);

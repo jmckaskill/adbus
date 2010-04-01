@@ -34,7 +34,7 @@ int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
 
-#if 1
+#if 0
     TcpServer* s = new TcpServer;
     if (!s->listen(QHostAddress::LocalHost, 12345))
         qFatal("Could not listen on socket");

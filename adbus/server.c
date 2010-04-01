@@ -101,7 +101,7 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
     adbus_Remote* r;
     adbus_Remote* direct = NULL;
 
-    ADBUSI_LOG_MSG("Dispatch", m);
+    ADBUSI_LOG_MSG_2(m, "dispatch (remote %p)", (void*) from);
 
     if (m->destination) {
         direct = adbusI_lookupRemote(s, m->destination);

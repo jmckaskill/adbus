@@ -245,9 +245,6 @@
 
 static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c);
 
-static void Log(const char* str, size_t sz)
-{ fprintf(stderr, "%.*s\n", (int) sz, str); }
-
 /** Creates a new connection.
  *  \relates adbus_Connection
  */
@@ -255,6 +252,10 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
 {
     adbus_Member* m;
     adbus_Connection* c = NEW(adbus_Connection);
+
+    adbusI_initlog();
+
+    ADBUSI_LOG_1("new (connection %p)", (void*) c);
 
     c->callbacks    = *cb;
     c->user         = user;
@@ -307,13 +308,6 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
 
     assert(c->ref == 1);
 
-    if (!sLogFunction) {
-        const char* env = getenv("ADBUS_DEBUG");
-        if (env && strcmp(env, "1") == 0) {
-            adbus_set_logger(&Log);
-        }
-    }
-
     return c;
 }
 
@@ -321,7 +315,10 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
  *  \relates adbus_Connection
  */
 void adbus_conn_ref(adbus_Connection* connection)
-{ adbusI_InterlockedIncrement(&connection->ref); }
+{ 
+    long ref = adbusI_InterlockedIncrement(&connection->ref); 
+    ADBUSI_LOG_1("ref: %d (connection %p)", (int) ref, (void*) connection);
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -342,45 +339,53 @@ static void FreeMessage(adbusI_ConnMsg* m);
  */
 void adbus_conn_deref(adbus_Connection* c)
 {
-    if (c && adbusI_InterlockedDecrement(&c->ref) == 0) {
-        adbusI_ConnMsg *m;
+    long ref;
+    adbusI_ConnMsg* m;
 
-        /* Free the connection services first */
-        adbusI_freeReplies(c);
-        adbusI_freeMatches(c);
-        adbusI_freeObjectTree(&c->binds);
+    if (c == NULL)
+        return;
 
-        adbusI_freeRemoteTracker(c);
-        adbusI_freeConnBusData(&c->connect);
+    ref = adbusI_InterlockedDecrement(&c->ref);
+    ADBUSI_LOG_1("deref: %d (connection %p)", (int) ref, (void*) c);
 
-        adbus_proxy_free(c->bus);
-        adbus_state_free(c->state);
+    if (ref != 0)
+        return;
 
-        for (m = c->current; m != &c->toprocess; m = m->hl.next) {
-            adbusI_ConnMsg* next = m->hl.next;
-            FreeMessage(m);
-            m = next;
-        }
+    /* Free the connection services first */
+    adbusI_freeReplies(c);
+    adbusI_freeMatches(c);
+    adbusI_freeObjectTree(&c->binds);
 
-        m = c->extra.next;
-        while (m) {
-            adbusI_ConnMsg* next = m->hl.next;
-            FreeMessage(m);
-            m = next;
-        }
+    adbusI_freeRemoteTracker(c);
+    adbusI_freeConnBusData(&c->connect);
 
-        FreeMessage(c->next);
+    adbus_proxy_free(c->bus);
+    adbus_state_free(c->state);
 
-        adbus_msg_free(c->dispatchReturn);
-        adbus_iface_free(c->introspectable);
-        adbus_iface_free(c->properties);
-
-        if (c->callbacks.release) {
-            c->callbacks.release(c->user);
-        }
-
-        free(c);
+    for (m = c->current; m != &c->toprocess; m = m->hl.next) {
+        adbusI_ConnMsg* next = m->hl.next;
+        FreeMessage(m);
+        m = next;
     }
+
+    m = c->extra.next;
+    while (m) {
+        adbusI_ConnMsg* next = m->hl.next;
+        FreeMessage(m);
+        m = next;
+    }
+
+    FreeMessage(c->next);
+
+    adbus_msg_free(c->dispatchReturn);
+    adbus_iface_free(c->introspectable);
+    adbus_iface_free(c->properties);
+
+    if (c->callbacks.release) {
+        c->callbacks.release(c->user);
+    }
+
+    free(c);
 }
 
 /* -------------------------------------------------------------------------
@@ -401,14 +406,16 @@ void adbus_conn_deref(adbus_Connection* c)
  */
 int adbus_conn_send(
         adbus_Connection* c,
-        adbus_Message*    message)
+        adbus_Message*    m)
 {
-    ADBUSI_LOG_MSG("Sending", message);
+    ADBUSI_LOG_MSG_2(m, "sent (connection %p)", (void*) c);
 
     if (!c->callbacks.send_message)
         return -1;
 
-    if (c->callbacks.send_message(c->user, message) != (int) message->size)
+    ADBUSI_LOG_DATA_3(m->data, m->size, "sent data (connection %p)", (void*) c);
+
+    if (c->callbacks.send_message(c->user, m) != (int) m->size)
         return -1;
 
     return 0;
@@ -500,7 +507,11 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
     assert(c->current == &c->toprocess && dl_isempty(&c->extra));
     assert(adbus_buf_size(c->next->buf) == 0);
 
-    ADBUSI_LOG_MSG("Received (dispatch)", m);
+    if (m->type == ADBUS_MSG_ERROR) {
+        ADBUSI_LOG_MSG_1(m, "received (connection %p)", (void*) c);
+    } else {
+        ADBUSI_LOG_MSG_2(m, "received (connection %p)", (void*) c);
+    }
 
     ZERO(d);
     d.connection = c;
@@ -666,7 +677,13 @@ static int ParseNewMessages(adbus_Connection* c, adbusI_ConnMsg* next)
         if (adbus_parse(&next->msg, data, size)) {
             return -1;
         }
-        ADBUSI_LOG_MSG("Received", &next->msg);
+
+        if (next->msg.type == ADBUS_MSG_ERROR) {
+            ADBUSI_LOG_MSG_1(&next->msg, "received (connection %p)", (void*) c);
+        } else {
+            ADBUSI_LOG_MSG_2(&next->msg, "received (connection %p)", (void*) c);
+        }
+
     }
 
     return 0;
@@ -707,6 +724,7 @@ int adbus_conn_parsecb(adbus_Connection* c)
     while (read == RECV_SIZE) {
         char* dest = adbus_buf_recvbuf(next->buf, RECV_SIZE);
         read = c->callbacks.recv_data(c->user, dest, RECV_SIZE);
+        ADBUSI_LOG_DATA_3(dest, read, "received data (connection %p)", (void*) c);
         adbus_buf_recvd(next->buf, RECV_SIZE, read);
     }
     

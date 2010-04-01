@@ -151,16 +151,9 @@ static int BindAddress(lua_State* L)
     return 1;
 }
 
-static void Log(const char* str, size_t sz)
-{ fprintf(stderr, "%.*s\n", (int) sz, str); }
-
-static int EnableDebug(lua_State* L)
+static int SetLogLevel(lua_State* L)
 {
-    if (lua_isnil(L, 1) || lua_toboolean(L, 1)) {
-        adbus_set_logger(&Log);
-    } else {
-        adbus_set_logger(NULL);
-    }
+    adbus_set_loglevel(luaL_checknumber(L, 1));
     return 0;
 }
 
@@ -176,7 +169,7 @@ static void Setup(lua_State* L, int module, const char* name)
 static const luaL_Reg reg[] = {
     {"connect_address", &ConnectAddress},
     {"bind_address", &BindAddress},
-    {"enable_debug", &EnableDebug},
+    {"set_log_level", &SetLogLevel},
     {NULL, NULL}
 };
 

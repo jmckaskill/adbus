@@ -229,9 +229,9 @@ int adbus_error(
         errorMessageSize = strlen(errorMessage);
 
     if (errorMessage) {
-        ADBUSI_LOG("Error '%*s' '%*s'", errorNameSize, errorName, errorMessageSize, errorMessage);
+        ADBUSI_LOG_1("error: '%.*s' '%.*s' (connection %p)", errorNameSize, errorName, errorMessageSize, errorMessage, (void*) d->connection);
     } else {
-        ADBUSI_LOG("Error '%*s'", errorNameSize, errorName);
+        ADBUSI_LOG_1("error: '%.*s' (connection %p)", errorNameSize, errorName, (void*) d->connection);
     }
 
     assert(errorName);
