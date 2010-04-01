@@ -333,7 +333,11 @@ adbus_ConnBind* adbus_conn_bind(
     adbusI_ObjectNode* node;
     adbus_ConnBind* ret;
 
-    ADBUSI_LOG_BIND_1(b, "bind (connection %p)", (void*) c);
+    ADBUSI_LOG_BIND_1(
+			b,
+			"bind (connection %s, %p)",
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 
     ZERO(pstr);
     adbusI_sanitisePath(&pstr, b->path, b->pathSize);
@@ -357,7 +361,12 @@ void adbus_conn_unbind(
 {
     UNUSED(c);
     if (b) {
-        ADBUSI_LOG_BIND_1(&b->b, "unbind (connection %p)", (void*) c);
+        ADBUSI_LOG_BIND_1(
+				&b->b,
+				"unbind (connection %s, %p)",
+				adbus_conn_uniquename(c, NULL),
+				(void*) c);
+
         FreeBind(b);
     }
 }

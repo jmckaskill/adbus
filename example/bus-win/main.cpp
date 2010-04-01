@@ -57,6 +57,8 @@ public:
 
 int main()
 {
+	adbus_set_loglevel(3);
+
     Thread t;
     Server s;
     s.Init(&t);

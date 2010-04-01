@@ -333,7 +333,7 @@ adbus_Interface* adbus_iface_new(
 void adbus_iface_ref(adbus_Interface* i)
 { 
     long ref = adbusI_InterlockedIncrement(&i->ref); 
-    ADBUSI_LOG_1("ref: %d, \"%s\" (interface %p)", (int) ref, i->name.str, (void*) i);
+    ADBUSI_LOG_1("ref: %d (interface %s, %p)", (int) ref, i->name.str, (void*) i);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -352,7 +352,7 @@ void adbus_iface_deref(adbus_Interface* i)
         return;
 
     ref = adbusI_InterlockedDecrement(&i->ref);
-    ADBUSI_LOG_1("deref: %d, \"%s\" (interface %p)", (int) ref, i->name.str, (void*) i);
+    ADBUSI_LOG_1("deref: %d (interface %s, %p)", (int) ref, i->name.str, (void*) i);
    
     if (ref != 0)
         return;

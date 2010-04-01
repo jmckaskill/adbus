@@ -101,7 +101,11 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
     adbus_Remote* r;
     adbus_Remote* direct = NULL;
 
-    ADBUSI_LOG_MSG_2(m, "dispatch (remote %p)", (void*) from);
+    ADBUSI_LOG_MSG_2(
+			m,
+			"bus dispatch from (remote %s, %p)",
+			ds_cstr(&from->unique),
+			(void*) from);
 
     if (m->destination) {
         direct = adbusI_lookupRemote(s, m->destination);
@@ -115,19 +119,26 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
 
     DL_FOREACH(Remote, r, &s->remotes.async, hl) {
         s->caller = from;
-        if (    (r == direct || adbusI_serv_matches(&r->matches, m))
-             && r->send(r->user, m) != (int) m->size) 
-        {
-            return -1;
-        }
+        if (r == direct || adbusI_serv_matches(&r->matches, m))
+		{
+			ADBUSI_LOG_MSG_2(m, "bus send to (remote %s, %p)",
+					ds_cstr(&r->unique),
+					(void*) r);
+
+			r->send(r->user, m);
+		}
     }
 
     DL_FOREACH(Remote, r, &s->remotes.sync, hl) {
         s->caller = from;
-        if (    (r == direct || adbusI_serv_matches(&r->matches, m))
-             && r->send(r->user, m) != (int) m->size) 
+        if (r == direct || adbusI_serv_matches(&r->matches, m))
         {
-            return -1;
+			ADBUSI_LOG_MSG_2(m, "bus send to (remote %s, %p)",
+					ds_cstr(&r->unique),
+					(void*) r);
+
+			/* Ignore errors from the send */
+			r->send(r->user, m);
         }
     }
 

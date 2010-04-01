@@ -275,7 +275,7 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
     c->bus = adbus_proxy_new(c->state);
     c->bus->refConnection = 0;
 
-    adbus_proxy_init(c->bus, c, "org.freedesktop.DBus", -1, "/org/freedesktop/DBus", -1);
+    adbus_proxy_init(c->bus, c, NULL, 0, "/org/freedesktop/DBus", -1);
     adbus_proxy_setinterface(c->bus, "org.freedesktop.DBus", -1);
 
     c->introspectable = adbus_iface_new("org.freedesktop.DBus.Introspectable", -1);
@@ -314,10 +314,14 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
 /** Increments the connection ref count.
  *  \relates adbus_Connection
  */
-void adbus_conn_ref(adbus_Connection* connection)
+void adbus_conn_ref(adbus_Connection* c)
 { 
-    long ref = adbusI_InterlockedIncrement(&connection->ref); 
-    ADBUSI_LOG_1("ref: %d (connection %p)", (int) ref, (void*) connection);
+    long ref = adbusI_InterlockedIncrement(&c->ref); 
+
+    ADBUSI_LOG_1("ref: %d (connection %s, %p)",
+			(int) ref,
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -346,7 +350,10 @@ void adbus_conn_deref(adbus_Connection* c)
         return;
 
     ref = adbusI_InterlockedDecrement(&c->ref);
-    ADBUSI_LOG_1("deref: %d (connection %p)", (int) ref, (void*) c);
+    ADBUSI_LOG_1("deref: %d (connection %s, %p)",
+			(int) ref,
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 
     if (ref != 0)
         return;
@@ -408,12 +415,21 @@ int adbus_conn_send(
         adbus_Connection* c,
         adbus_Message*    m)
 {
-    ADBUSI_LOG_MSG_2(m, "sent (connection %p)", (void*) c);
+    ADBUSI_LOG_MSG_2(
+			m,
+			"sending (connection %s, %p)",
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 
     if (!c->callbacks.send_message)
         return -1;
 
-    ADBUSI_LOG_DATA_3(m->data, m->size, "sent data (connection %p)", (void*) c);
+    ADBUSI_LOG_DATA_3(
+			m->data,
+			m->size,
+			"sending data (connection %s, %p)",
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 
     if (c->callbacks.send_message(c->user, m) != (int) m->size)
         return -1;
@@ -507,11 +523,11 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
     assert(c->current == &c->toprocess && dl_isempty(&c->extra));
     assert(adbus_buf_size(c->next->buf) == 0);
 
-    if (m->type == ADBUS_MSG_ERROR) {
-        ADBUSI_LOG_MSG_1(m, "received (connection %p)", (void*) c);
-    } else {
-        ADBUSI_LOG_MSG_2(m, "received (connection %p)", (void*) c);
-    }
+    ADBUSI_LOG_MSG_2(
+			m,
+			"received (connection %s, %p)",
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 
     ZERO(d);
     d.connection = c;
@@ -678,11 +694,11 @@ static int ParseNewMessages(adbus_Connection* c, adbusI_ConnMsg* next)
             return -1;
         }
 
-        if (next->msg.type == ADBUS_MSG_ERROR) {
-            ADBUSI_LOG_MSG_1(&next->msg, "received (connection %p)", (void*) c);
-        } else {
-            ADBUSI_LOG_MSG_2(&next->msg, "received (connection %p)", (void*) c);
-        }
+        ADBUSI_LOG_MSG_2(
+				&next->msg,
+				"received (connection %s, %p)",
+				adbus_conn_uniquename(c, NULL),
+				(void*) c);
 
     }
 
@@ -724,7 +740,14 @@ int adbus_conn_parsecb(adbus_Connection* c)
     while (read == RECV_SIZE) {
         char* dest = adbus_buf_recvbuf(next->buf, RECV_SIZE);
         read = c->callbacks.recv_data(c->user, dest, RECV_SIZE);
-        ADBUSI_LOG_DATA_3(dest, read, "received data (connection %p)", (void*) c);
+
+        ADBUSI_LOG_DATA_3(
+				dest,
+				read,
+				"received data (connection %s, %p)",
+				adbus_conn_uniquename(c, NULL),
+				(void*) c);
+
         adbus_buf_recvd(next->buf, RECV_SIZE, read);
     }
     

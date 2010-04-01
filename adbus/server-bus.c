@@ -25,6 +25,7 @@
 
 #include "server.h"
 #include "misc.h"
+#include "connection.h"
 
 /* -------------------------------------------------------------------------- */
 static int Hello(adbus_CbData* d)
@@ -307,6 +308,7 @@ void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
     /* Hook up to the server */
     s->bus.remote = adbusI_serv_createRemote(s, &SendToBus, s, "org.freedesktop.DBus", 0);
     adbusI_requestService(s, s->bus.remote, "org.freedesktop.DBus", 0);
+	s->bus.connection->connect.unique = adbusI_strdup("org.freedesktop.DBus");
 }
 
 /* -------------------------------------------------------------------------- */

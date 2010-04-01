@@ -28,14 +28,19 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-#ifdef _WIN32
-#   include <windows.h>
-#else
+#ifndef _WIN32
 #   include <unistd.h>
 #endif
 
-#ifdef __GNUC__
+#if defined _WIN32 && !defined _WIN32_WCE && !defined NDEBUG
+#	include <crtdbg.h>
+#	include <dbghelp.h>
+#	define WIN32_SYMLOOKUP
+#endif
+
+#if defined __GNUC__ && !defined NDEBUG
 #   include <execinfo.h>
+#	define GNU_SYMLOOKUP
 #endif
 
 #undef interface
@@ -44,13 +49,15 @@
 
 static void logerr(const char* str, size_t sz)
 { 
+    (void) str;
+    (void) sz;
 #if !defined _WIN32
     fprintf(stderr, "[adbus.so/%d] %.*s", (int) getpid(), (int) sz, str); 
 #elif !defined _WIN32_WCE && !defined NDEBUG
-    OutputDebugStringA(str);
-#else
-    (void) str;
-    (void) sz;
+	_CrtDbgReport(_CRT_WARN, NULL, 0, "adbus.dll", "[adbus.dll/%d] %.*s",
+			(int) GetCurrentProcessId(),
+			(int) sz,
+			str);
 #endif
 }
 
@@ -60,6 +67,10 @@ static int sEnableColors = 0;
 static int sLogLevel = -1;
 static adbus_LogCallback sLogFunction = &logerr;
 
+#ifdef WIN32_SYMLOOKUP
+	static HANDLE hProcess = INVALID_HANDLE_VALUE;
+#endif
+
 void adbusI_initlog()
 {
     if (sLogLevel == -1) {
@@ -68,6 +79,14 @@ void adbusI_initlog()
         sLogLevel = logenv ? strtol(logenv, NULL, 10) : 0;
         sEnableColors = colenv && strcmp(colenv, "1") == 0;
         adbusI_loglevel = sLogFunction ? sLogLevel : -1;
+
+#ifdef WIN32_SYMLOOKUP
+		{
+			hProcess = GetCurrentProcess();
+			DuplicateHandle(hProcess, hProcess, hProcess, &hProcess, 0, FALSE, DUPLICATE_SAME_ACCESS);
+			SymInitialize(hProcess, NULL, TRUE);
+		}
+#endif
     }
 }
 
@@ -96,6 +115,93 @@ void adbus_set_logger(adbus_LogCallback cb)
 #define CYAN    (sEnableColors ? "\033[36m" : "")
 #define WHITE   (sEnableColors ? "\033[37m" : "")
 #define NORMAL  (sEnableColors ? "\033[m" : "")
+
+/* -------------------------------------------------------------------------- */
+
+#ifdef WIN32_SYMLOOKUP
+
+#define SYMBOL_NAME_LEN 1024
+#ifdef _WIN64
+typedef DWORD64 dword_ptr_t;
+#else
+typedef DWORD dword_ptr_t;
+#endif
+static void AppendSymbol(d_String* s, void* func)
+{
+	IMAGEHLP_MODULE moduleInfo;
+
+	ds_cat_f(s, "%p (", func);
+
+	memset(&moduleInfo, 0, sizeof(moduleInfo));
+	moduleInfo.SizeOfStruct = sizeof(moduleInfo);
+	if (SymGetModuleInfo(hProcess, (dword_ptr_t) func, &moduleInfo)) {
+		const char* module = strchr(moduleInfo.ImageName, '\\');
+		if (module) {
+			module++;
+		} else {
+			module = moduleInfo.ImageName;
+		}
+		ds_cat_f(s, "%s ", module);
+	} else {
+		ds_cat(s, "<no module> ");
+	}
+
+	__try
+	{
+		dword_ptr_t offset;
+		struct {
+			IMAGEHLP_SYMBOL sym;
+			char symbol[SYMBOL_NAME_LEN];
+		} sym;
+
+		memset(&sym, 0, sizeof(sym));
+		sym.sym.SizeOfStruct = sizeof(IMAGEHLP_SYMBOL);
+		sym.sym.Address = (dword_ptr_t) func;
+		sym.sym.MaxNameLength = SYMBOL_NAME_LEN;
+
+		if (SymGetSymFromAddr(hProcess, (dword_ptr_t) func, &offset, &sym.sym))
+		{
+			char undecorated[SYMBOL_NAME_LEN];
+			if (UnDecorateSymbolName(sym.sym.Name, undecorated, SYMBOL_NAME_LEN,
+				UNDNAME_NO_MS_KEYWORDS | UNDNAME_NO_ACCESS_SPECIFIERS)) 
+			{
+				ds_cat(s, undecorated);
+			} 
+			else if (SymUnDName(&sym.sym, undecorated, SYMBOL_NAME_LEN)) 
+			{
+				ds_cat(s, undecorated);
+			} 
+			else 
+			{
+				ds_cat(s, sym.sym.Name);
+			}
+
+			if (offset > 0) {
+				ds_cat_f(s, " + %d bytes", (int) offset);
+			}
+		}
+	} 
+	__except (EXCEPTION_ACCESS_VIOLATION == GetExceptionCode())
+	{
+		ds_cat(s, "<no symbol>");
+	}
+
+	ds_cat(s, ")");
+}
+
+#elif defined GNU_SYMLOOKUP
+static void AppendSymbol(d_String* s, void* func)
+{
+    char** sym = backtrace_symbols(&func, 1);
+    ds_cat_f(s, "%s", *sym);
+    free(sym);
+}
+
+#else
+static void AppendSymbol(d_String* s, void* func)
+{ ds_cat_f(s, "%p", func); }
+
+#endif
 
 /* -------------------------------------------------------------------------- */
 
@@ -147,17 +253,8 @@ static void Callback_(d_String* s, const char* field, void* cb, void* user)
 {
     if (cb) {
         Header(s, "%s", field);
-
-#ifdef __GNUC__
-        {
-            char** sym = backtrace_symbols(&cb, 1);
-            ds_cat_f(s, "%s, %p", *sym, user);
-            free(sym);
-        }
-
-#else
-        ds_cat_f(s, "%p, %p", cb, user);
-#endif
+		AppendSymbol(s, cb);
+        ds_cat_f(s, ", %p", cb, user);
     }
 }
 

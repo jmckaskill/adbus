@@ -323,11 +323,17 @@ void adbus_proxy_method(
     adbus_msg_reset(m);
     adbus_msg_settype(m, ADBUS_MSG_METHOD);
     adbus_msg_setserial(m, adbus_conn_serial(p->connection));
-    adbus_msg_setdestination(m, ds_cstr(&p->service), ds_size(&p->service));
+
+	if (ds_size(&p->service) > 0) {
+	    adbus_msg_setdestination(m, ds_cstr(&p->service), ds_size(&p->service));
+	}
+
     adbus_msg_setpath(m, ds_cstr(&p->path), ds_size(&p->path));
 
-    if (ds_size(&p->interface) > 0)
+	if (ds_size(&p->interface) > 0) {
         adbus_msg_setinterface(m, ds_cstr(&p->interface), ds_size(&p->interface));
+	}
+
     adbus_msg_setmember(m, method, size);
 }
 

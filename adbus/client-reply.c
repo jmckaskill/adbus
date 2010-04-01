@@ -196,7 +196,11 @@ adbus_ConnReply* adbus_conn_addreply(
     adbus_ConnReply* reply;
     uint32_t serial = (uint32_t) reg->serial;
 
-    ADBUSI_LOG_REPLY_2(reg, "add reply (connection %p)", (void*) c);
+    ADBUSI_LOG_REPLY_2(
+			reg,
+			"add reply (connection %s, %p)",
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
 
     assert(reg->serial >= 0);
     assert(reg->remote);
@@ -227,7 +231,7 @@ static void FreeReply(adbus_ConnReply* r)
     /* Disconnect from hash table */
     if (r->set) {
         d_Hash(Reply)* h = &r->set->lookup;
-        dh_Iter ii = dh_get(Reply, h, r->r.serial);
+        dh_Iter ii = dh_get(Reply, h, (uint32_t) r->r.serial);
         if (ii != dh_end(h)) {
             dh_del(Reply, h, ii);
         }
@@ -297,8 +301,12 @@ void adbus_conn_removereply(
         adbus_ConnReply*        reply)
 {
     if (reply) {
-        UNUSED(c);
-        ADBUSI_LOG_REPLY_1(&reply->r, "remove reply (connection %p)", (void*) c);
+        ADBUSI_LOG_REPLY_1(
+				&reply->r,
+				"remove reply (connection %s, %p)",
+				adbus_conn_uniquename(c, NULL),
+				(void*) c);
+
         FreeReply(reply);
     }
 }
@@ -351,7 +359,11 @@ int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
         reply->set = NULL;
         reply->incallback = 1;
 
-        ADBUSI_LOG_REPLY_2(&reply->r, "dispatch reply (connection %p)", (void*) c);
+        ADBUSI_LOG_REPLY_2(
+				&reply->r,
+				"dispatch reply (connection %s, %p)",
+				adbus_conn_uniquename(c, NULL),
+				(void*) c);
 
         if (d->msg->type == ADBUS_MSG_RETURN) {
             cb = reply->r.callback;

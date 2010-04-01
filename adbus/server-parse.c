@@ -308,6 +308,13 @@ int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
     const char* data = adbus_buf_data(b);
     size_t size = adbus_buf_size(b);
 
+	ADBUSI_LOG_DATA_3(
+			data,
+			size,
+			"bus parse from (remote %s, %p)",
+			ds_cstr(&r->unique),
+			(void*) r);
+
     while (1) {
         int ret;
 

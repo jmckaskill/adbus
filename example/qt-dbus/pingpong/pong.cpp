@@ -61,6 +61,7 @@ QString Pong::ping(const QString &arg)
 
 int main(int argc, char **argv)
 {
+	putenv("ADBUS_DEBUG=3");
 #if !defined NDEBUG && defined _WIN32
 	Sleep(2000);
 #endif

@@ -37,7 +37,11 @@ static int GetNameOwner(adbus_CbData* d)
     const char* unique = adbus_check_string(d, &uniquesz);
     adbus_check_end(d);
 
-    ADBUSI_LOG_1("got service '%s' as '%s' (connection %p)", t->service.str, unique, (void*) d->connection);
+    ADBUSI_LOG_1("got service '%s' as '%s' (connection %s, %p)",
+			t->service.str,
+			unique,
+			adbus_conn_uniquename(d->connection, NULL),
+			(void*) d->connection);
 
     assert(!t->unique.str);
     t->unique.str = adbusI_strndup(unique, uniquesz);
@@ -59,7 +63,12 @@ static int NameOwnerChanged(adbus_CbData* d)
     to = adbus_check_string(d, &tosz);
     adbus_check_end(d);
 
-    ADBUSI_LOG_1("service '%s' changed from '%s' to '%s' (connection %p)", t->service.str, t->unique.str, to, (void*) d->connection);
+    ADBUSI_LOG_1("service '%s' changed from '%s' to '%s' (connection %s, %p)",
+			t->service.str,
+			t->unique.str,
+			to,
+			adbus_conn_uniquename(d->connection, NULL),
+			(void*) d->connection);
 
     free((char*) t->unique.str);
     t->unique.str = adbusI_strndup(to, tosz);
@@ -98,7 +107,7 @@ adbusI_TrackedRemote* adbusI_getTrackedRemote(
 
         dh_val(&c->tracker.lookup, ti) = t;
 
-        if (*name.str == ':' || (name.sz == sizeof(BUS) - 1 && memcmp(BUS, name.str, name.sz) == 0)) {
+        if (name.sz == 0 || *name.str == ':' || (name.sz == sizeof(BUS) - 1 && memcmp(BUS, name.str, name.sz) == 0)) {
             t->unique.str = adbusI_strndup(name.str, name.sz);
             t->unique.sz  = name.sz;
             dh_key(&c->tracker.lookup, ti) = t->unique;

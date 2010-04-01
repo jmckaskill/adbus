@@ -153,7 +153,7 @@ static int BindAddress(lua_State* L)
 
 static int SetLogLevel(lua_State* L)
 {
-    adbus_set_loglevel(luaL_checknumber(L, 1));
+    adbus_set_loglevel(luaL_checkinteger(L, 1));
     return 0;
 }
 
