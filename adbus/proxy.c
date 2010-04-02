@@ -216,7 +216,7 @@ adbus_Proxy* adbus_proxy_new(adbus_State* state)
 void adbus_proxy_free(adbus_Proxy* p)
 {
     if (p) {
-        if (p->refConnection) {
+        if (p->connection && p->refConnection) {
             adbus_conn_deref(p->connection);
         }
 

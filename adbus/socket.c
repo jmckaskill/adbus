@@ -714,6 +714,7 @@ static void Close(void* d)
     close(s->sock);
 #endif
     adbus_buf_free(s->txbuf);
+    adbus_conn_free(s->connection);
     free(s);
 }
 
@@ -756,13 +757,22 @@ static void Connected(void* d)
     s->connected = 1;
 }
 
+static adbus_ConnVTable sVTable = {
+    &Close,             /* release */
+    &SendMsg,           /* send_msg */
+    &Recv,              /* recv_data */
+    NULL,               /* proxy */
+    NULL,               /* should_proxy */
+    NULL,               /* get_proxy */
+    &Block              /* block */
+};
+
 adbus_Connection* adbus_sock_busconnect_s(
         const char*     envstr,
         int             size,
         adbus_Socket*   sockret)
 {
     struct SocketData* d = NEW(struct SocketData);
-    adbus_ConnectionCallbacks cbs;
     adbus_Auth* auth = NULL;
     adbus_Bool authenticated = 0;
     int recvd = 0, used = 0;
@@ -779,13 +789,7 @@ adbus_Connection* adbus_sock_busconnect_s(
     auth = adbus_cauth_new(&Send, &Rand, d);
     adbus_cauth_external(auth);
 
-    ZERO(cbs);
-    cbs.send_message    = &SendMsg;
-    cbs.recv_data       = &Recv;
-    cbs.release         = &Close;
-    cbs.block           = &Block;
-
-    d->connection = adbus_conn_new(&cbs, d);
+    d->connection = adbus_conn_new(&sVTable, d);
 
     if (send(d->sock, "\0", 1, 0) != 1)
         goto err;

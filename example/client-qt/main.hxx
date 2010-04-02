@@ -23,33 +23,40 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+#include <adbusqt/qdbusclient.hxx>
+#include <QtCore/qobject.h>
+#include <QtCore/qthread.h>
 
-#include "qdbusservicewatcher.hxx"
-#include "qdbusobject_p.hxx"
-#include "qdbusconnection.hxx"
-#include <Qt/private/qobject_p.h>
-#include <QtCore/qstringlist.h>
-
-/* ------------------------------------------------------------------------- */
-
-class QDBusServiceWatcherPrivate : public QObjectPrivate
+class PingThread : public QThread
 {
-    Q_DECLARE_PUBLIC(QDBusServiceWatcher);
+    Q_OBJECT
 public:
-    QDBusServiceWatcherPrivate()
-    :   object(NULL),
-        connection(""),
-        watchMode(QDBusServiceWatcher::WatchForOwnerChange)
-    {}
+    PingThread(const adbus::Connection& c);
 
-    ~QDBusServiceWatcherPrivate() {object->destroyOnConnectionThread();}
+private:
+    void run();
+    void ping();
+    void response(const char* str);
+    void error(const char* name, const char* msg);
 
-    void _q_serviceOwnerChanged(QString service, QString oldOwner, QString newOwner);
+    adbus::Connection   m_Connection;
+    adbus::State*       m_State;
+    adbus::Proxy*       m_Proxy;
+    int                 m_Left;
+};
 
-    QStringList                     services;
-    QDBusObject*                    object;
-    QDBusConnection                 connection;
-    QDBusServiceWatcher::WatchMode  watchMode;
+class Main : public QObject
+{
+    Q_OBJECT
+public:
+    Main(const adbus::Connection& c);
+    ~Main();
+
+public slots:
+    void threadFinished();
+
+private:
+    int                 m_ThreadsLeft;
+    QList<PingThread*>  m_Threads;
 };
 

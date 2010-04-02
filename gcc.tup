@@ -12,6 +12,7 @@ CFLAGS += -Wno-unused-function
 
 CFLAGS += -I`pwd`/$(TUP_CWD)/include/c
 CFLAGS += -I`pwd`/$(TUP_CWD)/deps/lua/src
+CFLAGS += -I`pwd`/$(TUP_CWD)
 
 CFLAGS += -DLUA_USE_LINUX
 CFLAGS += -DADBUS_SHARED_LIBRARY

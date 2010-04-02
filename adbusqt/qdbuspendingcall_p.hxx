@@ -43,7 +43,6 @@ class QDBusPendingCallPrivate : public QDBusProxy, public QSharedData
 public:
     static QDBusPendingCall Create(const QDBusConnection& c, const QByteArray& service, uint32_t serial);
 
-    void destroy();
     void waitForFinished();
     bool isFinished() const {return m_Finished;}
 
@@ -59,15 +58,14 @@ Q_SIGNALS:
 
 private:
     QDBusPendingCallPrivate(const QDBusConnection& c, const QByteArray& service, uint32_t serial);
-    ~QDBusPendingCallPrivate() {}
+    ~QDBusPendingCallPrivate(){}
+    virtual void unregister();
 
     // Called on the local thread
     static int ReplyCallback(adbus_CbData* d);
     static int ErrorCallback(adbus_CbData* d);
 
     // Called on the connection thread
-    static void Delete(void* u);
-    static void Unregister(void* u);
     static void AddReply(void* u);
     static void ReplyReceived(void* u);
 

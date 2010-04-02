@@ -417,13 +417,13 @@ void adbusI_freeObjectTree(adbusI_ObjectTree* t)
 int adbusI_dispatchMethod(adbus_Connection* c, adbus_CbData* d)
 {
     adbus_ConnBind* bind;
-    adbus_Member* member;
+    const adbus_Member* member;
 
     if (d->msg->interface) {
         /* If we know the interface, then we try and find the method on that
          * interface.
          */
-        adbus_Interface* interface = adbus_conn_interface(
+        const adbus_Interface* interface = adbus_conn_interface(
                 c,
                 d->msg->path,
                 d->msg->pathSize,
@@ -463,7 +463,7 @@ int adbusI_dispatchMethod(adbus_Connection* c, adbus_CbData* d)
 
 /* -------------------------------------------------------------------------- */
 
-adbus_Interface* adbus_conn_interface(
+const adbus_Interface* adbus_conn_interface(
         adbus_Connection*   c,
         const char*         path,
         int                 pathSize,
@@ -504,7 +504,7 @@ adbus_Interface* adbus_conn_interface(
 
 /* -------------------------------------------------------------------------- */
 
-adbus_Member* adbus_conn_method(
+const adbus_Member* adbus_conn_method(
         adbus_Connection*   c,
         const char*         path,
         int                 pathSize,
@@ -535,7 +535,7 @@ adbus_Member* adbus_conn_method(
         if (dh_exist(binds, bi)) {
 
             adbus_ConnBind* bind = dh_val(binds, bi);
-            adbus_Member* mbr = adbus_iface_method(bind->b.interface, mstr.str, mstr.sz);
+            const adbus_Member* mbr = adbus_iface_method(bind->b.interface, mstr.str, mstr.sz);
 
             if (mbr) {
                 if (pbind) {
@@ -623,8 +623,8 @@ int adbusI_getProperty(adbus_CbData* d)
 {
     dh_strsz_t mname, iname;
     adbus_ConnBind* bind;
-    adbus_Interface* interface;
-    adbus_Member* mbr;
+    const adbus_Interface* interface;
+    const adbus_Member* mbr;
     dh_Iter ii;
 
     adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
@@ -650,7 +650,7 @@ int adbusI_getProperty(adbus_CbData* d)
     }
 
     adbus_iface_ref(interface);
-    d->user1 = mbr;
+    d->user1 = (void*) mbr;
     d->user2 = bind->b.cuser2;
 
     if (bind->b.proxy) {
@@ -666,7 +666,7 @@ int adbusI_getAllProperties(adbus_CbData* d)
 {
     dh_strsz_t iname;
     adbus_ConnBind* bind;
-    adbus_Interface* interface;
+    const adbus_Interface* interface;
     dh_Iter ii;
 
     adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
@@ -684,7 +684,7 @@ int adbusI_getAllProperties(adbus_CbData* d)
     interface = dh_val(&node->binds, ii)->b.interface;
 
     adbus_iface_ref(interface);
-    d->user1 = interface;
+    d->user1 = (void*) interface;
     d->user2 = bind->b.cuser2;
 
     if (bind->b.proxy) {
@@ -700,8 +700,8 @@ int adbusI_setProperty(adbus_CbData* d)
 {
     dh_strsz_t mname, iname;
     adbus_ConnBind* bind;
-    adbus_Interface* interface;
-    adbus_Member* mbr;
+    const adbus_Interface* interface;
+    const adbus_Member* mbr;
     dh_Iter ii;
 
     adbusI_ObjectNode* node = (adbusI_ObjectNode*) d->user2;
@@ -726,7 +726,7 @@ int adbusI_setProperty(adbus_CbData* d)
     }
 
     adbus_iface_ref(interface);
-    d->user1 = mbr;
+    d->user1 = (void*) mbr;
     d->user2 = bind->b.cuser2;
     
     if (bind->b.proxy) {

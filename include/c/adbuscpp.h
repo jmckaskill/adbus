@@ -638,7 +638,7 @@ namespace adbus
         }
 
         ~Interface() 
-        { adbus_iface_free(m_I); }
+        { adbus_iface_deref(m_I); }
 
         template<class T>
         detail::PropertyMember<O, T> addProperty(const std::string& name)
@@ -654,8 +654,11 @@ namespace adbus
         adbus_Member* signal(const std::string& name) {return adbus_iface_signal(m_I, name.c_str(), (int) name.size());}
         adbus_Member* method(const std::string& name) {return adbus_iface_method(m_I, name.c_str(), (int) name.size());}
 
+        const adbus_Interface* interface() const {return m_I;}
         adbus_Interface* interface() {return m_I;}
-        operator adbus_Interface*()  {return m_I;}
+
+        operator const adbus_Interface*() const {return m_I;}
+        operator adbus_Interface*() {return m_I;}
 
 #define ADBUSCPP_MULTI ADBUSCPP_MULTI_INTERFACES
 #include "adbuscpp-multi.h"
@@ -669,143 +672,109 @@ namespace adbus
     {
         ADBUSCPP_NOT_COPYABLE(State);
     public:
-        State() : m_S(adbus_state_new()){}
+        State() : m_S(NULL) {}
         virtual ~State() {adbus_state_free(m_S);}
 
         void reset()
-        {adbus_state_reset(m_S);}
+        {
+            if (m_S) {
+                adbus_state_reset(m_S);
+            }
+        }
+
+        void deleteState()
+        { adbus_state_free(m_S); }
 
         template<class O>
-        void bind(adbus_Connection* c, const char* path, Interface<O>* i, O* object)
+        void bind(adbus_Connection* c, const char* path, const Interface<O>& i, O* object)
         {
             adbus_Bind b;
             adbus_bind_init(&b);
             b.path      = path;
-            b.interface = i->interface();
+            b.interface = i;
             b.cuser2    = object;
-            adbus_state_bind(m_S, c, &b);
+            adbus_state_bind(state(), c, &b);
         }
 
         template<class O>
-        void bind(adbus_Connection* c, const std::string& path, Interface<O>* i, O* object)
+        void bind(adbus_Connection* c, const std::string& path, const Interface<O>& i, O* object)
         {
             adbus_Bind b;
             adbus_bind_init(&b);
             b.path      = path.c_str();
             b.pathSize  = (int) path.size();
-            b.interface = i->interface();
+            b.interface = i;
             b.cuser2    = object;
-            adbus_state_bind(m_S, c, &b);
+            adbus_state_bind(state(), c, &b);
         }
 
         template<class O>
-        void bind(adbus_Connection* c, const Path& path, Interface<O>* i, O* object)
+        void bind(adbus_Connection* c, const Path& path, const Interface<O>& i, O* object)
         {
             adbus_Bind b;
             adbus_bind_init(&b);
             b.path      = path.c_str();
             b.pathSize  = (int) path.size();
-            b.interface = i->interface();
+            b.interface = i;
             b.cuser2    = object;
-            adbus_state_bind(m_S, c, &b);
+            adbus_state_bind(state(), c, &b);
         }
 
         void addMatch(adbus_Connection* c, adbus_Match* m)
-        {adbus_state_addmatch(m_S, c, m);}
+        { adbus_state_addmatch(state(), c, m); }
 
-        adbus_State* state() {return m_S;}
-        operator adbus_State*(){return m_S;}
+        adbus_State* state() 
+        {
+            if (!m_S) {
+                m_S = adbus_state_new();
+            }
+            return m_S;
+        }
+
     private:
         adbus_State* m_S;
     };
 
-    class BindPath
-    {
-    public:
-        BindPath() : m_C(NULL) {}
-        BindPath(adbus_Connection* c, const char* path) : m_C(c), m_Path(path) {}
-        BindPath(adbus_Connection* c, const Path& path) : m_C(c), m_Path(path) {}
-
-        template<class O>
-        void bind(Interface<O>* i, O* object) const
-        { bind(i, object, *((State*) object)); }
-
-        template<class O>
-        void bind(Interface<O>* i, O* object, adbus_State* state) const
-        {
-            adbus_Bind b;
-            adbus_bind_init(&b);
-            b.path      = m_Path.c_str();
-            b.pathSize  = (int) m_Path.size();
-            b.interface = i->interface();
-            b.cuser2    = object;
-            adbus_state_bind(state, m_C, &b);
-        }
-
-        adbus_Connection* connection() const {return m_C;}
-
-        operator Path() const {return m_Path;}
-
-        void operator>>(Buffer& b) const
-        { adbus_buf_objectpath(b, c_str(), size()); }
-
-        const char* c_str() const {return m_Path.c_str();}
-        size_t size() const {return m_Path.size();}
-
-        BindPath operator/(const char* p) const
-        { return BindPath(m_C, m_Path / p); }
-
-        BindPath operator/(const std::string& p)const
-        { return BindPath(m_C, m_Path / p); }
-
-        bool operator==(const BindPath& p)const
-        {return m_C == p.m_C && m_Path == p.m_Path;}
-
-        bool operator!=(const BindPath& p)const
-        {return m_C != p.m_C || m_Path != p.m_Path;}
-
-        bool operator<(const BindPath& p)const
-        {return m_Path < p.m_Path;}
-
-        bool operator>(const BindPath& p)const
-        {return m_Path > p.m_Path;}
-
-        bool operator<=(const BindPath& p)const
-        {return m_Path <= p.m_Path;}
-
-        bool operator>=(const BindPath& p)const
-        {return m_Path >= p.m_Path;}
-
-    private:
-        adbus_Connection* m_C;
-        Path              m_Path;
-    };
+    class BindPath;
 
     class Connection
     {
-        ADBUSCPP_NOT_COPYABLE(Connection);
     public:
-        Connection(adbus_ConnectionCallbacks* cbs, void* user)
-            : m_C(adbus_conn_new(cbs, user)) 
-        {}
+        Connection(const adbus_ConnVTable* vtable, void* obj)
+        :   m_C(adbus_conn_new(vtable, obj)) 
+        { adbus_conn_ref(m_C); }
 
-        Connection(adbus_SendMsgCallback cb, void* user)
+        Connection(adbus_SendMsgCallback cb, void* obj)
         {
-            adbus_ConnectionCallbacks cbs = {};
-            cbs.send_message = cb;
-            m_C = adbus_conn_new(&cbs, user);
+            adbus_ConnVTable vtable = {};
+            vtable.send_message = cb;
+            m_C = adbus_conn_new(&vtable, obj);
+            adbus_conn_ref(m_C);
         }
 
-        ~Connection() {adbus_conn_free(m_C);}
+        Connection(adbus_Connection* c)
+        :   m_C(c)
+        { adbus_conn_ref(m_C); }
+
+        Connection(const Connection& c)
+        :   m_C(c.m_C)
+        { adbus_conn_ref(m_C); }
+
+        Connection& operator=(const Connection& c)
+        {
+            adbus_conn_ref(c.m_C);
+            adbus_conn_deref(m_C);
+            m_C = c.m_C;
+            return *this;
+        }
+
+        ~Connection() {adbus_conn_deref(m_C);}
 
         adbus_ConnMatch* addMatch(adbus_Match* m) {return adbus_conn_addmatch(m_C, m);}
         void removeMatch(adbus_ConnMatch* m) {adbus_conn_removematch(m_C, m);}
        
-        BindPath path(const char* path)
-        { return BindPath(*this, path); }
-
-        BindPath path(const std::string& path)
-        { return BindPath(*this, path); }
+        BindPath path(const char* path);
+        BindPath path(const std::string& path);
 
         uint32_t serial() const
         { return adbus_conn_serial(m_C); }
@@ -832,11 +801,60 @@ namespace adbus
             return std::string(str, sz);
         }
 
-        operator adbus_Connection*(){return m_C;}
+        operator adbus_Connection*() const {return m_C;}
     private:
         adbus_Connection* m_C;
     };
 
+    class BindPath
+    {
+    public:
+        BindPath() : m_C(NULL) {}
+        BindPath(adbus_Connection* c, const char* path) : m_C(c), m_Path(path) {}
+        BindPath(adbus_Connection* c, const Path& path) : m_C(c), m_Path(path) {}
+
+        template<class O>
+        void bind(const Interface<O>& i, O* object) const
+        { bind(i, object, *((State*) object)); }
+
+        template<class O>
+        void bind(const Interface<O>& i, O* object, adbus_State* state) const
+        {
+            adbus_Bind b;
+            adbus_bind_init(&b);
+            b.path      = m_Path.c_str();
+            b.pathSize  = (int) m_Path.size();
+            b.interface = i;
+            b.cuser2    = object;
+            adbus_state_bind(state, m_C, &b);
+        }
+
+        const adbus::Connection& connection() const {return m_C;}
+        const Path& path() const {return m_Path;}
+
+        void operator>>(Buffer& b) const
+        { adbus_buf_objectpath(b, c_str(), size()); }
+
+        const char* c_str() const {return m_Path.c_str();}
+        size_t size() const {return m_Path.size();}
+
+        BindPath operator/(const char* p) const
+        { return BindPath(m_C, m_Path / p); }
+
+        BindPath operator/(const std::string& p)const
+        { return BindPath(m_C, m_Path / p); }
+
+    private:
+        adbus::Connection m_C;
+        Path              m_Path;
+    };
+
+       
+    inline BindPath Connection::path(const char* path)
+    { return BindPath(*this, path); }
+
+    inline BindPath Connection::path(const std::string& path)
+    { return BindPath(*this, path); }
 
 #ifdef DOC
 
@@ -930,11 +948,11 @@ namespace adbus
         template<class MF, class O>
         Call& setError(MF mf, O* o)
         {
-            assert(!euser);
+            assert(!error && !euser && !release[1] && !ruser[1]);
             this->error         = &detail::ErrorCallback<MF, O>;
             this->euser         = CreateUser2<MF,O*>(mf, o);
-            this->release[0]    = &free;
-            this->ruser[0]      = this->euser;
+            this->release[1]    = &free;
+            this->ruser[1]      = this->euser;
             return *this;
         }
 

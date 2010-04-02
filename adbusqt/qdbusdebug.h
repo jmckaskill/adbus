@@ -23,22 +23,15 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Caller.hxx"
+#pragma once
 
-Caller::Caller()
-{
-    m_Client = new adbus::QtClient(this);
-    m_Client->connectToServer(ADBUS_DEFAULT_BUS);
-    connect(m_Client, SIGNAL(connected()), this, SLOT(connected()));
-}
+extern int qDBusLogLevel;
 
-void Caller::connected()
-{
-    adbus::Proxy bus(this);
-    bus.init(m_Client->connection(), "org.freedesktop.DBus", "/");
-    bus.method("RequestName")
-        .arg("nz.co.foobar.adbus.ClientQtTest")
-        .arg(uint32_t(0))
-        .send();
-}
+void qDBusLog(const char* format, ...)
+#ifdef __GNUC__
+    __attribute__ ((format (printf, 1, 2)))
+#endif
+    ;
+
+#define QDBUS_LOG if (qDBusLogLevel <= 0) {} else qDBusLog
 

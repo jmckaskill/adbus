@@ -61,6 +61,9 @@
 #define DECL_ARG(x)             A##x a##x;
 #define DECL_ARGS               REP(DECL_ARG)
 
+#define DECL_POINTER_ARG(x)     A##x * a##x;
+#define DECL_POINTER_ARGS       REP(DECL_POINTER_ARG)
+
 #define DEMARSHALL_POINTER_ARG(x)   if (*(o->a##x) << i) {return -1;}
 #define DEMARSHALL_POINTER_ARGS     REP(DEMARSHALL_POINTER_ARG)
 
@@ -84,12 +87,16 @@
 #define ARGS                    REPEAT(ARG, COMMA, EMPTY, EMPTY)
 
 // creates: , const A0& a0, const A1& a0
-#define CONST_REF_ARG_LC(x)     , const A ## x & a ## x
+#define CONST_REF_ARG_LC(x)     , const A##x & a##x
 #define CONST_REF_ARGS_LC       REP(CONST_REF_ARG_LC)
 
 // creates: const A0& a0, const A1& a0
-#define CONST_REF_ARG(x)        const A ## x & a ## x
+#define CONST_REF_ARG(x)        const A##x & a##x
 #define CONST_REF_ARGS          REPEAT(CONST_REF_ARG, COMMA, EMPTY, EMPTY)
+
+// creates: A0* a0, A1* a1
+#define POINTER_ARG(x)          A##x * a##x
+#define POINTER_ARGS            REPEAT(POINTER_ARG, COMMA, EMPTY, EMPTY)
 
 // creates: case 0: type = adbus_type_string((A0*) NULL); break; ...
 #define TYPE_STRING_CASE(x)     case x: type = adbus_type_string((A ## x*) NULL); break;
@@ -195,8 +202,8 @@
         TEMPLATE_CLASS_DECLS
         struct NUM(GetReturnsData)
         {
-            // A0 a0; ...
-            DECL_ARGS;
+            // A0* a0; ...
+            DECL_POINTER_ARGS;
         };
 
         TEMPLATE_CLASS_DECLS inline
@@ -227,7 +234,7 @@
         template<CLASS_DECLS_TC class MF, class O>
         void NUM(setCallback) (MF function, O* object)
         {
-            assert(!cuser);
+            assert(!callback && !cuser && !release[0] && !ruser[0]);
             this->callback      = &NUM(detail::MFMatchCallback) <MF, O CLASS_NAMES_LC>;
             this->cuser         = CreateUser2<MF,O*>(function, object);
             this->release[0]    = &free;
@@ -241,7 +248,7 @@
         template<CLASS_DECLS_TC class MF, class O>
         Call& NUM(setCallback) (MF function, O* object)
         {
-            assert(!cuser);
+            assert(!callback && !cuser && !release[0] && !ruser[0]);
             this->callback      = &NUM(detail::MFMatchCallback) <MF, O CLASS_NAMES_LC>;
             this->cuser         = CreateUser2<MF, O*>(function, object);
             this->release[0]    = &free;
@@ -250,7 +257,7 @@
         }
 
         TEMPLATE_CLASS_DECLS
-        void block(CONST_REF_ARGS)  // A0* a0, ...
+        void block(POINTER_ARGS)  // A0* a0, ...
         {
             assert(!cuser);
             if (NUM() > 0) {
@@ -441,6 +448,9 @@
 #undef DECL_ARG
 #undef DECL_ARGS
 
+#undef DECL_POINTER_ARG
+#undef DECL_POINTER_ARGS
+
 #undef DEMARSHALL_POINTER_ARG
 #undef DEMARSHALL_POINTER_ARGS
 
@@ -461,6 +471,9 @@
 
 #undef CONST_REF_ARG
 #undef CONST_REF_ARGS
+
+#undef POINTER_ARG
+#undef POINTER_ARGS
 
 #undef TYPE_STRING_CASE
 #undef TYPE_STRING_CASES

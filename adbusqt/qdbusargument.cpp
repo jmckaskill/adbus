@@ -800,7 +800,7 @@ const QDBusArgument& QDBusArgument::operator>>(QStringList& arg) const
 const QDBusArgument& QDBusArgument::operator>>(QByteArray& arg) const
 {
     if (d->canIterate()) {
-        adbus_IterArray a;
+        adbus_IterArray a = {};
         d->err = adbus_iter_beginarray(d->iter, &a) 
               || adbus_iter_endarray(d->iter, &a);
 
@@ -817,7 +817,7 @@ const QDBusArgument& QDBusArgument::operator>>(QByteArray& arg) const
 const QDBusArgument& QDBusArgument::operator>>(QDBusVariant& arg) const
 {
     if (d->canIterate()) {
-        adbus_IterVariant v;
+        adbus_IterVariant v = {};
         d->err = adbus_iter_beginvariant(d->iter, &v);
         if (!d->err)
             return *this;

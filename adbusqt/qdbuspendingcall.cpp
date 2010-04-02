@@ -24,7 +24,7 @@
  */
 
 #include "qdbuspendingcall_p.hxx"
-#include "qdbusconnection_p.hxx"
+#include "qdbusconnection_p.h"
 #include "qdbuserror.h"
 #include "qsharedfunctions_p.h"
 #include "qdbusmessage_p.h"
@@ -69,8 +69,8 @@ void QDBusPendingCallPrivate::ReplyReceived(void* u)
 }
 
 QDBusPendingCallPrivate::QDBusPendingCallPrivate(const QDBusConnection& c, const QByteArray& service, uint32_t serial)
-:   m_QConnection(c),
-    m_Connection(QDBusConnectionPrivate::Connection(c)),
+:   QDBusProxy(QDBusConnectionPrivate::Connection(c)),
+    m_QConnection(c),
     m_ConnReply(NULL),
     m_Service(service),
     m_Serial(serial),
@@ -83,29 +83,8 @@ QDBusPendingCallPrivate::QDBusPendingCallPrivate(const QDBusConnection& c, const
 QDBusPendingCall QDBusPendingCallPrivate::Create(const QDBusConnection& c, const QByteArray& service, uint32_t serial)
 { return QDBusPendingCall(new QDBusPendingCallPrivate(c, service, serial)); }
 
-/* ------------------------------------------------------------------------- */
-
-void QDBusPendingCallPrivate::Unregister(void* u)
-{
-    QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) u;
-    adbus_conn_removereply(d->m_Connection, d->m_ConnReply);
-}
-
-void QDBusPendingCallPrivate::Delete(void* u)
-{
-    QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) u;
-    delete d;
-}
-
-void QDBusPendingCallPrivate::destroy()
-{
-    // Release to kill any incoming messages
-    setParent(NULL);
-    moveToThread(NULL);
-
-    // Delete on the connection thread
-    adbus_conn_proxy(m_Connection, &Unregister, &Delete, this);
-}
+void QDBusPendingCallPrivate::unregister()
+{ adbus_conn_removereply(m_Connection, m_ConnReply); }
 
 /* ------------------------------------------------------------------------- */
 
@@ -166,7 +145,7 @@ int QDBusPendingCallPrivate::ErrorCallback(adbus_CbData* data)
 /* ------------------------------------------------------------------------- */
 
 inline void qDeleteSharedData(QDBusPendingCallPrivate*& d)
-{ d->destroy(); }
+{ d->destroyOnConnectionThread(); }
 
 QDBusPendingCall::QDBusPendingCall(QDBusPendingCallPrivate* dd)
 { qCopySharedData(d, dd); }

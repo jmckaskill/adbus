@@ -80,6 +80,7 @@ struct adbusI_StateConn
 
 struct adbus_State
 {
+    adbusI_thread_t         thread;
     adbus_Bool              refConnection;
     d_IList(StateConn)      connections;
 };

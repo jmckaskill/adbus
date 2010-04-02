@@ -45,7 +45,7 @@ void QDBusServiceWatcher::setConnection(const QDBusConnection& connection)
     d->connection = connection;
 
     if (d->object) {
-        d->object->destroy();
+        d->object->destroyOnConnectionThread();
     }
 
     d->object = new QDBusObject(connection, this);

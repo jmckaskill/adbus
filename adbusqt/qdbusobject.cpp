@@ -25,7 +25,7 @@
 
 #include "qdbusobject_p.hxx"
 #include "qdbusmessage_p.h"
-#include "qdbusconnection_p.hxx"
+#include "qdbusconnection_p.h"
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qthread.h>
@@ -33,198 +33,56 @@
 
 /* ------------------------------------------------------------------------- */
 
-QDBusProxy::QDBusProxy()
-: m_Msg(NULL)
-{}
-
-QDBusProxy::~QDBusProxy()
-{ adbus_msg_free(m_Msg); }
-
-/* ------------------------------------------------------------------------- */
-
-QEvent::Type QDBusProxyEvent::type = (QEvent::Type) QEvent::registerEventType();
-
-// Called on the connection thread
-void QDBusProxy::ProxyCallback(void* user, adbus_Callback cb, adbus_Callback release, void* cbuser)
-{
-    QDBusProxy* s = (QDBusProxy*) user;
-
-    if (QThread::currentThread() == s->thread()) {
-        cb(cbuser);
-
-    } else {
-        QDBusProxyEvent* e = new QDBusProxyEvent;
-        e->cb = cb;
-        e->user = cbuser;
-        e->release = release;
-
-        QCoreApplication::postEvent(s, e);
-    }
-}
-
-/* ------------------------------------------------------------------------- */
-
-QEvent::Type QDBusProxyMsgEvent::type = (QEvent::Type)QEvent::registerEventType();
-
-QDBusProxyMsgEvent::~QDBusProxyMsgEvent()
-{
-    adbus_conn_deref(connection);
-    adbus_freedata(&msg);
-}
-
-// Called on the connection thread
-int QDBusProxy::ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData* d)
-{
-    QDBusProxy* s = (QDBusProxy*) user;
-
-    if (QThread::currentThread() == s->thread()) {
-        return adbus_dispatch(cb, d);
-
-    } else {
-        QDBusProxyMsgEvent* e = new QDBusProxyMsgEvent;
-        e->cb = cb;
-        e->connection = d->connection;
-        e->user1 = d->user1;
-        e->user2 = d->user2;
-
-        adbus_clonedata(d->msg, &e->msg);
-        adbus_conn_ref(e->connection);
-
-        QCoreApplication::postEvent(s, e);
-
-        // We will send the return on the other thread
-        d->ret = NULL;
-        return 0;
-    }
-}
-
-/* ------------------------------------------------------------------------- */
-
-// Called on the local thread
-bool QDBusProxy::event(QEvent* event)
-{
-    if (event->type() == QDBusProxyEvent::type) {
-        QDBusProxyEvent* e = (QDBusProxyEvent*) event;
-        if (e->cb) {
-            e->cb(e->user);
-        }
-        return true;
-
-    } else if (event->type() == QDBusProxyMsgEvent::type) {
-        QDBusProxyMsgEvent* e = (QDBusProxyMsgEvent*) event;
-
-        adbus_CbData d = {};
-        d.connection = e->connection;
-        d.msg   = &e->msg;
-        d.user1 = e->user1;
-        d.user2 = e->user2;
-
-        if (e->ret) {
-            if (!m_Msg) {
-                m_Msg = adbus_msg_new();
-            }
-            d.ret = m_Msg;
-            adbus_msg_reset(d.ret);
-        }
-
-        adbus_dispatch(e->cb, &d);
-
-        if (d.ret) {
-            adbus_msg_send(d.ret, d.connection);
-        }
-
-        return true;
-
-    } else {
-        return QObject::event(event);
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ------------------------------------------------------------------------- */
-
 QDBusObject::QDBusObject(const QDBusConnection& connection, QObject* tracked)
-:   m_QConnection(connection),
-    m_Connection(QDBusConnectionPrivate::Connection(connection)),
+:   QDBusProxy(QDBusConnectionPrivate::Connection(connection)),
+    m_QConnection(connection),
     m_Tracked(tracked)
 {
-    // Filter events in order to get the ThreadChange event
-    m_Tracked->installEventFilter(this);
-    connect(m_Tracked, SIGNAL(destroyed()), this, SLOT(destroy()), Qt::DirectConnection);
-}
-
-void QDBusObject::Unregister(void* u)
-{
-    QDBusObject* d = (QDBusObject*) u;
-
-    // Remove all pending binds, matches, and replies
-    QDBusMatchData* m;
-    DIL_FOREACH(QDBusMatchData, m, &d->m_Matches, hl) {
-        adbus_conn_removematch(d->m_Connection, m->connMatch);
-    }
-
-    QDBusReplyData* r;
-    DIL_FOREACH(QDBusReplyData, r, &d->m_Replies, hl) {
-        adbus_conn_removereply(d->m_Connection, r->connReply);
-    }
-
-    QDBusBindData* b;
-    DIL_FOREACH(QDBusBindData, b, &d->m_Binds, hl) {
-        adbus_conn_unbind(d->m_Connection, b->connBind);
+    if (m_Tracked) {
+        // Filter events in order to get the ThreadChange event
+        m_Tracked->installEventFilter(this);
+        connect(m_Tracked, SIGNAL(destroyed()), this, SLOT(destroyOnConnectionThread()), Qt::DirectConnection);
     }
 }
 
-void QDBusObject::Delete(void* u)
+void QDBusObject::unregister()
 {
-    QDBusObject* d = (QDBusObject*) u;
-
-    QDBusMatchData* m;
-    DIL_FOREACH(QDBusMatchData, m, &d->m_Matches, hl) {
-        delete m;
-    }
-
-    QDBusReplyData* r;
-    DIL_FOREACH(QDBusReplyData, r, &d->m_Replies, hl) {
-        delete r;
-    }
-
-    QDBusBindData* b;
-    DIL_FOREACH(QDBusBindData, b, &d->m_Binds, hl) {
-        delete b;
-    }
-
-    delete d;
-}
-
-void QDBusObject::destroy()
-{
-    Q_ASSERT(QThread::currentThread() == thread());
     if (m_Tracked) {
         QDBusConnectionPrivate::RemoveObject(m_QConnection, m_Tracked);
     }
 
-    // Kill all incoming events from the connection thread and stop new ones
-    // from coming in. The data in those messages will still be freed since
-    // the dtor is still called, which calls the supplied release callback.
-    setParent(NULL);
-    moveToThread(NULL);
+    QDBusMatchData* m;
+    DIL_FOREACH(QDBusMatchData, m, &m_Matches, hl) {
+        adbus_conn_removematch(m_Connection, m->connMatch);
+    }
 
-    // Delete the object on the proxy thread - this ensures that it receives all
-    // of our messages up to this point safely and removing services can only be
-    // done on the connection thread.
-    adbus_conn_proxy(m_Connection, &QDBusObject::Unregister, &QDBusObject::Delete, this);
+    QDBusReplyData* r;
+    DIL_FOREACH(QDBusReplyData, r, &m_Replies, hl) {
+        adbus_conn_removereply(m_Connection, r->connReply);
+    }
+
+    QDBusBindData* b;
+    DIL_FOREACH(QDBusBindData, b, &m_Binds, hl) {
+        adbus_conn_unbind(m_Connection, b->connBind);
+    }
+}
+
+QDBusObject::~QDBusObject()
+{
+    QDBusMatchData* m;
+    DIL_FOREACH(QDBusMatchData, m, &m_Matches, hl) {
+        delete m;
+    }
+
+    QDBusReplyData* r;
+    DIL_FOREACH(QDBusReplyData, r, &m_Replies, hl) {
+        delete r;
+    }
+
+    QDBusBindData* b;
+    DIL_FOREACH(QDBusBindData, b, &m_Binds, hl) {
+        delete b;
+    }
 }
 
 /* ------------------------------------------------------------------------- */

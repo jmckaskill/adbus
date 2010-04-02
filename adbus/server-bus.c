@@ -213,6 +213,16 @@ static int SendToServer(void* d, adbus_Message* m)
     return (int) m->size;
 }
 
+static adbus_ConnVTable sBusVTable = {
+    NULL,               /* release */
+    &SendToServer,      /* send_message */
+    NULL,               /* recv_data */
+    NULL,               /* proxy */
+    NULL,               /* should_proxy */
+    NULL,               /* get_proxy */
+    NULL,               /* block */
+};
+
 void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
 {
     /* Setup the org.freedesktop.DBus interface */
@@ -274,14 +284,7 @@ void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
     lostsig = m = adbus_iface_addsignal(i, "NameLost", -1);
     adbus_mbr_argsig(m, "s", -1);
 
-    {
-        /* Setup the bus connection */
-        adbus_ConnectionCallbacks cbs;
-        ZERO(cbs);
-        cbs.send_message = &SendToServer;
-        s->bus.connection = adbus_conn_new(&cbs, s);
-    }
-
+    s->bus.connection = adbus_conn_new(&sBusVTable, s);
     s->bus.nameOwnerChanged = adbus_sig_new(changedsig);
     s->bus.nameAcquired = adbus_sig_new(acquiredsig);
     s->bus.nameLost = adbus_sig_new(lostsig);

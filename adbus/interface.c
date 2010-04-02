@@ -330,8 +330,9 @@ adbus_Interface* adbus_iface_new(
 /** Refs an interface.
  *  \relates adbus_Interface
  */
-void adbus_iface_ref(adbus_Interface* i)
+void adbus_iface_ref(const adbus_Interface* iface)
 { 
+    adbus_Interface* i = (adbus_Interface*) iface;
     long ref = adbusI_InterlockedIncrement(&i->ref); 
     ADBUSI_LOG_1("ref: %d (interface %s, %p)", (int) ref, i->name.str, (void*) i);
 }
@@ -343,12 +344,13 @@ static void FreeMember(adbus_Member* member);
 /** Derefs an interface.
  *  \relates adbus_Interface
  */
-void adbus_iface_deref(adbus_Interface* i)
+void adbus_iface_deref(const adbus_Interface* iface)
 {
     long ref;
     dh_Iter ii;
+    adbus_Interface* i = (adbus_Interface*) iface;
 
-    if (i == NULL)
+    if (i)
         return;
 
     ref = adbusI_InterlockedDecrement(&i->ref);
@@ -472,10 +474,10 @@ static void FreeMember(adbus_Member* m)
 /* ------------------------------------------------------------------------- */
 
 static adbus_Member* GetMethod(
-        adbus_Interface*      i,
-        adbusI_MemberType     type,
-        const char*           name,
-        int                   size)
+        const adbus_Interface*  i,
+        adbusI_MemberType       type,
+        const char*             name,
+        int                     size)
 {
     dh_strsz_t mstr;
     dh_Iter mi;
@@ -498,19 +500,19 @@ static adbus_Member* GetMethod(
 /** Gets a method.
  *  \relates adbus_Interface
  */
-adbus_Member* adbus_iface_method(adbus_Interface* i, const char* name, int size)
+const adbus_Member* adbus_iface_method(const adbus_Interface* i, const char* name, int size)
 { return GetMethod(i, ADBUSI_METHOD, name, size); }
 
 /** Gets a signal.
  *  \relates adbus_Interface
  */
-adbus_Member* adbus_iface_signal(adbus_Interface* i, const char* name, int size)
+const adbus_Member* adbus_iface_signal(const adbus_Interface* i, const char* name, int size)
 { return GetMethod(i, ADBUSI_SIGNAL, name, size); }
 
 /** Gets a property.
  *  \relates adbus_Interface
  */
-adbus_Member* adbus_iface_property(adbus_Interface* i, const char* name, int size)
+const adbus_Member* adbus_iface_property(const adbus_Interface* i, const char* name, int size)
 { return GetMethod(i, ADBUSI_PROPERTY, name, size); }
 
 /* -------------------------------------------------------------------------
@@ -713,7 +715,7 @@ void adbus_mbr_setsetter(
 static int DoCall(adbus_CbData* d)
 {
     int ret;
-    adbus_Member* mbr = (adbus_Member*) d->user1;
+    const adbus_Member* mbr = (adbus_Member*) d->user1;
     /* d->user2 is already set to the bind userdata */
     d->user1 = mbr->methodData;
 
@@ -738,9 +740,9 @@ static int DoCall(adbus_CbData* d)
  *  looking it up via adbus_conn_interface().
  */
 int adbus_mbr_call(
-        adbus_Member*         mbr,
-        adbus_ConnBind*       bind,
-        adbus_CbData*         d)
+        const adbus_Member*     mbr,
+        adbus_ConnBind*         bind,
+        adbus_CbData*           d)
 {
     if (!mbr->methodCallback) {
         return adbusI_methodError(d);
@@ -751,7 +753,7 @@ int adbus_mbr_call(
     }
 
     adbus_iface_ref(mbr->interface);
-    d->user1 = mbr;
+    d->user1 = (void*) mbr;
     d->user2 = bind->b.cuser2;
 
     if (bind->b.proxy) {
@@ -772,7 +774,7 @@ int adbus_mbr_call(
  * -------------------------------------------------------------------------
  */
 
-static void IntrospectArguments(adbus_Member* m, d_String* out)
+static void IntrospectArguments(const adbus_Member* m, d_String* out)
 {
     size_t argi = 0;
     const char* arg = ds_cstr(&m->argsig);
@@ -810,7 +812,7 @@ static void IntrospectArguments(adbus_Member* m, d_String* out)
 
 /* ------------------------------------------------------------------------- */
 
-static void IntrospectAnnotations(adbus_Member* m, d_String* out)
+static void IntrospectAnnotations(const adbus_Member* m, d_String* out)
 {
     dh_Iter ai;
     for (ai = dh_begin(&m->annotations); ai != dh_end(&m->annotations); ++ai) {
@@ -825,7 +827,7 @@ static void IntrospectAnnotations(adbus_Member* m, d_String* out)
 }
 /* ------------------------------------------------------------------------- */
 
-static void IntrospectMember(adbus_Member* m, d_String* out)
+static void IntrospectMember(const adbus_Member* m, d_String* out)
 {
     switch (m->type)
     {
@@ -888,7 +890,7 @@ static void IntrospectMember(adbus_Member* m, d_String* out)
     }
 }
 
-void adbusI_introspectInterface(adbus_Interface* i, d_String* out)
+void adbusI_introspectInterface(const adbus_Interface* i, d_String* out)
 {
     dh_Iter mi;
 
@@ -920,7 +922,7 @@ int adbusI_proxiedGetProperty(adbus_CbData* d)
     int ret = 0;
     adbus_BufVariant v;
 
-    adbus_Member* mbr = (adbus_Member*) d->user1;
+    const adbus_Member* mbr = (adbus_Member*) d->user1;
 
     /* Check that we can read the property */
     if (!mbr->getPropertyCallback) {
@@ -950,8 +952,8 @@ int adbusI_proxiedGetAllProperties(adbus_CbData* d)
     adbus_BufVariant v;
     dh_Iter mi;
 
-    adbus_Interface* interface = (adbus_Interface*) d->user1;
-    d_Hash(Member)* mbrs = &interface->members;
+    const adbus_Interface* interface = (adbus_Interface*) d->user1;
+    const d_Hash(Member)* mbrs = &interface->members;
     
     /* Iterate over the properties and marshal up the values */
     adbus_msg_beginarray(d->ret, &a);
@@ -959,7 +961,7 @@ int adbusI_proxiedGetAllProperties(adbus_CbData* d)
     for (mi = dh_begin(mbrs); mi != dh_end(mbrs); ++mi) {
         if (dh_exist(mbrs, mi)) {
 
-            adbus_Member* mbr = dh_val(mbrs, mi);
+            const adbus_Member* mbr = dh_val(mbrs, mi);
             adbus_MsgCallback callback = mbr->getPropertyCallback;
 
             /* Check that it is a property */
@@ -1008,7 +1010,7 @@ int adbusI_proxiedSetProperty(adbus_CbData* d)
     int ret = -1;
     adbus_IterVariant v;
 
-    adbus_Member* mbr = (adbus_Member*) d->user1;
+    const adbus_Member* mbr = (adbus_Member*) d->user1;
     adbus_MsgCallback callback = mbr->setPropertyCallback;
 
     /* Check that we can write the property */

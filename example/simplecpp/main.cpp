@@ -37,7 +37,7 @@ public:
     int run()   {return adbus_conn_block(m_Connection, ADBUS_BLOCK, &m_Block, -1);}
 
 private:
-    static adbus::Interface<Main>* Interface();
+    static adbus::Interface<Main> CreateInterface();
 
     void NameRequested(uint32_t ret);
     void NameError(const char* err, const char* msg);
@@ -46,22 +46,19 @@ private:
     void*               m_Block;
 };
 
-adbus::Interface<Main>* Main::Interface()
+adbus::Interface<Main> Main::CreateInterface()
 {
-    static std::auto_ptr<adbus::Interface<Main> > i;
-    if (!i.get()) {
-        i.reset(new adbus::Interface<Main>("nz.co.foobar.Test.Main"));
-
-        i->addMethod0("Quit", &Main::quit);
-    }
-
-    return i.get();
+    adbus::Interface<Main> i("nz.co.foobar.Test.Main");
+    i.addMethod0("Quit", &Main::quit);
+    return i;
 }
 
 Main::Main(adbus_Connection* c) 
     : m_Connection(c), m_Block(NULL) 
 {
-    bind(c, "/", Interface(), this);
+    static adbus::Interface<Main> interface = CreateInterface();
+
+    bind(c, "/", interface, this);
 
     adbus::Proxy bus(this);
     bus.init(c, "org.freedesktop.DBus", "/");

@@ -73,3 +73,30 @@ ADBUSI_FUNC void adbusI_log(const char* format, ...) ADBUSI_PRINTF(1,2);
 #define ADBUSI_LOG_1        if (adbusI_loglevel < 1) {} else adbusI_log
 #define ADBUSI_LOG_2        if (adbusI_loglevel < 2) {} else adbusI_log
 #define ADBUSI_LOG_3        if (adbusI_loglevel < 3) {} else adbusI_log
+
+#ifdef _WIN32
+    typedef DWORD adbusI_thread_t;
+    typedef DWORD adbusI_process_t;
+#   define PRI_THREAD "%u"
+#   define PRI_PROCESS "%u"
+
+#elif __linux__
+    typedef void* adbusI_thread_t;
+    typedef int adbusI_process_t;
+#   define PRI_THREAD "%p"
+#   define PRI_PROCESS "%d"
+
+#else
+#error "This needs to be implemented for your platform"
+#endif
+
+#define ADBUSI_ASSERT_THREAD(x) assert(x == adbusI_current_thread())
+#define ADBUSI_ASSERT_CONN_THREAD(c) assert(adbusI_conn_thread(c) == adbusI_current_thread())
+
+ADBUSI_FUNC adbusI_thread_t adbusI_conn_thread(adbus_Connection* c);
+
+ADBUSI_FUNC adbusI_thread_t adbusI_current_thread();
+ADBUSI_FUNC adbusI_process_t adbusI_current_process();
+
+
+

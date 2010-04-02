@@ -24,7 +24,7 @@
  */
 
 #include "qdbusabstractinterface_p.h"
-#include "qdbusconnection_p.hxx"
+#include "qdbusconnection_p.h"
 #include "qdbuspendingcall_p.hxx"
 #include "qdbuspendingreply.h"
 #include "qdbusinterface.hxx"
@@ -80,7 +80,7 @@ QDBusAbstractInterfacePrivate::QDBusAbstractInterfacePrivate(const QDBusConnecti
 QDBusAbstractInterfacePrivate::~QDBusAbstractInterfacePrivate()
 { 
     adbus_msg_free(msg); 
-    object->destroy();
+    object->destroyOnConnectionThread();
 }
 
 /* ------------------------------------------------------------------------- */

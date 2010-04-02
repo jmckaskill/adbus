@@ -26,59 +26,9 @@
 #pragma once
 #include "qdbusconnection.hxx"
 #include "qdbusobject_p.hxx"
-#include <adbus.h>
-#include <QtCore/qstring.h>
-#include <QtCore/qthreadstorage.h>
+#include "qdbusclient.hxx"
 #include <QtCore/qmutex.h>
 #include <QtCore/qhash.h>
-
-class QIODevice;
-class QAbstractSocket;
-
-class QDBusClient : public QDBusProxy
-{
-    Q_OBJECT
-public:
-    QDBusClient();
-
-    bool connectToServer(adbus_BusType type, bool connectToBus = true);
-    bool connectToServer(const char* envstr, bool connectToBus = true);
-
-    adbus_Connection* connection() {return m_Connection;}
-
-Q_SIGNALS:
-    void connected();
-    void disconnected();
-
-private Q_SLOTS:
-    void socketReadyRead();
-    void socketConnected();
-    void disconnect();
-
-private:
-    ~QDBusClient();
-
-    static int              SendMsg(void* u, adbus_Message* m);
-    static int              Send(void* u, const char* b, size_t sz);
-    static int              Recv(void* u, char* buf, size_t sz);
-    static uint8_t          Rand(void* u);
-    static adbus_Bool       ShouldProxy(void* u);
-    static void             GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallback* msgcb, void** data);
-    static int              Block(void* u, adbus_BlockType type, void** data, int timeoutms);
-    static void             ConnectedToBus(void* u);
-    static void             Free(void* u);
-
-    static QThreadStorage<QDBusProxy*>  m_Proxies;
-
-    bool                                m_ConnectToBus;
-    bool                                m_Connected;
-    adbus_Bool                          m_Authenticated;
-    adbus_Connection*                   m_Connection;
-    adbus_Auth*                         m_Auth;
-    adbus_Buffer*                       m_Buffer;
-    QIODevice*                          m_IODevice;
-    QString                             m_UniqueName;
-};
 
 class QDBusConnectionPrivate : public QSharedData
 {

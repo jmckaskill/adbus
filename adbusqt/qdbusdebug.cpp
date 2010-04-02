@@ -23,20 +23,39 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <QObject>
-#include <adbuscpp.h>
-#include "Client.hxx"
+#include "qdbusdebug.h"
+#include <QtCore/qglobal.h>
+#include <QtCore/qstring.h>
+#include <stdarg.h>
+#include <stdlib.h>
 
-class Caller : public QObject, public adbus::State
+#ifdef _WIN32
+#   include <windows.h>
+#else
+#   include <unistd.h>
+#   include <pthread.h>
+#endif
+
+static int InitLog()
 {
-    Q_OBJECT
-public:
-    Caller();
+    const char* env = getenv("ADBUSQT_DEBUG");
+    return env ? strtol(env, NULL, 10) : 0;
+}
 
-private slots:
-    void connected();
+int qDBusLogLevel = InitLog();
 
-private:
-    adbus::QtClient* m_Client;
-};
+
+void qDBusLog(const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    QString out;
+    out.vsprintf(format, ap);
+#ifdef _WIN32
+    qDebug("[QtDBus.dll %u %u] %s", GetCurrentProcessId(), GetCurrentThreadId(), qPrintable(out));
+#else
+    qDebug("[libQtDBus.so %d %p] %s", (int) getpid(), (void*) pthread_self(), qPrintable(out));
+#endif
+}
+
 

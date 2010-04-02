@@ -53,8 +53,10 @@ struct adbus_Connection
     volatile long               ref;
     volatile long               nextSerial;
 
-    adbus_ConnectionCallbacks   callbacks;
-    void*                       user;
+    adbusI_thread_t             thread;
+
+    adbus_ConnVTable            vtable;
+    void*                       obj;
 
     adbus_State*                state;
     adbus_Proxy*                bus;

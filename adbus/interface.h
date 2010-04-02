@@ -90,7 +90,7 @@ struct adbus_Interface
 ADBUSI_FUNC int adbusI_getProperty(adbus_CbData* details);
 ADBUSI_FUNC int adbusI_getAllProperties(adbus_CbData* details);
 ADBUSI_FUNC int adbusI_setProperty(adbus_CbData* details);
-ADBUSI_FUNC void adbusI_introspectInterface(adbus_Interface* i, d_String* out);
+ADBUSI_FUNC void adbusI_introspectInterface(const adbus_Interface* i, d_String* out);
 
 /* user1 the member, user2 is the bind user2, interface is ref'd */
 ADBUSI_FUNC int adbusI_proxiedGetProperty(adbus_CbData* d);

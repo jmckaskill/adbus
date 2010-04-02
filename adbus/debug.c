@@ -28,37 +28,65 @@
 #include <inttypes.h>
 #include <stdio.h>
 
-#ifndef _WIN32
-#   include <unistd.h>
-#endif
-
-#if defined _WIN32 && !defined _WIN32_WCE && !defined NDEBUG
+#if 0 && defined _WIN32 && !defined _WIN32_WCE && !defined NDEBUG
 #	include <crtdbg.h>
 #	include <dbghelp.h>
 #	define WIN32_SYMLOOKUP
 #endif
 
-#if defined __GNUC__ && !defined NDEBUG
+#if 0 && defined __GNUC__ && !defined NDEBUG
 #   include <execinfo.h>
 #	define GNU_SYMLOOKUP
 #endif
 
+/* -------------------------------------------------------------------------- */
+
+#ifdef _WIN32
+#include <windows.h>
 #undef interface
+adbusI_thread_t adbusI_current_thread()
+{ return GetCurrentThreadId(); }
+
+adbusI_process_t adbusI_current_process()
+{ return GetCurrentProcessId(); }
+
+#elif defined __linux__
+#include <unistd.h>
+#include <pthread.h>
+adbusI_thread_t adbusI_current_thread()
+{ return (void*) pthread_self(); }
+
+adbusI_process_t adbusI_current_process()
+{ return getpid(); }
+
+#endif
 
 /* -------------------------------------------------------------------------- */
 
+#if defined _WIN32 && !defined _WIN32_WCE && !defined NDEBUG
+#   include <crtdbg.h>
+#endif
+
 static void logerr(const char* str, size_t sz)
 { 
-    (void) str;
-    (void) sz;
-#if !defined _WIN32
-    fprintf(stderr, "[adbus.so/%d] %.*s", (int) getpid(), (int) sz, str); 
-#elif !defined _WIN32_WCE && !defined NDEBUG
-	_CrtDbgReport(_CRT_WARN, NULL, 0, "adbus.dll", "[adbus.dll/%d] %.*s",
+#if defined _WIN32 && !defined _WIN32_WCE && !defined NDEBUG
+	_CrtDbgReport(
+            _CRT_WARN,
+            NULL,
+            0,
+            "adbus.dll",
+            "[adbus " PRI_PROCESS " " PRI_THREAD "] %.*s",
 			(int) GetCurrentProcessId(),
 			(int) sz,
 			str);
 #endif
+
+    fprintf(stderr, "[adbus " PRI_PROCESS " " PRI_THREAD "] %.*s",
+            adbusI_current_process(),
+            adbusI_current_thread(),
+            (int) sz,
+            str); 
+
 }
 
 int adbusI_loglevel = -1;
@@ -254,7 +282,7 @@ static void Callback_(d_String* s, const char* field, void* cb, void* user)
     if (cb) {
         Header(s, "%s", field);
 		AppendSymbol(s, cb);
-        ds_cat_f(s, ", %p", cb, user);
+        ds_cat_f(s, ", %p", user);
     }
 }
 

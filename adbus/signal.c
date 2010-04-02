@@ -55,7 +55,7 @@
 /** Create a new signal for the given member
  *  \relates adbus_Signal
  */
-adbus_Signal* adbus_sig_new(adbus_Member* mbr)
+adbus_Signal* adbus_sig_new(const adbus_Member* mbr)
 {
     adbus_Signal* s = NEW(adbus_Signal);
     s->message  = adbus_msg_new();

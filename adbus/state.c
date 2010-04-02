@@ -108,13 +108,48 @@
 
 static void DupString(const char** str, int* sz)
 {
-    if (*sz < 0)
-        *sz = (int) strlen(*str);
-    *str = adbusI_strndup(*str, *sz);
+    if (*str) {
+        if (*sz < 0)
+            *sz = (int) strlen(*str);
+        *str = adbusI_strndup(*str, *sz);
+    }
+}
+
+static void FreeString(const char* str)
+{ free((char*) str); }
+
+static void DupArguments(adbus_Argument** args, size_t sz)
+{
+    const adbus_Argument* from = *args;
+    if (from) {
+        size_t i;
+        adbus_Argument* to = NEW_ARRAY(adbus_Argument, sz);
+        for (i = 0; i < sz; ++i) {
+            if (from[i].value) {
+                int valuesz = (from[i].size >= 0) ? from[i].size : strlen(from[i].value);
+                to[i].size = valuesz;
+                to[i].value = adbusI_strndup(from[i].value, valuesz);
+            }
+        }
+        *args = to;
+    }
+}
+
+static void FreeArguments(adbus_Argument* args, size_t sz)
+{
+    if (args) {
+        size_t i;
+        for (i = 0; i < sz; ++i) {
+            free((char*) args[i].value);
+        }
+        free(args);
+    }
 }
 
 static void FreeData(adbusI_StateData* d)
 {
+    ADBUSI_LOG_3("free state data %p (state conn %p)", (void*) d, (void*) d->conn);
+
     dil_remove(StateData, d, &d->hl);
 
     if (d->release[0]) {
@@ -137,48 +172,38 @@ static void FreeData(adbusI_StateData* d)
 }
 
 static void ReleaseDataCallback(void* user)
-{ FreeData((adbusI_StateData*) user); }
+{ 
+    adbusI_StateData* d = (adbusI_StateData*) user;
+    ADBUSI_ASSERT_CONN_THREAD(d->conn->connection);
+    FreeData(d); 
+}
 
 static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connection* c);
 
 /* ------------------------------------------------------------------------- */
 
 /* Always called on the connection thread */
-static int DoBind(adbusI_StateData* d)
-{
-    adbus_Bind* b = &d->u.bind;
-
-    d->release[0]   = b->release[0];
-    d->ruser[0]     = b->ruser[0];
-    d->release[1]   = b->release[1];
-    d->ruser[1]     = b->ruser[1];
-
-    b->release[0]   = &ReleaseDataCallback;
-    b->ruser[0]     = d;
-    b->release[1]   = NULL;
-    b->ruser[1]     = NULL;
-
-    d->data = adbus_conn_bind(d->conn->connection, b);
-
-    if (!d->data)
-        return -1;
-
-    dil_insert_after(StateData, &d->conn->binds, d, &d->hl);
-    return 0;
-}
-
-static void ProxyBind(void* user)
+static void DoBind(void* user)
 {
     adbusI_StateData* d = (adbusI_StateData*) user;
-    d->err = DoBind(d);
+
+    ADBUSI_ASSERT_CONN_THREAD(d->conn->connection);
+    d->data = adbus_conn_bind(d->conn->connection, &d->u.bind);
+
+    if (d->data) {
+        dil_insert_after(StateData, &d->conn->binds, d, &d->hl);
+    }
 }
 
 static void FreeProxyBind(void* user)
 {
     adbusI_StateData* d = (adbusI_StateData*) user;
-    adbus_iface_deref(d->u.bind.interface);
-    free((char*) d->u.bind.path);
-    if (d->err) {
+    adbus_Bind* b = &d->u.bind;
+
+    adbus_iface_deref(b->interface);
+    FreeString(b->path);
+
+    if (!d->data) {
         FreeData(d);
     }
 }
@@ -199,28 +224,48 @@ void adbus_state_bind(
         const adbus_Bind*   b)
 {
     adbusI_StateData* d = NEW(adbusI_StateData);
+    adbus_Bind* b2      = &d->u.bind;
+
     LookupConnection(s, d, c);
-    d->u.bind = *b;
-    d->err = -1;
 
-    ADBUSI_LOG_BIND_1(b, "bind (state %p)", (void*) s);
-
+    ADBUSI_ASSERT_THREAD(s->thread);
     assert(!b->proxy && !b->relproxy);
 
+    ADBUSI_LOG_BIND_1(b, "bind %p (state %p, state conn %p)",
+            (void*) d,
+            (void*) s,
+            (void*) d->conn);
+
+    /* The msg callback is proxied directly to the local thread with the
+     * supplied callback. We interecpt the release callback on the connection
+     * thread to remove the state data. That will then call the supplied
+     * release callback (if any) on the local thread.
+     */
+
+    d->release[0]   = b->release[0];
+    d->ruser[0]     = b->ruser[0];
+    d->release[1]   = b->release[1];
+    d->ruser[1]     = b->ruser[1];
+
+    *b2             = *b;
+
+    b2->release[0]  = &ReleaseDataCallback;
+    b2->ruser[0]    = d;
+    b2->release[1]  = NULL;
+    b2->ruser[1]    = NULL;
+
+    b2->proxy       = d->conn->proxy;
+    b2->puser       = d->conn->puser;
+    b2->relproxy    = NULL;
+    b2->relpuser    = NULL;
+
     if (adbus_conn_shouldproxy(c)) {
-        adbus_Bind* b2 = &d->u.bind;
-
         DupString(&b2->path, &b2->pathSize);
-
-        b2->proxy = d->conn->proxy;
-        b2->puser = d->conn->puser;
-        b2->relproxy = d->conn->relproxy;
-        b2->relpuser = d->conn->relpuser;
-
         adbus_iface_ref(b2->interface);
-        adbus_conn_proxy(c, &ProxyBind, &FreeProxyBind, d);
+        adbus_conn_proxy(c, &DoBind, &FreeProxyBind, d);
     } else {
-        if (DoBind(d)) {
+        DoBind(d);
+        if (!d->data) {
             FreeData(d);
         }
     }
@@ -228,49 +273,32 @@ void adbus_state_bind(
 
 /* ------------------------------------------------------------------------- */
 
-static int DoAddMatch(adbusI_StateData* d)
-{
-    adbus_Match* m = &d->u.match;
-
-    d->release[0]   = m->release[0];
-    d->ruser[0]     = m->ruser[0];
-    d->release[1]   = m->release[1];
-    d->ruser[1]     = m->ruser[1];
-
-    m->release[0]   = &ReleaseDataCallback;
-    m->ruser[0]     = d;
-    m->release[1]   = NULL;
-    m->ruser[1]     = NULL;
-
-    d->data = adbus_conn_addmatch(d->conn->connection, m);
-
-    if (!d->data)
-        return -1;
-
-    dil_insert_after(StateData, &d->conn->matches, d, &d->hl);
-    return 0;
-}
-
-static void ProxyMatch(void* user)
+static void DoAddMatch(void* user)
 {
     adbusI_StateData* d  = (adbusI_StateData*) user;
-    d->err = DoAddMatch(d);
+
+    ADBUSI_ASSERT_CONN_THREAD(d->conn->connection);
+    d->data = adbus_conn_addmatch(d->conn->connection, &d->u.match);
+
+    if (d->data) {
+        dil_insert_after(StateData, &d->conn->matches, d, &d->hl);
+    }
 }
 
 static void FreeProxyMatch(void* user)
 {
     adbusI_StateData* d  = (adbusI_StateData*) user;
-
     adbus_Match* m  = &d->u.match;
-    free((char*) m->sender);
-    free((char*) m->destination);
-    free((char*) m->interface);
-    free((char*) m->path);
-    free((char*) m->member);
-    free((char*) m->error);
-    free(m->arguments);
 
-    if (d->err) {
+    FreeString(m->sender);
+    FreeString(m->destination);
+    FreeString(m->interface);
+    FreeString(m->path);
+    FreeString(m->member);
+    FreeString(m->error);
+    FreeArguments(m->arguments, m->argumentsSize);
+
+    if (!d->data) {
         FreeData(d);
     }
 }
@@ -292,37 +320,54 @@ void adbus_state_addmatch(
         const adbus_Match*  m)
 {
     adbusI_StateData* d = NEW(adbusI_StateData);
+    adbus_Match* m2     = &d->u.match;
+
     LookupConnection(s, d, c);
-    d->u.match = *m;
-    d->err = -1;
 
-    ADBUSI_LOG_MATCH_1(m, "add match (state %p)", (void*) s);
-
+    ADBUSI_ASSERT_THREAD(s->thread);
     assert(!m->proxy && !m->relproxy);
 
-    if (adbus_conn_shouldproxy(c)) {
-        adbus_Match* m2 = &d->u.match;
+    ADBUSI_LOG_MATCH_1(m, "add match %p (state %p, state conn %p)",
+            (void*) d,
+            (void*) s,
+            (void*) d->conn);
 
+    /* The msg callback is proxied directly to the local thread with the
+     * supplied callback. We interecpt the release callback on the connection
+     * thread to remove the state data. That will then call the supplied
+     * release callback (if any) on the local thread.
+     */
+
+    d->release[0]   = m->release[0];
+    d->ruser[0]     = m->ruser[0];
+    d->release[1]   = m->release[1];
+    d->ruser[1]     = m->ruser[1];
+
+    *m2             = *m;
+
+    m2->release[0]  = &ReleaseDataCallback;
+    m2->ruser[0]    = d;
+    m2->release[1]  = NULL;
+    m2->ruser[1]    = NULL;
+
+    m2->proxy       = d->conn->proxy;
+    m2->puser       = d->conn->puser;
+    m2->relproxy    = NULL;
+    m2->relpuser    = NULL;
+
+    if (adbus_conn_shouldproxy(c)) {
         DupString(&m2->sender, &m2->senderSize);
         DupString(&m2->destination, &m2->destinationSize);
         DupString(&m2->interface, &m2->interfaceSize);
         DupString(&m2->path, &m2->pathSize);
         DupString(&m2->member, &m2->memberSize);
         DupString(&m2->error, &m2->errorSize);
+        DupArguments(&m2->arguments, m2->argumentsSize);
 
-        m2->proxy = d->conn->proxy;
-        m2->puser = d->conn->puser;
-        m2->relproxy = d->conn->relproxy;
-        m2->relpuser = d->conn->relpuser;
-
-        if (m->arguments) {
-            m2->arguments = (adbus_Argument*) malloc(sizeof(adbus_Argument) * m->argumentsSize);
-            memcpy(m2->arguments, m->arguments, m->argumentsSize);
-        }
-
-        adbus_conn_proxy(c, &ProxyMatch, &FreeProxyMatch, d);
+        adbus_conn_proxy(c, &DoAddMatch, &FreeProxyMatch, d);
     } else {
-        if (DoAddMatch(d)) {
+        DoAddMatch(d);
+        if (!d->data) {
             FreeData(d);
         }
     }
@@ -330,41 +375,26 @@ void adbus_state_addmatch(
 
 /* ------------------------------------------------------------------------- */
 
-static int DoAddReply(adbusI_StateData* d)
-{
-    adbus_Reply* r = &d->u.reply;
-
-    d->release[0]   = r->release[0];
-    d->ruser[0]     = r->ruser[0];
-    d->release[1]   = r->release[1];
-    d->ruser[1]     = r->ruser[1];
-
-    r->release[0]   = &ReleaseDataCallback;
-    r->ruser[0]     = d;
-    r->release[1]   = NULL;
-    r->ruser[1]     = NULL;
-
-    d->data = adbus_conn_addreply(d->conn->connection, r);
-
-    if (!d->data)
-        return -1;
-
-    dil_insert_after(StateData, &d->conn->replies, d, &d->hl);
-    return 0;
-}
-
-static void ProxyReply(void* user)
+static void DoAddReply(void* user)
 {
     adbusI_StateData* d = (adbusI_StateData*) user;
-    d->err = DoAddReply(d);
+
+    ADBUSI_ASSERT_CONN_THREAD(d->conn->connection);
+    d->data = adbus_conn_addreply(d->conn->connection, &d->u.reply);
+
+    if (d->data) {
+        dil_insert_after(StateData, &d->conn->replies, d, &d->hl);
+    }
 }
 
 static void FreeProxyReply(void* user)
 {
     adbusI_StateData* d = (adbusI_StateData*) user;
+    adbus_Reply* r = &d->u.reply;
 
-    free((char*) d->u.reply.remote);
-    if (d->err) {
+    FreeString(r->remote);
+
+    if (!d->data) {
         FreeData(d);
     }
 }
@@ -385,27 +415,47 @@ void adbus_state_addreply(
         const adbus_Reply*  r)
 {
     adbusI_StateData* d = NEW(adbusI_StateData);
-    LookupConnection(s, d, c);
-    d->u.reply = *r;
-    d->err = -1;
+    adbus_Reply* r2     = &d->u.reply;
 
-    ADBUSI_LOG_REPLY_2(r, "add reply (state %p)", (void*) s);
+    LookupConnection(s, d, c);
 
     assert(!r->proxy && !r->relproxy);
+    ADBUSI_ASSERT_THREAD(s->thread);
+
+    ADBUSI_LOG_REPLY_2(r, "add reply %p (state %p, state conn %p)",
+            (void*) d,
+            (void*) s,
+            (void*) d->conn);
+
+    /* The msg callback is proxied directly to the local thread with the
+     * supplied callback. We interecpt the release callback on the connection
+     * thread to remove the state data. That will then call the supplied
+     * release callback (if any) on the local thread.
+     */
+
+    d->release[0]       = r->release[0];
+    d->ruser[0]         = r->ruser[0];
+    d->release[1]       = r->release[1];
+    d->ruser[1]         = r->ruser[1];
+
+    *r2                 = *r;
+
+    r2->release[0]      = &ReleaseDataCallback;
+    r2->ruser[0]        = d;
+    r2->release[1]      = NULL;
+    r2->ruser[1]        = NULL;
+
+    r2->proxy           = d->conn->proxy;
+    r2->puser           = d->conn->puser;
+    r2->relproxy        = NULL;
+    r2->relpuser        = NULL;
 
     if (adbus_conn_shouldproxy(c)) {
-        adbus_Reply* r2 = &d->u.reply;
-
         DupString(&r2->remote, &r2->remoteSize);
-
-        r2->proxy = d->conn->proxy;
-        r2->puser = d->conn->puser;
-        r2->relproxy = d->conn->relproxy;
-        r2->relpuser = d->conn->relpuser;
-
-        adbus_conn_proxy(c, &ProxyReply, &FreeProxyReply, d);
+        adbus_conn_proxy(c, &DoAddReply, &FreeProxyReply, d);
     } else {
-        if (DoAddReply(d)) {
+        DoAddReply(d);
+        if (!d->data) {
             FreeData(d);
         }
     }
@@ -420,6 +470,7 @@ adbus_State* adbus_state_new(void)
 {
     adbus_State* s = NEW(adbus_State);
     s->refConnection = 1;
+    s->thread = adbusI_current_thread();
     ADBUSI_LOG_1("new (state %p)", (void*) s);
     return s;
 }
@@ -430,6 +481,9 @@ adbus_State* adbus_state_new(void)
 static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connection* c)
 {
     adbusI_StateConn* conn;
+
+    ADBUSI_ASSERT_THREAD(s->thread);
+
     DL_FOREACH(StateConn, conn, &s->connections, hl) {
         if (conn->connection == c) {
             d->conn = conn;
@@ -457,6 +511,9 @@ static void ResetConn(void* user)
     adbusI_StateConn* c = (adbusI_StateConn*) user;
     adbusI_StateData* d;
 
+    ADBUSI_ASSERT_CONN_THREAD(c->connection);
+    ADBUSI_LOG_3("reset (state conn %p)", (void*) c);
+
     DIL_FOREACH(StateData, d, &c->binds, hl) {
         adbus_conn_unbind(c->connection, (adbus_ConnBind*) d->data);
     }
@@ -480,6 +537,8 @@ static void FreeConn(void* user)
 {
     adbusI_StateConn* c = (adbusI_StateConn*) user;
 
+    ADBUSI_LOG_3("free (state conn %p)", (void*) c);
+
     if (c->refConnection) {
         adbus_conn_deref(c->connection);
     }
@@ -497,6 +556,8 @@ static void FreeConn(void* user)
 void adbus_state_reset(adbus_State* s)
 {
     adbusI_StateConn* c;
+
+    ADBUSI_ASSERT_THREAD(s->thread);
     ADBUSI_LOG_1("reset (state %p)", (void*) s);
 
     DIL_FOREACH(StateConn, c, &s->connections, hl) {
@@ -521,6 +582,8 @@ void adbus_state_free(adbus_State* s)
 {
     if (s) {
         adbusI_StateConn* c;
+
+        ADBUSI_ASSERT_THREAD(s->thread);
         ADBUSI_LOG_1("free (state %p)", (void*) s);
 
         DIL_FOREACH(StateConn, c, &s->connections, hl) {

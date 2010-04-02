@@ -138,7 +138,7 @@ static const double __ac_HASH_UPPER = 0.77;
             h->size = h->n_occupied = 0;                                \
         }                                                               \
     }                                                                   \
-    DMEM_INLINE khint_t dh_get_##name(dh_##name##_t *h, khkey_t key)    \
+    DMEM_INLINE khint_t dh_get_##name(const dh_##name##_t *h, khkey_t key)    \
     {                                                                   \
         if (h->n_buckets) {                                             \
             khint_t inc, k, i, last;                                    \

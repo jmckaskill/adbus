@@ -107,6 +107,7 @@ adbus_MsgFactory* adbus_msg_new(void)
     m->argbuf = adbus_buf_new();
     m->serial = -1;
     m->replySerial = -1;
+    ADBUSI_LOG_2("new (msg %p)", (void*) m);
     return m;
 }
 
@@ -119,6 +120,8 @@ void adbus_msg_free(adbus_MsgFactory* m)
 {
     if (!m)
         return;
+
+    ADBUSI_LOG_2("free (msg %p)", (void*) m);
 
     adbus_buf_free(m->buf);
     adbus_buf_free(m->argbuf);

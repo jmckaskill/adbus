@@ -73,29 +73,4 @@ ADBUSI_FUNC int adbusI_dispatchMethod(adbus_Connection* c, adbus_CbData* d);
 
 ADBUSI_FUNC int adbusI_introspect(adbus_CbData* d);
 
-ADBUS_API void adbus_bind_init(adbus_Bind* bind);
-
-ADBUS_API adbus_ConnBind* adbus_conn_bind(
-        adbus_Connection*   connection,
-        const adbus_Bind*   bind);
-
-ADBUS_API void adbus_conn_unbind(
-        adbus_Connection*   connection,
-        adbus_ConnBind*     bind);
-
-ADBUS_API adbus_Interface* adbus_conn_interface(
-        adbus_Connection*       connection,
-        const char*             path,
-        int                     pathSize,
-        const char*             interface,
-        int                     interfaceSize,
-        adbus_ConnBind**        bind);
-
-ADBUS_API adbus_Member* adbus_conn_method(
-        adbus_Connection*       connection,
-        const char*             path,
-        int                     pathSize,
-        const char*             method,
-        int                     methodSize,
-        adbus_ConnBind**        bind);
 

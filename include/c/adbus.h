@@ -147,7 +147,7 @@ typedef struct adbus_BufVariant         adbus_BufVariant;
 typedef struct adbus_Call               adbus_Call;
 typedef struct adbus_CbData             adbus_CbData;
 typedef struct adbus_Connection         adbus_Connection;
-typedef struct adbus_ConnectionCallbacks  adbus_ConnectionCallbacks;
+typedef struct adbus_ConnVTable         adbus_ConnVTable;
 typedef struct adbus_ConnBind           adbus_ConnBind;
 typedef struct adbus_ConnMatch          adbus_ConnMatch;
 typedef struct adbus_ConnReply          adbus_ConnReply;
@@ -381,7 +381,7 @@ typedef void        (*adbus_GetProxyCallback)(void*, adbus_ProxyCallback*, adbus
 typedef adbus_Bool  (*adbus_ShouldProxyCallback)(void*);
 typedef int         (*adbus_BlockCallback)(void*, adbus_BlockType type, void** handle, int timeoutms);
 
-struct adbus_ConnectionCallbacks
+struct adbus_ConnVTable
 {
     adbus_Callback                release;
     adbus_SendMsgCallback         send_message;
@@ -392,14 +392,14 @@ struct adbus_ConnectionCallbacks
     adbus_BlockCallback           block;
 };
 
-ADBUS_API adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user);
+ADBUS_API adbus_Connection* adbus_conn_new(const adbus_ConnVTable* cb, void* obj);
+ADBUS_API void adbus_conn_free(adbus_Connection* connection);
+
 ADBUS_API adbus_Connection* adbus_conn_get(adbus_BusType type);
 ADBUS_API void adbus_conn_set(adbus_BusType type, adbus_Connection* c);
 
 ADBUS_API void adbus_conn_ref(adbus_Connection* connection);
 ADBUS_API void adbus_conn_deref(adbus_Connection* connection);
-
-#define adbus_conn_free(c) adbus_conn_deref(c)
 
 
 ADBUS_API void adbus_conn_setsender(
@@ -538,7 +538,7 @@ struct adbus_Bind
     const char*             path;
     int                     pathSize;
 
-    adbus_Interface*        interface;
+    const adbus_Interface*  interface;
     void*                   cuser2;
 
     adbus_ProxyMsgCallback  proxy;
@@ -580,7 +580,7 @@ ADBUS_API void adbus_conn_unbind(
 
 
 
-ADBUS_API adbus_Interface* adbus_conn_interface(
+ADBUS_API const adbus_Interface* adbus_conn_interface(
         adbus_Connection*       connection,
         const char*             path,
         int                     pathSize,
@@ -588,7 +588,7 @@ ADBUS_API adbus_Interface* adbus_conn_interface(
         int                     interfaceSize,
         adbus_ConnBind**        bind);
 
-ADBUS_API adbus_Member* adbus_conn_method(
+ADBUS_API const adbus_Member* adbus_conn_method(
         adbus_Connection*       connection,
         const char*             path,
         int                     pathSize,
@@ -606,8 +606,8 @@ ADBUS_API adbus_Member* adbus_conn_method(
 
 
 ADBUS_API adbus_Interface* adbus_iface_new(const char* name, int size);
-ADBUS_API void adbus_iface_ref(adbus_Interface* interface);
-ADBUS_API void adbus_iface_deref(adbus_Interface* interface);
+ADBUS_API void adbus_iface_ref(const adbus_Interface* interface);
+ADBUS_API void adbus_iface_deref(const adbus_Interface* interface);
 #define adbus_iface_free(iface) adbus_iface_deref(iface)
 
 ADBUS_API adbus_Member* adbus_iface_addmethod(
@@ -627,20 +627,20 @@ ADBUS_API adbus_Member* adbus_iface_addproperty(
         const char*         sig,
         int                 sigsz);
 
-ADBUS_API adbus_Member* adbus_iface_method(
-        adbus_Interface*    interface,
-        const char*         name,
-        int                 size);
+ADBUS_API const adbus_Member* adbus_iface_method(
+        const adbus_Interface*  interface,
+        const char*             name,
+        int                     size);
 
-ADBUS_API adbus_Member* adbus_iface_signal(
-        adbus_Interface*    interface,
-        const char*         name,
-        int                 size);
+ADBUS_API const adbus_Member* adbus_iface_signal(
+        const adbus_Interface*  interface,
+        const char*             name,
+        int                     size);
 
-ADBUS_API adbus_Member* adbus_iface_property(
-        adbus_Interface*    interface,
-        const char*         name,
-        int                 size);
+ADBUS_API const adbus_Member* adbus_iface_property(
+        const adbus_Interface*  interface,
+        const char*             name,
+        int                     size);
 
 
 ADBUS_API void adbus_mbr_annotate(
@@ -683,7 +683,7 @@ ADBUS_API void adbus_mbr_setmethod(
         void*               user1);
 
 ADBUS_API int adbus_mbr_call(
-        adbus_Member*       method,
+        const adbus_Member* method,
         adbus_ConnBind*     bind,
         adbus_CbData*       data);
 
@@ -1067,7 +1067,7 @@ ADBUS_API void adbus_busproxy_releasename(
 
 
 ADBUS_API adbus_Signal* adbus_sig_new(
-        adbus_Member*       mbr);
+        const adbus_Member*       mbr);
 
 ADBUS_API void adbus_sig_free(
         adbus_Signal*       signal);

@@ -25,62 +25,13 @@
 
 #pragma once
 
+#include "qdbusmessage_p.h"
+#include "qdbusproxy.hxx"
+#include "qdbusconnection.hxx"
+#include "dmem/list.h"
 #include <QtCore/qobject.h>
 #include <QtCore/qlist.h>
 #include <QtCore/qcoreevent.h>
-#include "qdbusmessage_p.h"
-#include "qdbusconnection.hxx"
-#include "dmem/list.h"
-
-
-/* ------------------------------------------------------------------------- */
-
-struct QDBusProxyEvent : public QEvent
-{
-    QDBusProxyEvent() : QEvent(type) {}
-    ~QDBusProxyEvent() {if (release) release(user);}
-
-    static QEvent::Type type;
-
-    adbus_Callback      cb;
-    adbus_Callback      release;
-    void*               user;
-};
-
-struct QDBusProxyMsgEvent : public QEvent
-{
-    QDBusProxyMsgEvent() : QEvent(type) {}
-    ~QDBusProxyMsgEvent();
-
-    static QEvent::Type type;
-
-    adbus_MsgCallback   cb;
-    adbus_Connection*   connection;
-    adbus_Message       msg;
-    void*               user1;
-    void*               user2;
-    bool                ret;
-};
-
-class QDBusProxy : public QObject
-{
-    Q_OBJECT
-public:
-    QDBusProxy();
-    ~QDBusProxy();
-
-    // Called on a non local thread
-    static void ProxyCallback(void* user, adbus_Callback cb, adbus_Callback release, void* cbuser);
-    static int  ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData* d);
-
-    // Called on the local thread
-    virtual bool event(QEvent* e);
-
-private:
-    // For use only on the local thread
-    adbus_MsgFactory*   m_Msg;
-
-};
 
 
 /* ------------------------------------------------------------------------- */
@@ -206,13 +157,11 @@ public:
     QDBusMessage            m_CurrentMessage;
     QDBusConnection         m_QConnection;
 
-public Q_SLOTS:
-    void destroy();
-
 private:
-    ~QDBusObject() {}
+    ~QDBusObject();
 
-    adbus_Connection* const   m_Connection;
+    virtual void unregister();
+
     QObject* const            m_Tracked;
 
     // These lists are manipulated on the local thread and on the connection

@@ -41,7 +41,7 @@ DVECTOR_INIT(Bind, struct Bind)
 struct adbus_Signal
 {
     /** \privatesection */
-    adbus_MsgFactory*   message;
-    d_Vector(Bind)      binds;
-    adbus_Member*       member;
+    adbus_MsgFactory*       message;
+    d_Vector(Bind)          binds;
+    const adbus_Member*     member;
 };

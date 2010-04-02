@@ -248,7 +248,7 @@ static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c);
 /** Creates a new connection.
  *  \relates adbus_Connection
  */
-adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
+adbus_Connection* adbus_conn_new(const adbus_ConnVTable* vtable, void* obj)
 {
     adbus_Member* m;
     adbus_Connection* c = NEW(adbus_Connection);
@@ -257,11 +257,12 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
 
     ADBUSI_LOG_1("new (connection %p)", (void*) c);
 
-    c->callbacks    = *cb;
-    c->user         = user;
+    c->vtable       = *vtable;
+    c->obj          = obj;
 
-    c->ref          = 1;
+    c->ref          = 0;
     c->nextSerial   = 1;
+    c->thread       = adbusI_current_thread();
 
     c->state = adbus_state_new();
     c->state->refConnection = 0;
@@ -275,7 +276,7 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
     c->bus = adbus_proxy_new(c->state);
     c->bus->refConnection = 0;
 
-    adbus_proxy_init(c->bus, c, NULL, 0, "/org/freedesktop/DBus", -1);
+    adbus_proxy_init(c->bus, c, "org.freedesktop.DBus", -1, "/org/freedesktop/DBus", -1);
     adbus_proxy_setinterface(c->bus, "org.freedesktop.DBus", -1);
 
     c->introspectable = adbus_iface_new("org.freedesktop.DBus.Introspectable", -1);
@@ -306,10 +307,13 @@ adbus_Connection* adbus_conn_new(adbus_ConnectionCallbacks* cb, void* user)
     adbus_mbr_argname(m, "property_name", -1);
     adbus_mbr_argname(m, "value", -1);
 
-    assert(c->ref == 1);
+    assert(c->ref == 0);
 
     return c;
 }
+
+adbusI_thread_t adbusI_conn_thread(adbus_Connection* c)
+{ return c->thread; }
 
 /** Increments the connection ref count.
  *  \relates adbus_Connection
@@ -324,81 +328,113 @@ void adbus_conn_ref(adbus_Connection* c)
 			(void*) c);
 }
 
-/* ------------------------------------------------------------------------- */
-
-/** \def adbus_conn_free(c)
- *  \brief Decrements the connection ref count.
- *  \relates adbus_Connection
- *  
- *  Since the connection is ref counted, this may not actually free the
- *  connection.
- *
- *  \sa adbus_conn_new(), adbus_conn_ref(), adbus_conn_deref()
- */
-
-static void FreeMessage(adbusI_ConnMsg* m);
-
 /** Decrements the connection ref count.
  *  \relates adbus_Connection
  */
 void adbus_conn_deref(adbus_Connection* c)
 {
-    long ref;
-    adbusI_ConnMsg* m;
+    long ref = adbusI_InterlockedDecrement(&c->ref);
 
-    if (c == NULL)
-        return;
-
-    ref = adbusI_InterlockedDecrement(&c->ref);
     ADBUSI_LOG_1("deref: %d (connection %s, %p)",
 			(int) ref,
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
 
-    if (ref != 0)
-        return;
-
-    /* Free the connection services first */
-    adbusI_freeReplies(c);
-    adbusI_freeMatches(c);
-    adbusI_freeObjectTree(&c->binds);
-
-    adbusI_freeRemoteTracker(c);
-    adbusI_freeConnBusData(&c->connect);
-
-    adbus_proxy_free(c->bus);
-    adbus_state_free(c->state);
-
-    for (m = c->current; m != &c->toprocess; m = m->hl.next) {
-        adbusI_ConnMsg* next = m->hl.next;
-        FreeMessage(m);
-        m = next;
+    if (ref == 0 && c->vtable.release) {
+        c->vtable.release(c->obj);
     }
+}
 
-    m = c->extra.next;
-    while (m) {
-        adbusI_ConnMsg* next = m->hl.next;
-        FreeMessage(m);
-        m = next;
+/* ------------------------------------------------------------------------- */
+
+static void FreeMessage(adbusI_ConnMsg* m);
+
+/** \def adbus_conn_free(c)
+ *  \brief Frees the connection.
+ *  \relates adbus_Connection
+ */
+void adbus_conn_free(adbus_Connection* c)
+{
+    if (c) {
+        adbusI_ConnMsg* m;
+
+        ADBUSI_LOG_1("free (connection %s, %p)",
+                adbus_conn_uniquename(c, NULL),
+                (void*) c);
+
+        assert(c->ref == 0);
+
+        /* Free the connection services first */
+        adbusI_freeReplies(c);
+        adbusI_freeMatches(c);
+        adbusI_freeObjectTree(&c->binds);
+
+        adbusI_freeRemoteTracker(c);
+        adbusI_freeConnBusData(&c->connect);
+
+        adbus_proxy_free(c->bus);
+        adbus_state_free(c->state);
+
+        for (m = c->current; m != &c->toprocess; m = m->hl.next) {
+            adbusI_ConnMsg* next = m->hl.next;
+            FreeMessage(m);
+            m = next;
+        }
+
+        m = c->extra.next;
+        while (m) {
+            adbusI_ConnMsg* next = m->hl.next;
+            FreeMessage(m);
+            m = next;
+        }
+
+        FreeMessage(c->next);
+
+        adbus_msg_free(c->dispatchReturn);
+
+        assert(c->introspectable->ref == 1);
+        assert(c->properties->ref == 1);
+        adbus_iface_free(c->introspectable);
+        adbus_iface_free(c->properties);
+
+        free(c);
     }
-
-    FreeMessage(c->next);
-
-    adbus_msg_free(c->dispatchReturn);
-    adbus_iface_free(c->introspectable);
-    adbus_iface_free(c->properties);
-
-    if (c->callbacks.release) {
-        c->callbacks.release(c->user);
-    }
-
-    free(c);
 }
 
 /* -------------------------------------------------------------------------
  * Message
  * -------------------------------------------------------------------------
  */
+
+struct Message
+{
+    adbus_Connection*   c;
+    adbus_Message       m;
+};
+
+static void ProxyMessage(void* d)
+{
+    struct Message* msg = (struct Message*) d;
+    adbus_Message* m = &msg->m;
+    adbus_Connection* c = msg->c;
+
+    ADBUSI_LOG_DATA_3(
+			m->data,
+			m->size,
+			"sending data (connection %s, %p)",
+			adbus_conn_uniquename(c, NULL),
+			(void*) c);
+
+    c->vtable.send_message(c->obj, m);
+    assert(!adbus_conn_shouldproxy(c));
+}
+
+static void FreeProxiedMessage(void* d)
+{
+    struct Message* m = (struct Message*) d;
+    adbus_freedata(&m->m);
+    free(m);
+}
 
 /** Sends a message on the connection
  *  \relates adbus_Connection
@@ -408,8 +444,6 @@ void adbus_conn_deref(adbus_Connection* c)
  *
  *  \note Do not call this is in method call callback for replies. Instead
  *  setup your response in the provided msg factory (adbus_CbData::ret).
- *
- *  \todo Actually make this thread safe.
  */
 int adbus_conn_send(
         adbus_Connection* c,
@@ -421,20 +455,23 @@ int adbus_conn_send(
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
 
-    if (!c->callbacks.send_message)
-        return -1;
+    if (adbus_conn_shouldproxy(c)) {
+        struct Message* msg = NEW(struct Message);
+        msg->c = c;
+        adbus_clonedata(m, &msg->m);
+        adbus_conn_proxy(c, &ProxyMessage, &FreeProxiedMessage, msg); 
+        return 0;
 
-    ADBUSI_LOG_DATA_3(
-			m->data,
-			m->size,
-			"sending data (connection %s, %p)",
-			adbus_conn_uniquename(c, NULL),
-			(void*) c);
+    } else {
+        ADBUSI_LOG_DATA_3(
+                m->data,
+                m->size,
+                "sending data (connection %s, %p)",
+                adbus_conn_uniquename(c, NULL),
+                (void*) c);
 
-    if (c->callbacks.send_message(c->user, m) != (int) m->size)
-        return -1;
-
-    return 0;
+        return c->vtable.send_message(c->obj, m) != (int) m->size;
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -457,26 +494,6 @@ uint32_t adbus_conn_serial(adbus_Connection* c)
  * Parsing and dispatch
  * --------------------------------------------------------------------------
  */
-
-static void SendReturn(adbus_Connection* c, adbus_CbData* d)
-{
-    if (d->ret) {
-        if (adbus_msg_type(d->ret) == ADBUS_MSG_INVALID) {
-            adbus_msg_settype(d->ret, ADBUS_MSG_RETURN);
-        }
-
-        if (d->msg->sender) {
-            adbus_msg_setdestination(d->ret, d->msg->sender, d->msg->senderSize);
-        }
-
-        adbus_msg_setreply(d->ret, d->msg->serial);
-        adbus_msg_setflags(d->ret, adbus_msg_flags(d->ret) | ADBUS_MSG_NO_REPLY);
-        adbus_msg_send(d->ret, c);
-      
-    }
-}
-
-/* -------------------------------------------------------------------------- */
 
 static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c)
 {
@@ -555,8 +572,6 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
         if (adbusI_dispatchMethod(c, &d)) {
             return -1;
         }
-
-        SendReturn(c, &d);
     }
 
     return 0;
@@ -613,8 +628,6 @@ int adbus_conn_continue(adbus_Connection* c)
             if (adbusI_dispatchMethod(c, &d)) {
                 return -1;
             }
-
-            SendReturn(c, &d);
         }
 
         msg->msgFinished = 1;
@@ -739,7 +752,7 @@ int adbus_conn_parsecb(adbus_Connection* c)
     /* Append our new data */
     while (read == RECV_SIZE) {
         char* dest = adbus_buf_recvbuf(next->buf, RECV_SIZE);
-        read = c->callbacks.recv_data(c->user, dest, RECV_SIZE);
+        read = c->vtable.recv_data(c->obj, dest, RECV_SIZE);
 
         ADBUSI_LOG_DATA_3(
 				dest,
@@ -773,7 +786,7 @@ int adbus_conn_parsecb(adbus_Connection* c)
  *  \sa adbus_ConnectionCallbacks::should_proxy
  */
 adbus_Bool adbus_conn_shouldproxy(adbus_Connection* c)
-{ return c->callbacks.should_proxy && c->callbacks.should_proxy(c->user) && c->callbacks.proxy; }
+{ return c->vtable.should_proxy && c->vtable.should_proxy(c->obj) && c->vtable.proxy; }
 
 /* -------------------------------------------------------------------------- */
 
@@ -785,8 +798,8 @@ adbus_Bool adbus_conn_shouldproxy(adbus_Connection* c)
  */
 void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, adbus_Callback release, void* user)
 { 
-    if (c->callbacks.proxy) {
-        c->callbacks.proxy(c->user, callback, release, user); 
+    if (c->vtable.proxy) {
+        c->vtable.proxy(c->obj, callback, release, user); 
     } else {
         callback(user);
     }
@@ -807,9 +820,9 @@ void adbus_conn_getproxy(
         adbus_ProxyMsgCallback* msgcb,
         void**                  user)
 {
-    if (c->callbacks.get_proxy)
+    if (c->vtable.get_proxy && adbus_conn_shouldproxy(c))
     {
-        c->callbacks.get_proxy(c->user, cb, msgcb, user);
+        c->vtable.get_proxy(c->obj, cb, msgcb, user);
     }
     else
     {
@@ -825,5 +838,5 @@ void adbus_conn_getproxy(
 int adbus_conn_block(adbus_Connection* c, adbus_BlockType type, void** handle, int timeoutms)
 {
     /* This will purposely crash if the block callback is not set */
-    return c->callbacks.block(c->user, type, handle, timeoutms);
+    return c->vtable.block(c->obj, type, handle, timeoutms);
 }
