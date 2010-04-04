@@ -623,7 +623,7 @@ namespace adbus
     public:
         Interface(const std::string& name) 
         : m_I(adbus_iface_new(name.c_str(), (int) name.size())) 
-        {}
+        { adbus_iface_ref(m_I); }
 
         Interface(const Interface<O>& r)
         : m_I(r.m_I)
@@ -892,7 +892,7 @@ namespace adbus
                 adbus_iter_args(i, d->msg);
 
                 const char* msg = NULL;
-                if (i.i.sig &&  strcmp(i.i.sig, "s") && (msg << i))
+                if (i.i.sig && strcmp(i.i.sig, "s") == 0 && (msg << i))
                     return -1;
 
                 (o->*mf)(d->msg->error, msg);

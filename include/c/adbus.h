@@ -276,7 +276,7 @@ struct adbus_Message
 ADBUS_API int adbus_parse(adbus_Message* m, char* data, size_t size);
 ADBUS_API int adbus_parseargs(adbus_Message* m);
 ADBUS_API void adbus_freeargs(adbus_Message* m);
-ADBUS_API size_t adbus_parse_size(const char* data, size_t size);
+ADBUS_API int adbus_parse_size(const char* data, size_t size);
 ADBUS_API void adbus_clonedata(adbus_Message* from, adbus_Message* to);
 ADBUS_API void adbus_freedata(adbus_Message* m);
 
@@ -376,10 +376,9 @@ ADBUS_API int adbus_error_argument(
 
 
 
-typedef int         (*adbus_SendMsgCallback)(void*, adbus_Message*);
-typedef void        (*adbus_GetProxyCallback)(void*, adbus_ProxyCallback*, adbus_ProxyMsgCallback*, void**);
-typedef adbus_Bool  (*adbus_ShouldProxyCallback)(void*);
-typedef int         (*adbus_BlockCallback)(void*, adbus_BlockType type, void** handle, int timeoutms);
+typedef int  (*adbus_SendMsgCallback)(void*, adbus_Message*);
+typedef void (*adbus_GetProxyCallback)(void*, adbus_ProxyMsgCallback*, void**, adbus_ProxyCallback*, void**);
+typedef int  (*adbus_BlockCallback)(void*, adbus_BlockType type, uintptr_t* handle, int timeoutms);
 
 struct adbus_ConnVTable
 {
@@ -387,19 +386,18 @@ struct adbus_ConnVTable
     adbus_SendMsgCallback         send_message;
     adbus_RecvCallback            recv_data;
     adbus_ProxyCallback           proxy;
-    adbus_ShouldProxyCallback     should_proxy;
     adbus_GetProxyCallback        get_proxy;
     adbus_BlockCallback           block;
 };
 
 ADBUS_API adbus_Connection* adbus_conn_new(const adbus_ConnVTable* cb, void* obj);
-ADBUS_API void adbus_conn_free(adbus_Connection* connection);
-
-ADBUS_API adbus_Connection* adbus_conn_get(adbus_BusType type);
-ADBUS_API void adbus_conn_set(adbus_BusType type, adbus_Connection* c);
+ADBUS_API void adbus_conn_close(adbus_Connection* connection);
 
 ADBUS_API void adbus_conn_ref(adbus_Connection* connection);
 ADBUS_API void adbus_conn_deref(adbus_Connection* connection);
+
+ADBUS_API adbus_Connection* adbus_conn_get(adbus_BusType type);
+ADBUS_API void adbus_conn_set(adbus_BusType type, adbus_Connection* c);
 
 
 ADBUS_API void adbus_conn_setsender(
@@ -422,14 +420,16 @@ ADBUS_API void adbus_conn_proxy(
 
 ADBUS_API void adbus_conn_getproxy(
         adbus_Connection*       connection,
-        adbus_ProxyCallback*    cb,
         adbus_ProxyMsgCallback* msgcb,
-        void**                  user);
+        void**                  msgcbuser,
+        adbus_ProxyCallback*    cb,
+        void**                  cbuser);
 
+/* Use timeoutms values of -1 for default or INT_MAX for infinite */
 ADBUS_API int adbus_conn_block(
         adbus_Connection*       connection,
         adbus_BlockType         type,
-        void**                  handle,
+        uintptr_t*              handle,
         int                     timeoutms);
 
 ADBUS_API uint32_t adbus_conn_serial(
@@ -472,7 +472,7 @@ struct adbus_Match
     /* Matches for signals should be added to the bus, but method returns
      * are automatically routed to us by the daemon
      */
-    adbus_Bool              addMatchToBusDaemon;
+    adbus_Bool              addToBus;
 
     int64_t                 replySerial;
 
@@ -608,7 +608,6 @@ ADBUS_API const adbus_Member* adbus_conn_method(
 ADBUS_API adbus_Interface* adbus_iface_new(const char* name, int size);
 ADBUS_API void adbus_iface_ref(const adbus_Interface* interface);
 ADBUS_API void adbus_iface_deref(const adbus_Interface* interface);
-#define adbus_iface_free(iface) adbus_iface_deref(iface)
 
 ADBUS_API adbus_Member* adbus_iface_addmethod(
         adbus_Interface*    interface,

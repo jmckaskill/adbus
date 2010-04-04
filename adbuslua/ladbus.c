@@ -182,7 +182,7 @@ int luaopen_adbuslua_core(lua_State* L)
         return luaL_error(L, "WSAStartup error %d", err);
 #endif
     lua_newtable(L);
-    luaL_register(L, NULL, reg);
+    luaL_register(L, "adbuslua_core", reg);
     int module = lua_gettop(L);
 
     adbusluaI_reg_connection(L);    Setup(L, module, "connection");

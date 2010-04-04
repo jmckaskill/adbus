@@ -26,6 +26,7 @@
 #pragma once
 
 #include "internal.h"
+#include <inttypes.h>
 
 /* Log levels:
  * 1. Low - Low rate application debugging 
@@ -67,24 +68,24 @@ ADBUSI_FUNC void adbusI_log(const char* format, ...) ADBUSI_PRINTF(1,2);
 #define ADBUSI_LOG_MSG_2    if (adbusI_loglevel < 2) {} else adbusI_logmsg
 #define ADBUSI_LOG_BIND_1   if (adbusI_loglevel < 1) {} else adbusI_logbind
 #define ADBUSI_LOG_MATCH_1  if (adbusI_loglevel < 1) {} else adbusI_logmatch
-#define ADBUSI_LOG_REPLY_1  if (adbusI_loglevel < 1) {} else adbusI_logreply
 #define ADBUSI_LOG_REPLY_2  if (adbusI_loglevel < 2) {} else adbusI_logreply
+#define ADBUSI_LOG_DATA_2   if (adbusI_loglevel < 2) {} else adbusI_logdata
 #define ADBUSI_LOG_DATA_3   if (adbusI_loglevel < 3) {} else adbusI_logdata
 #define ADBUSI_LOG_1        if (adbusI_loglevel < 1) {} else adbusI_log
 #define ADBUSI_LOG_2        if (adbusI_loglevel < 2) {} else adbusI_log
 #define ADBUSI_LOG_3        if (adbusI_loglevel < 3) {} else adbusI_log
 
-#ifdef _WIN32
+#if defined _WIN32
     typedef DWORD adbusI_thread_t;
     typedef DWORD adbusI_process_t;
-#   define PRI_THREAD "%u"
-#   define PRI_PROCESS "%u"
+#   define PRI_THREAD "u"
+#   define PRI_PROCESS "u"
 
-#elif __linux__
-    typedef void* adbusI_thread_t;
+#elif defined __linux__
+    typedef uintptr_t adbusI_thread_t;
     typedef int adbusI_process_t;
-#   define PRI_THREAD "%p"
-#   define PRI_PROCESS "%d"
+#   define PRI_THREAD PRIxPTR
+#   define PRI_PROCESS "d"
 
 #else
 #error "This needs to be implemented for your platform"

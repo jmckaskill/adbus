@@ -24,6 +24,7 @@
  */
 
 #include "proxy.h"
+#include <limits.h>
 
 
 /** \struct adbus_Proxy
@@ -284,18 +285,18 @@ void adbus_proxy_signal(
         const char*         signal,
         int                 size)
 {
-    m->type                 = ADBUS_MSG_SIGNAL;
-    m->addMatchToBusDaemon  = 1;
-    m->member               = signal;
-    m->memberSize           = size;
-    m->sender               = ds_cstr(&p->service);
-    m->senderSize           = ds_size(&p->service);
-    m->path                 = ds_cstr(&p->path);
-    m->pathSize             = ds_size(&p->path);
+    m->type         = ADBUS_MSG_SIGNAL;
+    m->addToBus     = 1;
+    m->member       = signal;
+    m->memberSize   = size;
+    m->sender       = ds_cstr(&p->service);
+    m->senderSize   = ds_size(&p->service);
+    m->path         = ds_cstr(&p->path);
+    m->pathSize     = ds_size(&p->path);
 
     if (ds_size(&p->interface) > 0) {
-        m->interface            = ds_cstr(&p->interface);
-        m->interfaceSize        = ds_size(&p->interface);
+        m->interface        = ds_cstr(&p->interface);
+        m->interfaceSize    = ds_size(&p->interface);
     }
 
     adbus_state_addmatch(p->state, p->connection, m);
@@ -460,99 +461,248 @@ int adbus_call_send(adbus_Call* call)
 
 /* ------------------------------------------------------------------------- */
 
-struct ProxyBlockData
+struct BlockData
 {
-    adbus_Connection*   connection;
-    void*               block;
-    adbus_MsgCallback   callback;
-    void*               cuser;
-    adbus_MsgCallback   error;
-    void*               euser;
-    adbus_Callback      release[2];
-    void*               ruser[2];
-    int*                ret;
+    adbus_Connection*       connection;
+    uintptr_t               block;
+    adbus_Bool              finished;
+    adbus_Bool              finishSent;
+    int                     err;
+    adbus_MsgCallback       callback;
+    void*                   cuser;
+    adbus_MsgCallback       error;
+    void*                   euser;
+    adbus_ProxyCallback     proxy;
+    void*                   puser;
+    adbus_ProxyMsgCallback  msgproxy;
+    void*                   msgpuser;
+    adbus_Reply             reply;
+    adbus_ConnReply*        connReply;
+    adbusI_thread_t         localThread;
 };
 
-static void ProxyBlockRelease(void* user)
-{
-    struct ProxyBlockData* d = (struct ProxyBlockData*) user;
 
-    /* No need to proxy this as we have already been proxied */
-    if (d->release[0]) {
-        d->release[0](d->ruser[0]);
+static void CallLocalCallback(struct BlockData* s, adbus_Callback cb, adbus_Callback release)
+{
+    if (s->proxy) {
+        s->proxy(s->puser, cb, release, s);
+    } else {
+        if (cb) {
+            cb(s);
+        }
+        if (release) {
+            release(s);
+        }
     }
-    if (d->release[1]) {
-        d->release[1](d->ruser[1]);
+}
+
+static int CallLocalMsgCallback(struct BlockData* s, adbus_MsgCallback cb, void* user, adbus_CbData* d)
+{
+    if (cb) {
+        d->user1 = user;
+        if (s->msgproxy) {
+            return s->msgproxy(s->msgpuser, cb, d);
+        } else {
+            return cb(d);
+        }
     }
-
-    free(d);
+    return 0;
 }
 
-static int ProxyBlockCallback(adbus_CbData* d)
+/* On the local thread */
+static void ReplyFinished(void* u)
 {
-    struct ProxyBlockData* s = (struct ProxyBlockData*) d->user1;
-    int ret = 0;
-
-    /* No need to proxy this as we have already been proxied */
-    if (s->callback) {
-        d->user1 = s->cuser;
-        ret = s->callback(d);
-    }        
-    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
-
-    return ret;
+    struct BlockData* s = (struct BlockData*) u;
+    ADBUSI_LOG_3("ReplyFinished %p", u);
+    ADBUSI_ASSERT_THREAD(s->localThread);
+    s->finished = 1;
+    if (s->block) {
+        adbus_conn_block(s->connection, ADBUS_UNBLOCK, &s->block, -1);
+    }
 }
 
-static int ProxyBlockError(adbus_CbData* d)
+/* On the connection thread - called if the connection is still active */
+static void AddReply(void* u)
 {
-    struct ProxyBlockData* s = (struct ProxyBlockData*) d->user1;
-    int ret = 0;
-
-    /* No need to proxy this as we have already been proxied */
-    if (s->error) {
-        d->user1 = s->euser;
-        ret = s->error(d);
-    }        
-    *s->ret = 1;
-    adbus_conn_block(d->connection, ADBUS_UNBLOCK, &s->block, -1);
-
-    return ret;
+    struct BlockData* s = (struct BlockData*) u;
+    ADBUSI_LOG_3("AddReply %p", u);
+    ADBUSI_ASSERT_CONN_THREAD(s->connection);
+    s->connReply = adbus_conn_addreply(s->connection, &s->reply);
 }
+
+/* On some thread but always after AddReply - called always */
+static void FinishAddReply(void* u)
+{
+    struct BlockData* s = (struct BlockData*) u;
+    ADBUSI_LOG_3("FinishAddReply %p", u);
+    if (!s->connReply) {
+        CallLocalCallback(s, &ReplyFinished, NULL);
+    }
+}
+
+/* On the connection thread - called if the connection is still active */
+static void RemoveReply(void* u)
+{
+    struct BlockData* s = (struct BlockData*) u;
+    ADBUSI_LOG_3("RemoveReply %p", u);
+    ADBUSI_ASSERT_CONN_THREAD(s->connection);
+
+    if (s->connReply) {
+        /* This will call BlockRelease which will call back ReplyFinished */
+        assert(!s->finishSent);
+        adbus_conn_removereply(s->connection, s->connReply);
+    }
+}
+
+/* On some thread but always after RemoveReply - called always */
+static void FinishRemoveReply(void* u)
+{
+    struct BlockData* s = (struct BlockData*) u;
+    ADBUSI_LOG_3("FinishRemoveReply %p", u);
+
+    /* Note the reply may come in between when this message is sent off and it
+     * arrives on the connection thread, at which point ReplyFinished has
+     * already been sent back to the main thread.
+     */
+    if (!s->finishSent) {
+        s->finishSent = 1;
+        CallLocalCallback(s, &ReplyFinished, NULL);
+    }
+}
+
+/* On the connection thread */
+static int BlockCallback(adbus_CbData* d)
+{
+    struct BlockData* s = (struct BlockData*) d->user1;
+    ADBUSI_LOG_3("BlockCallback %p", d->user1);
+
+    if (CallLocalMsgCallback(s, s->callback, s->cuser, d))
+        return -1;
+
+    s->err = 0;
+    return 0;
+}
+
+/* On the connection thread */
+static int BlockError(adbus_CbData* d)
+{
+    struct BlockData* s = (struct BlockData*) d->user1;
+    ADBUSI_LOG_3("BlockCallback %p", d->user1);
+
+    if (CallLocalMsgCallback(s, s->error, s->euser, d))
+        return -1;
+
+    s->err = 1;
+    return 0;
+}
+
+/* On the connection thread */
+static void BlockRelease(void* u)
+{
+    struct BlockData* s = (struct BlockData*) u;
+    ADBUSI_LOG_3("BlockRelease %p", u);
+    s->connReply = NULL;
+    s->finishSent = 1;
+    CallLocalCallback(s, &ReplyFinished, NULL);
+}
+
 
 int adbus_call_block(adbus_Call* call)
 {
-    int ret = 0;
-    struct ProxyBlockData* d = NEW(struct ProxyBlockData);
+    struct BlockData d;
+    adbus_MsgFactory* msg = call->msg;
+    adbus_Proxy* p = call->proxy;
+    adbus_Reply* r = &d.reply;
+    adbus_Bool proxied = adbus_conn_shouldproxy(p->connection);
 
-    d->callback         = call->callback;
-    d->cuser            = call->cuser;
-    d->error            = call->error;
-    d->euser            = call->euser;
-    d->release[0]       = call->release[0];
-    d->release[1]       = call->release[1];
-    d->ruser[0]         = call->ruser[0];
-    d->ruser[1]         = call->ruser[1];
+    /* Be careful, even though this is a "blocking" function call, we can not
+     * rely on any data in the proxy being invariant since the block is most
+     * often implemented using an inner event loop.
+     */
 
-    call->callback      = &ProxyBlockCallback;
-    call->error         = &ProxyBlockError;
-    call->cuser         = d;
-    call->euser         = d;
-    call->release[0]    = &ProxyBlockRelease;
-    call->ruser[0]      = d;
-    call->release[1]    = NULL;
-    call->ruser[1]      = NULL;
+    assert(p->message == msg);
 
-    d->connection       = call->proxy->connection;
-    d->ret              = &ret;
+    if (p->type == SET_PROP_CALL) {
+        adbus_msg_endvariant(msg, &p->variant);
+    }
 
-    if (adbus_call_send(call))
-        return -1;
+    ADBUSI_LOG_3("adbus_call_block %p", (void*) &d);
 
-    if (adbus_conn_block(d->connection, ADBUS_BLOCK, &d->block, call->timeoutms))
-        return -1;
+    memset(&d, 0, sizeof(d));
 
-    /* Returns -1 on send, block, and timeout, 0 on success, 1 on dbus error */
-    return ret;
+    d.localThread       = adbusI_current_thread();
+    d.connection        = p->connection;
+    d.callback          = call->callback;
+    d.cuser             = call->cuser;
+    d.error             = call->error;
+    d.euser             = call->euser;
+
+    adbus_conn_ref(d.connection);
+    adbus_conn_getproxy(d.connection, &d.msgproxy, &d.msgpuser, &d.proxy, &d.puser);
+
+    r->serial           = (uint32_t) adbus_msg_serial(msg);
+    r->remote           = ds_cstr(&p->service);
+    r->remoteSize       = ds_size(&p->service);
+    r->callback         = &BlockCallback;
+    r->cuser            = &d;
+    r->error            = &BlockError;
+    r->euser            = &d;
+    r->release[0]       = &BlockRelease;
+    r->ruser[0]         = &d;
+
+    if (proxied) {
+        r->remote = adbusI_strndup(r->remote, r->remoteSize);
+    }
+
+    /* Assume an error unless BlockCallback or BlockError get called */
+    d.err = -1;
+    adbus_conn_proxy(d.connection, &AddReply, &FinishAddReply, &d);
+
+    /* The call can already be finished if AddReply was not proxied and
+     * immediately failed.
+     */
+    if (d.finished) {
+        assert(!d.connReply);
+        goto end;
+    }
+
+    if (    adbus_msg_send(msg, d.connection)
+        ||  adbus_conn_block(d.connection, ADBUS_BLOCK, &d.block, call->timeoutms)) 
+    {
+        /* We've timed out or the message failed to send. We need to remove
+         * the reply and error out.
+         */
+
+        ADBUSI_LOG_3("adbus_call_block timeout %p", (void*) &d);
+
+        /* These should not fail */
+        adbus_conn_proxy(d.connection, &RemoveReply, &FinishRemoveReply, &d);
+        /* RemoveReply can finish synchronously */
+        d.block = 0;
+        if (!d.finished && adbus_conn_block(d.connection, ADBUS_BLOCK, &d.block, INT_MAX)) {
+            assert(0);
+        }
+    }
+
+    ADBUSI_LOG_3("adbus_call_block finished %p", (void*) &d);
+
+end:
+
+    if (proxied) {
+        free((char*) r->remote);
+    }
+
+    if (call->release[0]) {
+        call->release[0](call->ruser[0]);
+    }
+
+    if (call->release[1]) {
+        call->release[1](call->ruser[1]);
+    }
+
+    adbus_conn_deref(d.connection);
+
+    return d.err;
 }
 
 

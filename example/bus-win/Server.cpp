@@ -36,9 +36,6 @@ Server::Server(adbus_Interface* i)
     m_Server = adbus_serv_new(iface);
     m_Event = INVALID_HANDLE_VALUE;
     m_Auto = INVALID_HANDLE_VALUE;
-
-    if (i != iface)
-        adbus_iface_deref(iface);
 }
 
 static void SetAutoAddress(HANDLE map, const char* str)

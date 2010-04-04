@@ -34,9 +34,6 @@ TcpServer::TcpServer(adbus_Interface* iface, QObject* parent)
 
     m_Server = new QTcpServer;
     connect(m_Server, SIGNAL(newConnection()), SLOT(newConnection()));
-
-    if (i != iface)
-        adbus_iface_deref(i);
 }
 
 TcpServer::~TcpServer()
@@ -65,9 +62,6 @@ LocalServer::LocalServer(adbus_Interface* iface, QObject* parent)
 
     m_Server = new QLocalServer;
     connect(m_Server, SIGNAL(newConnection()), SLOT(newConnection()));
-
-    if (i != iface)
-        adbus_iface_deref(i);
 }
 
 LocalServer::~LocalServer()

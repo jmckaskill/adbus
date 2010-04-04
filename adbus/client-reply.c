@@ -202,6 +202,7 @@ adbus_ConnReply* adbus_conn_addreply(
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
 
+    assert(!c->closed);
     assert(reg->serial >= 0);
     assert(reg->remote);
 
@@ -301,7 +302,7 @@ void adbus_conn_removereply(
         adbus_ConnReply*        reply)
 {
     if (reply) {
-        ADBUSI_LOG_REPLY_1(
+        ADBUSI_LOG_REPLY_2(
 				&reply->r,
 				"remove reply (connection %s, %p)",
 				adbus_conn_uniquename(c, NULL),

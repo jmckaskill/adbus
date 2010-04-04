@@ -28,6 +28,7 @@
 #endif
 
 #include "internal.h"
+#include <limits.h>
 
 #ifdef _WIN32
 #   include <Winsock2.h>
@@ -704,51 +705,102 @@ static int Recv(void* d, char* buf, size_t sz)
 static uint8_t Rand(void* d)
 { (void) d; return (uint8_t) rand(); }
 
+#ifndef _WIN32
+#   define closesocket(x) close(x)
+#endif
+
 static void Close(void* d)
 {
     struct SocketData* s = (struct SocketData*) d;
     FlushTxBuffer(s);
-#ifdef _WIN32
     closesocket(s->sock); 
-#else
-    close(s->sock);
-#endif
     adbus_buf_free(s->txbuf);
-    adbus_conn_free(s->connection);
     free(s);
 }
 
-static int Block(void* d, adbus_BlockType type, void** block, int timeoutms)
+static int Disconnect(struct SocketData* s)
 {
-    struct SocketData* s = (struct SocketData*) d;
-    /* This block function doesn't support timeouts yet */
-    (void) timeoutms;
-    assert(timeoutms == -1);
+    closesocket(s->sock);
+    s->sock = ADBUS_SOCK_INVALID;
+    return -1;
+}
 
-    if (type == ADBUS_BLOCK) {
-        *block = NULL;
-        while (!*block) {
-            FlushTxBuffer(s);
-            if (adbus_conn_parsecb(s->connection)) {
-                return -1;
-            }
+static int ReceiveBlock(struct SocketData* s)
+{
+    FlushTxBuffer(s);
+    if (adbus_conn_parsecb(s->connection)) {
+        return Disconnect(s);
+    }
+    return 0;
+}
+
+static int Step(struct SocketData* s)
+{
+    /* Try to dispatch any current messages */
+    int ret = adbus_conn_continue(s->connection);
+
+    if (ret == 1) {
+        /* No more messages to dispatch - get some more */
+
+        if (s->sock == ADBUS_SOCK_INVALID) {
+            /* Not connected */
+            return -1;
         }
 
-    } else if (type == ADBUS_UNBLOCK) {
-        /* Just set it to something */
-        *block = s;
-
-    } else if (type == ADBUS_WAIT_FOR_CONNECTED) {
-        *block = NULL;
-        while (!*block && !s->connected) {
-            FlushTxBuffer(s);
-            if (adbus_conn_parsecb(s->connection)) {
-                return -1;
-            }
+        FlushTxBuffer(s);
+        if (adbus_conn_parsecb(s->connection)) {
+            return Disconnect(s);
         }
+
+    } else if (ret == -1) {
+        /* Parse error - disconnect */
+        return Disconnect(s);
     }
 
     return 0;
+}
+
+static int Block(void* d, adbus_BlockType type, uintptr_t* block, int timeoutms)
+{
+    struct SocketData* s = (struct SocketData*) d;
+
+
+    if (timeoutms < 0) {
+        timeoutms = INT_MAX;
+    }
+
+    /* This block function doesn't support timeouts yet */
+    assert(timeoutms == INT_MAX);
+
+    if (type == ADBUS_BLOCK) {
+        assert(*block == 0);
+
+        while (!*block) {
+            if (Step(s)) {
+                return -1;
+            }
+        }
+        return 0;
+
+    } else if (type == ADBUS_UNBLOCK) {
+        /* Just set it to something */
+        *block = 1;
+        return 0;
+
+    } else if (type == ADBUS_WAIT_FOR_CONNECTED) {
+        assert(*block == 0);
+
+        while (!*block && !s->connected) {
+            if (Step(s)) {
+                return -1;
+            }
+        }
+        return 0;
+
+    } else {
+        assert(0);
+        return -1;
+    }
 }
 
 static void Connected(void* d)
@@ -762,7 +814,6 @@ static adbus_ConnVTable sVTable = {
     &SendMsg,           /* send_msg */
     &Recv,              /* recv_data */
     NULL,               /* proxy */
-    NULL,               /* should_proxy */
     NULL,               /* get_proxy */
     &Block              /* block */
 };
@@ -777,7 +828,7 @@ adbus_Connection* adbus_sock_busconnect_s(
     adbus_Bool authenticated = 0;
     int recvd = 0, used = 0;
     char buf[256];
-    void* handle = NULL;
+    uintptr_t handle = 0;
 
     adbusI_initlog();
 
@@ -825,7 +876,8 @@ adbus_Connection* adbus_sock_busconnect_s(
 err:
     adbus_auth_free(auth);
     if (d->connection) {
-        adbus_conn_free(d->connection);
+        adbus_conn_ref(d->connection);
+        adbus_conn_deref(d->connection);
     } else {
         Close(d);
     }

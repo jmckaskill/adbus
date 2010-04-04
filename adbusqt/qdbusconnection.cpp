@@ -80,9 +80,10 @@ QDBusConnection QDBusConnectionPrivate::GetConnection(const QString& name)
 {
     QMutexLocker lock(&sConnectionLock);
 
-    QDBusConnectionPrivate*& p = sNamedConnections[name];
+    QDBusConnectionPrivate* p = sNamedConnections[name];
 	if (p == NULL) {
 		p = new QDBusConnectionPrivate();
+        sNamedConnections[name] = p;
 		QDBusConnection c(p);
 		p->interface = new QDBusConnectionInterface(c, NULL);
 		// Decrement the refcount since p->interface holds a connection
@@ -96,11 +97,13 @@ QDBusConnection QDBusConnectionPrivate::GetConnection(const QString& name)
 QDBusConnection QDBusConnectionPrivate::GetConnection(adbus_BusType type)
 {
     QMutexLocker lock(&sConnectionLock);
-    QDBusConnectionPrivate*& p = sConnection[type];
+    QDBusConnectionPrivate* p = sConnection[type];
 	if (p == NULL) {
 		p = new QDBusConnectionPrivate();
+        sConnection[type] = p;
 		QDBusConnection c(p);
 		p->interface = new QDBusConnectionInterface(c, NULL);
+        p->client->connectToServer(type, true);
 		// Decrement the refcount since p->interface holds a connection
 		qDestructSharedData(p);
 		return c;
@@ -133,7 +136,7 @@ QDBusConnection QDBusConnection::connectToBus(const QString& address, const QStr
 	QDBusConnection c = QDBusConnectionPrivate::GetConnection(name);
 
 	if (c.d->client->connectToServer(address.toLocal8Bit().constData(), true)) {
-		void* block = NULL;
+		uintptr_t block = 0;
 		adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
 	}
 
@@ -147,7 +150,7 @@ QDBusConnection QDBusConnection::connectToBus(BusType type, const QString &name)
 	QDBusConnection c = QDBusConnectionPrivate::GetConnection(name);
 
 	if (c.d->client->connectToServer(type == SystemBus ? ADBUS_SYSTEM_BUS : ADBUS_DEFAULT_BUS, true)) {
-		void* block = NULL;
+		uintptr_t block = 0;
 		adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
 	}
 
@@ -160,10 +163,8 @@ QDBusConnection QDBusConnectionPrivate::BusConnection(adbus_BusType type)
 {
 	QDBusConnection c = QDBusConnectionPrivate::GetConnection(type);
 
-	if (c.d->client->connectToServer(type, true)) {
-		void* block = NULL;
-		adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
-	}
+    uintptr_t block;
+    adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
 
     return c;
 }

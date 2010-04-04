@@ -71,52 +71,57 @@ end
 -- Introspection XML processing
 local call_introspection
 
-local function process_introspection(self, xml_str, path, paths)
+local function process_introspection(self, req, path, xml_str)
     local c = _M.service_proxy.connection(self)
     local s = _M.service_proxy.service(self)
     local x = xml.eval(xml_str)
 
-    table.insert(paths, path)
-    paths.left = paths.left - 1
+    table.insert(req.paths, path)
+    req.left = req.left - 1
 
     for _,node in ipairs(x) do
         if node:tag() == "node" then
-            call_introspection(self, path, node.name, paths)
+            if path == '/' then
+                call_introspection(self, req, path .. node.name)
+            else
+                call_introspection(self, req, path .. '/' .. node.name)
+            end
         end
     end
 
-    if paths.left == 0 then
-        paths.yield = true
+    if req.left == 0 then
+        req.yield = true
     end
 end
 
-call_introspection = function(self, path, node, paths)
+call_introspection = function(self, req, path)
     local c = _M.service_proxy.connection(self)
     local s = _M.service_proxy.service(self)
-    local node_path = path .. (path == "/" and "" or "/") .. node
 
-    c:async_call{
+    local reply = c:async_call{
         destination = s,
-        path        = node_path,
+        path        = path,
         interface   = "org.freedesktop.DBus.Introspectable",
         member      = "Introspect",
         callback    = function(xml) 
-            process_introspection(self, xml, node_path, paths)
+            process_introspection(self, req, path, xml)
         end,
     }
-    paths.left = paths.left + 1
+
+    table.insert(req.replies, reply)
+    req.left = req.left + 1
 end
 
 function _M.service_proxy.help(self)
     local c = _M.service_proxy.connection(self)
     local s = _M.service_proxy.service(self)
 
-    local paths = {left = 0}
-    call_introspection(self, '/', '', paths)
+    local req = {left = 0, paths = {}, replies = {}}
+    call_introspection(self, req, '/')
 
-    c:process(paths)
-    table.sort(paths)
-    return table.concat(paths, "\n")
+    c:process_until_yield(req)
+    table.sort(req.paths)
+    return table.concat(req.paths, "\n")
 end
 
 

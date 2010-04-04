@@ -29,6 +29,7 @@
 #include "state.h"
 #include "proxy.h"
 
+#include <inttypes.h>
 #include <assert.h>
 #include <stdio.h>
 
@@ -267,11 +268,9 @@ adbus_Connection* adbus_conn_new(const adbus_ConnVTable* vtable, void* obj)
     c->state = adbus_state_new();
     c->state->refConnection = 0;
 
-    c->next         = GetNewMessage(c);
+    c->parseMsg     = GetNewMessage(c);
 
     c->dispatchReturn = adbus_msg_new();
-
-    c->current      = &c->toprocess;
 
     c->bus = adbus_proxy_new(c->state);
     c->bus->refConnection = 0;
@@ -280,12 +279,14 @@ adbus_Connection* adbus_conn_new(const adbus_ConnVTable* vtable, void* obj)
     adbus_proxy_setinterface(c->bus, "org.freedesktop.DBus", -1);
 
     c->introspectable = adbus_iface_new("org.freedesktop.DBus.Introspectable", -1);
+    adbus_iface_ref(c->introspectable);
 
     m = adbus_iface_addmethod(c->introspectable, "Introspect", -1);
     adbus_mbr_setmethod(m, &adbusI_introspect, NULL);
     adbus_mbr_retsig(m, "s", -1);
 
     c->properties = adbus_iface_new("org.freedesktop.DBus.Properties", -1);
+    adbus_iface_ref(c->properties);
 
     m = adbus_iface_addmethod(c->properties, "Get", -1);
     adbus_mbr_setmethod(m, &adbusI_getProperty, NULL);
@@ -328,6 +329,68 @@ void adbus_conn_ref(adbus_Connection* c)
 			(void*) c);
 }
 
+static void FreeMessage(adbusI_ConnMsg* m);
+
+void adbus_conn_close(adbus_Connection* c)
+{
+    adbusI_ConnMsg *m, *next;
+
+    ADBUSI_ASSERT_CONN_THREAD(c);
+
+    ADBUSI_LOG_1("free (connection %s, %p)",
+            adbus_conn_uniquename(c, NULL),
+            (void*) c);
+
+    assert(!c->closed);
+    adbusI_InterlockedExchange(&c->closed, 1);
+
+    /* Free the connection services first */
+    adbusI_freeReplies(c);
+    adbusI_freeMatches(c);
+    adbusI_freeObjectTree(&c->binds);
+
+    adbusI_freeRemoteTracker(c);
+
+    adbus_proxy_free(c->bus);
+    adbus_state_free(c->state);
+
+    for (m = c->processBegin; m != NULL; m = next) {
+        next = m->next;
+        FreeMessage(m);
+    }
+
+    m = c->freelist;
+    for (m = c->freelist; m != NULL; m = next) {
+        next = m->next;
+        FreeMessage(m);
+    }
+
+    FreeMessage(c->parseMsg);
+
+    adbus_msg_free(c->dispatchReturn);
+
+    assert(c->introspectable->ref == 1);
+    assert(c->properties->ref == 1);
+    adbus_iface_deref(c->introspectable);
+    adbus_iface_deref(c->properties);
+}
+
+static void FreeConnection(void* u)
+{
+    adbus_Connection* c = (adbus_Connection*) u;
+
+    if (c->vtable.release) {
+        c->vtable.release(c->obj);
+    }
+
+    if (!c->closed) {
+        adbus_conn_close(c);
+    }
+
+    adbusI_freeConnBusData(&c->connect);
+    free(c);
+}
+
 /** Decrements the connection ref count.
  *  \relates adbus_Connection
  */
@@ -340,66 +403,12 @@ void adbus_conn_deref(adbus_Connection* c)
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
 
-    if (ref == 0 && c->vtable.release) {
-        c->vtable.release(c->obj);
+    if (ref == 0) {
+        adbus_conn_proxy(c, NULL, &FreeConnection, c);
     }
 }
 
 /* ------------------------------------------------------------------------- */
-
-static void FreeMessage(adbusI_ConnMsg* m);
-
-/** \def adbus_conn_free(c)
- *  \brief Frees the connection.
- *  \relates adbus_Connection
- */
-void adbus_conn_free(adbus_Connection* c)
-{
-    if (c) {
-        adbusI_ConnMsg* m;
-
-        ADBUSI_LOG_1("free (connection %s, %p)",
-                adbus_conn_uniquename(c, NULL),
-                (void*) c);
-
-        assert(c->ref == 0);
-
-        /* Free the connection services first */
-        adbusI_freeReplies(c);
-        adbusI_freeMatches(c);
-        adbusI_freeObjectTree(&c->binds);
-
-        adbusI_freeRemoteTracker(c);
-        adbusI_freeConnBusData(&c->connect);
-
-        adbus_proxy_free(c->bus);
-        adbus_state_free(c->state);
-
-        for (m = c->current; m != &c->toprocess; m = m->hl.next) {
-            adbusI_ConnMsg* next = m->hl.next;
-            FreeMessage(m);
-            m = next;
-        }
-
-        m = c->extra.next;
-        while (m) {
-            adbusI_ConnMsg* next = m->hl.next;
-            FreeMessage(m);
-            m = next;
-        }
-
-        FreeMessage(c->next);
-
-        adbus_msg_free(c->dispatchReturn);
-
-        assert(c->introspectable->ref == 1);
-        assert(c->properties->ref == 1);
-        adbus_iface_free(c->introspectable);
-        adbus_iface_free(c->properties);
-
-        free(c);
-    }
-}
 
 /* -------------------------------------------------------------------------
  * Message
@@ -497,25 +506,53 @@ uint32_t adbus_conn_serial(adbus_Connection* c)
 
 static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c)
 {
-    if (dl_isempty(&c->extra)) {
-        adbusI_ConnMsg* m = NEW(adbusI_ConnMsg);
-        m->ret = adbus_msg_new();
-        m->buf = adbus_buf_new();
-        return m;
-    } else {
-        adbusI_ConnMsg* m = c->extra.next;
-        dl_remove(ConnMsg, m, &m->hl);
+    if (c->freelist) {
+        adbusI_ConnMsg* m = c->freelist;
         adbus_buf_reset(m->buf);
         m->ref = 0;
         m->matchStarted = 0;
         m->matchFinished = 0;
         m->msgFinished = 0;
+
+        /* Remove it from the free list */
+        c->freelist = m->next;
+        m->next = NULL;
         return m;
+    } else {
+        adbusI_ConnMsg* m = NEW(adbusI_ConnMsg);
+        m->ret = adbus_msg_new();
+        m->buf = adbus_buf_new();
+        return m;
+    }
+}
+
+static void AppendMessageToProcess(adbus_Connection* c, adbusI_ConnMsg* m)
+{
+    assert(m->next == NULL && m->prev == NULL);
+    
+    /* Append the msg to the end of the to process list */
+    if (c->processEnd) {
+        assert(c->processEnd->next == NULL);
+        m->prev = c->processEnd;
+        c->processEnd->next = m;
+        c->processEnd = m;
+    } else {
+        c->processBegin = c->processEnd = m;
+    }
+
+    /* If processCurrent has run off the end of the list set it to our new
+     * message. Note processCurrent can be NULL even with items in the list
+     * since we keep the items in the list around until the outer call frames
+     * exit.
+     */
+    if (!c->processCurrent) {
+        c->processCurrent = m;
     }
 }
 
 static void FreeMessage(adbusI_ConnMsg* m)
 {
+    adbus_freeargs(&m->msg);
     adbus_buf_free(m->buf);
     adbus_msg_free(m->ret);
     free(m);
@@ -523,7 +560,28 @@ static void FreeMessage(adbusI_ConnMsg* m)
 
 static void FinishMessage(adbus_Connection* c, adbusI_ConnMsg* m)
 { 
-    dl_insert_after(ConnMsg, &c->extra, m, &m->hl); 
+    /* Remove message from the to process list */
+    assert(m->next || m == c->processEnd);
+    assert(m->prev || m == c->processBegin);
+    if (m->next) {
+        m->next->prev = m->prev;
+    }
+    if (m->prev) {
+        m->prev->next = m->next;
+    }
+    if (m == c->processBegin) {
+        c->processBegin = m->next;
+    }
+    if (m == c->processEnd) {
+        c->processEnd = m->prev;
+    }
+
+    /* Add it to the head of the free list */
+    m->next = c->freelist;
+    m->prev = NULL;
+    c->freelist = m;
+
+    /* Free data in the msg we don't want to keep */
     adbus_freeargs(&m->msg);
     if (adbus_buf_reserved(m->buf) > 1024) {
         free(adbus_buf_release(m->buf));
@@ -537,8 +595,13 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
     adbus_CbData d;
     adbus_ConnMatch* match;
 
-    assert(c->current == &c->toprocess && dl_isempty(&c->extra));
-    assert(adbus_buf_size(c->next->buf) == 0);
+    /* adbus_conn_dispatch doesn't support reentrancy and can't be used in
+     * concurrence with adbus_conn_parse or adbus_conn_parsecb
+     */
+    assert(!c->closed);
+    assert(!c->processBegin && !c->processEnd && !c->processCurrent);
+    assert(!c->freelist);
+    assert(adbus_buf_size(c->parseMsg->buf) == 0);
 
     ADBUSI_LOG_MSG_2(
 			m,
@@ -579,12 +642,17 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
 
 /* -------------------------------------------------------------------------- */
 
+/* 
+ * \return -1 on parse error
+ * \return 0 on more messages to dispatch
+ * \return 1 on no more messages to dispatch
+ */
 int adbus_conn_continue(adbus_Connection* c)
 {
     adbus_CbData d;
-    adbusI_ConnMsg* msg = c->current;
+    adbusI_ConnMsg* msg = c->processCurrent;
 
-    if (msg == &c->toprocess)
+    if (!msg)
         return 1;
 
     ZERO(d);
@@ -604,6 +672,14 @@ int adbus_conn_continue(adbus_Connection* c)
         if (!match)
             break;
 
+        /* Set the match iter to the next match. If the next match is removed,
+         * remove match will update the iter value to the next match after
+         * that and so forth. Also if in the callback we call back into
+         * adbus_conn_continue the inner call will update the stored iter.
+         * Thus after the inner call completes we can continue on from where
+         * it got up to if it did not finishing processing the matches (ie
+         * matchFinished is not set).
+         */
         dil_setiter(&c->matches.list, match->hl.next);
         if (adbusI_dispatchMatch(match, &d))
             return -1;
@@ -633,11 +709,16 @@ int adbus_conn_continue(adbus_Connection* c)
         msg->msgFinished = 1;
     }
 
-    if (msg == c->current) {
-        c->current = c->current->hl.next;
-        dl_remove(ConnMsg, msg, &msg->hl);
+    /* We have finished processing this message - kick processCurrent along so
+     * the next call starts processing the next message.
+     */
+    if (msg == c->processCurrent) {
+        c->processCurrent = msg->next;
     }
 
+    /* Don't actually remove the message from the process list until all call
+     * frames that reference the message have completed.
+     */
     if (--msg->ref == 0) {
         FinishMessage(c, msg);
     }
@@ -647,50 +728,55 @@ int adbus_conn_continue(adbus_Connection* c)
 
 /* -------------------------------------------------------------------------- */
 
-static adbus_Bool SplitNextMessage(adbus_Connection* c)
+/* Returns 1 on success, 0 on no new messages, -1 on a parse error */
+static int SplitParseMessage(adbus_Connection* c)
 {
-    adbus_Buffer* origbuf = c->next->buf;
+    adbus_Buffer* origbuf = c->parseMsg->buf;
     char* data = adbus_buf_data(origbuf);
     size_t size = adbus_buf_size(origbuf);
-    size_t firstsize = adbus_parse_size(data, size);
+    int firstsize = adbus_parse_size(data, size);
+
+    if (firstsize < 0)
+        return -1;
 
     /* No complete messages */
     if (firstsize == 0 || firstsize > size)
         return 0;
 
-    /* The first message stays in msg */
+    /* The first message stays in parseMsg. The excess data in parseMsg will
+     * be removed after copying it across into new messages.
+     */
+    AppendMessageToProcess(c, c->parseMsg);
+
     data += firstsize;
     size -= firstsize;
-    dl_insert_before(ConnMsg, &c->toprocess.hl, c->next, &c->next->hl);
-    if (c->current == &c->toprocess) {
-        c->current = c->next;
-    }
 
     while (1) {
         adbusI_ConnMsg* next;
 
         /* Find the next message size */
-        size_t msgsize = adbus_parse_size(data, size);
+        int msgsize = adbus_parse_size(data, size);
+        if (msgsize < 0)
+            return -1;
         
         /* No more complete messages */
         if (msgsize == 0 || msgsize > size)
             break;
 
-        /* Append a message to our list */
+        /* Append the next message to be parsed */
         next = GetNewMessage(c);
-        dl_insert_before(ConnMsg, &c->toprocess.hl, next, &next->hl);
-
-        /* Copy the data from our first message */
         adbus_buf_append(next->buf, data, msgsize);
+        AppendMessageToProcess(c, next);
+
         data += msgsize;
         size -= msgsize;
     }
 
-    /* Copy over the remaining data into a new message */
-    c->next = GetNewMessage(c);
-    adbus_buf_append(c->next->buf, data, size);
+    /* Copy over the remaining data into a new parseMsg */
+    c->parseMsg = GetNewMessage(c);
+    adbus_buf_append(c->parseMsg->buf, data, size);
 
-    /* And remove from the original buffer */
+    /* Remove the extra data from the original buffer */
     adbus_buf_remove(origbuf, firstsize, adbus_buf_size(origbuf) - firstsize);
 
     return 1;
@@ -698,17 +784,19 @@ static adbus_Bool SplitNextMessage(adbus_Connection* c)
 
 /* -------------------------------------------------------------------------- */
 
-static int ParseNewMessages(adbus_Connection* c, adbusI_ConnMsg* next)
+/* Returns 0 on success, -1 on a parse error */
+static int ParseNewMessages(adbus_Connection* c, adbusI_ConnMsg* begin)
 {
-    for (; next != &c->toprocess; next = next->hl.next) {
-        char* data = adbus_buf_data(next->buf);
-        size_t size = adbus_buf_size(next->buf);
-        if (adbus_parse(&next->msg, data, size)) {
+    /* Parse from begin until the end of the list */
+    for (; begin != NULL; begin = begin->next) {
+        char* data = adbus_buf_data(begin->buf);
+        size_t size = adbus_buf_size(begin->buf);
+        if (adbus_parse(&begin->msg, data, size)) {
             return -1;
         }
 
         ADBUSI_LOG_MSG_2(
-				&next->msg,
+				&begin->msg,
 				"received (connection %s, %p)",
 				adbus_conn_uniquename(c, NULL),
 				(void*) c);
@@ -722,36 +810,45 @@ static int ParseNewMessages(adbus_Connection* c, adbusI_ConnMsg* next)
 
 int adbus_conn_parse(adbus_Connection* c, const char* data, size_t size)
 {
-    int ret = 0;
-    adbusI_ConnMsg* next = c->next;
+    int ret;
+    adbusI_ConnMsg* m = c->parseMsg;
 
-    adbus_buf_append(next->buf, data, size);
+    assert(!c->closed);
+    adbus_buf_append(m->buf, data, size);
 
-    if (!SplitNextMessage(c))
+    ADBUSI_LOG_DATA_3(
+            data,
+            size,
+            "received data (connection %s, %p)",
+            adbus_conn_uniquename(c, NULL),
+            (void*) c);
+
+    ret = SplitParseMessage(c);
+    if (ret < 0) {
+        return -1;
+    } else if (ret == 0) {
+        /* No new messages */
         return 0;
+    }
 
-    if (ParseNewMessages(c, next))
+    if (ParseNewMessages(c, m))
         return -1;
 
-    while (!ret)
-        ret = adbus_conn_continue(c);
-
-    if (ret < 0)
-        return -1;
-    
     return 0;
 }
 
 #define RECV_SIZE (64*1024)
 int adbus_conn_parsecb(adbus_Connection* c)
 {
-    int ret = 0;
+    int ret;
     int read = RECV_SIZE;
-    adbusI_ConnMsg* next = c->next;
+    adbusI_ConnMsg* m = c->parseMsg;
+
+    assert(!c->closed);
 
     /* Append our new data */
     while (read == RECV_SIZE) {
-        char* dest = adbus_buf_recvbuf(next->buf, RECV_SIZE);
+        char* dest = adbus_buf_recvbuf(m->buf, RECV_SIZE);
         read = c->vtable.recv_data(c->obj, dest, RECV_SIZE);
 
         ADBUSI_LOG_DATA_3(
@@ -761,22 +858,24 @@ int adbus_conn_parsecb(adbus_Connection* c)
 				adbus_conn_uniquename(c, NULL),
 				(void*) c);
 
-        adbus_buf_recvd(next->buf, RECV_SIZE, read);
+        adbus_buf_recvd(m->buf, RECV_SIZE, read);
     }
-    
-    if (!SplitNextMessage(c))
-        return (read < 0) ? -1 : 0;
 
-    if (ParseNewMessages(c, next))
+    ret = SplitParseMessage(c);
+    if (ret < 0) {
+        return -1;
+    } else if (ret == 0) {
+        /* No new messages */
+        return 0;
+    }
+
+    if (ParseNewMessages(c, m))
         return -1;
 
-    while (!ret)
-        ret = adbus_conn_continue(c);
-
-    if (ret < 0)
+    if (read < 0)
         return -1;
-    
-    return (read < 0) ? -1 : 0;
+
+    return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -786,7 +885,7 @@ int adbus_conn_parsecb(adbus_Connection* c)
  *  \sa adbus_ConnectionCallbacks::should_proxy
  */
 adbus_Bool adbus_conn_shouldproxy(adbus_Connection* c)
-{ return c->vtable.should_proxy && c->vtable.should_proxy(c->obj) && c->vtable.proxy; }
+{ return c->thread != adbusI_current_thread(); }
 
 /* -------------------------------------------------------------------------- */
 
@@ -801,7 +900,12 @@ void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, adbus_Callba
     if (c->vtable.proxy) {
         c->vtable.proxy(c->obj, callback, release, user); 
     } else {
-        callback(user);
+        if (callback && !c->closed) {
+            callback(user);
+        }
+        if (release) {
+            release(user);
+        }
     }
 }
 
@@ -816,27 +920,62 @@ void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, adbus_Callba
  */
 void adbus_conn_getproxy(
         adbus_Connection*       c,
-        adbus_ProxyCallback*    cb,
         adbus_ProxyMsgCallback* msgcb,
-        void**                  user)
+        void**                  msguser,
+        adbus_ProxyCallback*    cb,
+        void**                  cbuser)
 {
     if (c->vtable.get_proxy && adbus_conn_shouldproxy(c))
     {
-        c->vtable.get_proxy(c->obj, cb, msgcb, user);
+        c->vtable.get_proxy(c->obj, msgcb, msguser, cb, cbuser);
     }
     else
     {
-        if (cb)
-            *cb = NULL;
         if (msgcb)
             *msgcb = NULL;
-        if (user)
-            *user = NULL;
+        if (msguser)
+            *msguser = NULL;
+        if (cb)
+            *cb = NULL;
+        if (cbuser)
+            *cbuser = NULL;
     }
 }
 
-int adbus_conn_block(adbus_Connection* c, adbus_BlockType type, void** handle, int timeoutms)
+int adbus_conn_block(adbus_Connection* c, adbus_BlockType type, uintptr_t* handle, int timeoutms)
 {
-    /* This will purposely crash if the block callback is not set */
-    return c->vtable.block(c->obj, type, handle, timeoutms);
+    if (type == ADBUS_BLOCK) {
+        ADBUSI_LOG_2("block %p %#"PRIxPTR" (connection %s, %p)",
+                (void*) handle,
+                *handle,
+				adbus_conn_uniquename(c, NULL),
+                (void*) c);
+
+    } else if (type == ADBUS_UNBLOCK) {
+        ADBUSI_LOG_2("unblock %p %#"PRIxPTR" (connection %s, %p)",
+                (void*) handle,
+                *handle,
+				adbus_conn_uniquename(c, NULL),
+                (void*) c);
+
+    } else if (type == ADBUS_WAIT_FOR_CONNECTED) {
+        ADBUSI_LOG_2("wait for connected %p %#"PRIxPTR" (connection %s, %p)",
+                (void*) handle,
+                *handle,
+				adbus_conn_uniquename(c, NULL),
+                (void*) c);
+
+    }
+
+    if (!c->vtable.block || c->vtable.block(c->obj, type, handle, timeoutms)) {
+        ADBUSI_LOG_2("block failed or timed out %p %#"PRIxPTR" (connection %s, %p)",
+                (void*) handle,
+                *handle,
+                adbus_conn_uniquename(c, NULL),
+                (void*) c);
+
+        return -1;
+    }
+
+    return 0;
 }

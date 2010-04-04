@@ -125,6 +125,13 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
 					ds_cstr(&r->unique),
 					(void*) r);
 
+            ADBUSI_LOG_DATA_3(
+                    m->data,
+                    m->size,
+                    "bus send data to (remote %s, %p)",
+                    ds_cstr(&r->unique),
+                    (void*) r);
+
 			r->send(r->user, m);
 		}
     }
@@ -133,9 +140,16 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
         s->caller = from;
         if (r == direct || adbusI_serv_matches(&r->matches, m))
         {
-			ADBUSI_LOG_MSG_2(m, "bus send to (remote %s, %p)",
+			ADBUSI_LOG_MSG_2(m, "bus send to (sync remote %s, %p)",
 					ds_cstr(&r->unique),
 					(void*) r);
+
+            ADBUSI_LOG_DATA_3(
+                    m->data,
+                    m->size,
+                    "bus send data to (sync remote %s, %p)",
+                    ds_cstr(&r->unique),
+                    (void*) r);
 
 			/* Ignore errors from the send */
 			r->send(r->user, m);

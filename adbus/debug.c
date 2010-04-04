@@ -41,7 +41,7 @@
 
 /* -------------------------------------------------------------------------- */
 
-#ifdef _WIN32
+#if defined _WIN32
 #include <windows.h>
 #undef interface
 adbusI_thread_t adbusI_current_thread()
@@ -54,11 +54,13 @@ adbusI_process_t adbusI_current_process()
 #include <unistd.h>
 #include <pthread.h>
 adbusI_thread_t adbusI_current_thread()
-{ return (void*) pthread_self(); }
+{ return pthread_self(); }
 
 adbusI_process_t adbusI_current_process()
 { return getpid(); }
 
+#else
+#error "This needs to be implemented for your platform"
 #endif
 
 /* -------------------------------------------------------------------------- */
@@ -75,13 +77,14 @@ static void logerr(const char* str, size_t sz)
             NULL,
             0,
             "adbus.dll",
-            "[adbus " PRI_PROCESS " " PRI_THREAD "] %.*s",
-			(int) GetCurrentProcessId(),
+            "[adbus %"PRI_PROCESS" %"PRI_THREAD"] %.*s",
+            adbusI_current_process(),
+            adbusI_current_thread(),
 			(int) sz,
 			str);
 #endif
 
-    fprintf(stderr, "[adbus " PRI_PROCESS " " PRI_THREAD "] %.*s",
+    fprintf(stderr, "[adbus %"PRI_PROCESS" %"PRI_THREAD"] %.*s",
             adbusI_current_process(),
             adbusI_current_thread(),
             (int) sz,
@@ -571,7 +574,7 @@ static void MatchString(d_String* s, const adbus_Match* m)
 {
     size_t i;
 
-    Number(s, "add to bus", m->addMatchToBusDaemon);
+    Number(s, "add to bus", m->addToBus);
     String(s, "type", TypeString(m->type));
     Number(s, "reply_serial", m->replySerial);
     String(s, "sender", m->sender);

@@ -51,16 +51,17 @@ extern "C" {
 #   define ADBUSLUA_API extern
 #endif
 
+ADBUSLUA_API int adbuslua_push_connection(lua_State* L, adbus_Connection* c);
 ADBUSLUA_API int adbuslua_push_message(lua_State* L, const adbus_Message* msg);
 ADBUSLUA_API int adbuslua_push_argument(lua_State* L, adbus_Iterator* iter);
 
-ADBUSLUA_API adbus_Interface*  adbuslua_check_interface(lua_State* L, int index);
-ADBUSLUA_API void adbuslua_check_match(lua_State* L, int index, adbus_Match* match);
+ADBUSLUA_API adbus_Connection* adbuslua_check_connection(lua_State* L, int index);
 
 ADBUSLUA_API int adbuslua_to_message(
         lua_State*          L,
         int                 index,
         adbus_MsgFactory*   msg);
+
 ADBUSLUA_API int adbuslua_to_message_unpacked(
         lua_State*          L,
         int                 begin,
@@ -68,6 +69,7 @@ ADBUSLUA_API int adbuslua_to_message_unpacked(
         const char*         sig,
         int                 sigsz,
         adbus_MsgFactory*   msg);
+
 ADBUSLUA_API int adbuslua_to_argument(
         lua_State*          L,
         int                 index,

@@ -26,13 +26,14 @@
 #include "timer.h"
 #include <adbus.h>
 #include <stdio.h>
+#include <limits.h>
 
 
 #define REPEAT 100000
 static int replies = REPEAT;
 
 static adbus_Proxy* proxy;
-static void* blockhandle;
+static uintptr_t blockhandle;
 
 static int Reply(adbus_CbData* d);
 static int Error(adbus_CbData* d);
@@ -86,6 +87,7 @@ int main()
     if (!connection)
         abort();
 
+    adbus_conn_ref(connection);
     state = adbus_state_new();
     proxy = adbus_proxy_new(state);
     adbus_proxy_init(proxy, connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
@@ -93,11 +95,11 @@ int main()
     SendPing();
     
     /* Wait for the pings to finish */
-    adbus_conn_block(connection, ADBUS_BLOCK, &blockhandle, -1);
+    adbus_conn_block(connection, ADBUS_BLOCK, &blockhandle, INT_MAX);
 
     adbus_proxy_free(proxy);
     adbus_state_free(state);
-    adbus_conn_free(connection);
+    adbus_conn_deref(connection);
 
     fprintf(stderr, "Time %d ns\n", StopTimer(&t, REPEAT));
 

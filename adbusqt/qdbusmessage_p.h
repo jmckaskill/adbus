@@ -37,8 +37,10 @@ public:
     QDBusArgumentList() : m_AppendMessage(false) {}
 
     bool    init(const QMetaMethod& method);
-    void    setupMetacall(const QDBusMessage* msg);
+    void    setupMetacall(const QDBusMessage& msg);
     void**  metacallData() {return m_MetacallData.data();}
+    void    getReply(adbus_MsgFactory** ret);
+    void    finishMetacall() {m_Message = QDBusMessage();}
 
     struct Entry
     {
@@ -54,6 +56,7 @@ public:
     bool                m_AppendMessage;
     QList<Entry>        m_Args;
     QVector<void*>      m_MetacallData;
+    QDBusMessage        m_Message;
 };
 
 class QDBusMessagePrivate : public QSharedData
@@ -63,6 +66,7 @@ public:
     static int          FromMessage(QDBusMessage& q, adbus_Message* msg, const QDBusArgumentList& types);
     static bool         GetMessage(const QDBusMessage& q, adbus_MsgFactory* ret);
     static void         GetReply(const QDBusMessage& q, adbus_MsgFactory** ret, const QDBusArgumentList& types);
+    static const QVariant& Argument(const QDBusMessage& q, int argi);
 
     static adbus_MsgFactory*    GetFactory();
 
@@ -87,6 +91,5 @@ public:
     mutable bool        delayedReply;
     mutable QString     replyErrorName;
     mutable QString     replyErrorMsg;
-
 };
 

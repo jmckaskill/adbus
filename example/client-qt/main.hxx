@@ -24,25 +24,62 @@
  */
 
 #include <adbusqt/qdbusclient.hxx>
+#include <adbuslua.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qthread.h>
+
+extern "C" {
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
+}
+
+#define HAVE_SYNC_PINGER
+
+class Pinger : public QObject, public adbus::State
+{
+    Q_OBJECT
+public:
+    Pinger(const adbus::Connection& c);
+    ~Pinger();
+
+    void start();
+    bool isFinished() {return m_LeftToReceive == 0;}
+
+signals:
+    void finished();
+
+private:
+    void asyncPing();
+    void blockPing();
+    void luaPing();
+    void response(const char* str);
+    void error(const char* name, const char* msg);
+    void sendingMessage();
+    void haveReply();
+
+    static int OnSend(lua_State* L);
+    static int OnReply(lua_State* L);
+
+    adbus::Connection   m_Connection;
+    adbus::Proxy        m_Proxy;
+    lua_State*          m_Lua;
+    int                 m_LeftToSend;
+    int                 m_LeftToReceive;
+};
 
 class PingThread : public QThread
 {
     Q_OBJECT
 public:
-    PingThread(const adbus::Connection& c);
+    PingThread(const adbus::Connection& c)
+        : m_Connection(c)
+    {}
+
+    void run();
 
 private:
-    void run();
-    void ping();
-    void response(const char* str);
-    void error(const char* name, const char* msg);
-
-    adbus::Connection   m_Connection;
-    adbus::State*       m_State;
-    adbus::Proxy*       m_Proxy;
-    int                 m_Left;
+    adbus::Connection m_Connection;
 };
 
 class Main : public QObject
@@ -56,6 +93,9 @@ public slots:
     void threadFinished();
 
 private:
+#ifdef HAVE_SYNC_PINGER
+    Pinger              m_Pinger;
+#endif
     int                 m_ThreadsLeft;
     QList<PingThread*>  m_Threads;
 };

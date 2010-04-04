@@ -74,7 +74,7 @@ QDBusPendingCallPrivate::QDBusPendingCallPrivate(const QDBusConnection& c, const
     m_ConnReply(NULL),
     m_Service(service),
     m_Serial(serial),
-    m_Block(NULL),
+    m_Block(0),
     m_Finished(false)
 {
     adbus_conn_proxy(m_Connection, &AddReply, NULL, this);

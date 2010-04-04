@@ -537,8 +537,14 @@ static void RandomData(adbus_Auth* a, d_String* str)
 /* -------------------------------------------------------------------------- */
 static int Send(adbus_Auth* a, const char* data)
 {
+    int sent;
     size_t sz = strlen(data);
-    int sent = a->send(a->data, data, sz);
+
+    ADBUSI_LOG_DATA_2(data, sz, "sending (auth %s, %p)",
+            ds_cstr(&a->id),
+            (void*) a);
+
+    sent = a->send(a->data, data, sz);
     if (sent < 0) {
         return -1;
     } else if (sent != (int) sz) {
@@ -788,6 +794,10 @@ int adbus_auth_parse(adbus_Auth* a, const char* data, size_t sz, adbus_Bool* fin
     }
 
     *finished = 0;
+
+    ADBUSI_LOG_DATA_2(data, sz, "received (auth %s, %p)",
+            ds_cstr(&a->id),
+            (void*) a);
 
     adbus_buf_append(a->buf, data, sz);
 

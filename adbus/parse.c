@@ -206,20 +206,25 @@ static uint32_t Get32(char endianness, uint32_t* value)
  *
  *  The data does not need to be aligned.
  *
- *  \returns The message size or 0 if there is insufficient data to figure out
- *  the message size.
+ *  \returns -1 on parse error
+ *  \returns 0 on insufficient data
+ *  \returns message size
  *
  */
-size_t adbus_parse_size(const char* data, size_t size)
+int adbus_parse_size(const char* data, size_t size)
 {
     adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
-    size_t hsize;
+    size_t msgsize, hsize;
 
     if (size < sizeof(adbusI_ExtendedHeader))
         return 0;
 
     hsize = sizeof(adbusI_ExtendedHeader) + Get32(h->endianness, &h->headerFieldLength);
-    return ADBUS_ALIGN(hsize, 8) + Get32(h->endianness, &h->length);
+    msgsize = ADBUS_ALIGN(hsize, 8) + Get32(h->endianness, &h->length);
+    if (msgsize > ADBUSI_MAXIMUM_MESSAGE_LENGTH)
+        return -1;
+
+    return (int) msgsize;
 }
 
 /** Fills out an adbus_Message by parsing the data.
@@ -248,6 +253,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     adbus_Iterator i;
     adbus_IterArray a;
 
+    assert(size == adbus_parse_size(data, size));
     assert((char*) ADBUS_ALIGN(data, 8) == data);
     assert(size > sizeof(adbusI_ExtendedHeader));
 

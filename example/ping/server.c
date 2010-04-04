@@ -24,8 +24,9 @@
  */
 
 #include <adbus.h>
+#include <limits.h>
 
-void* blockhandle;
+static uintptr_t blockhandle;
 
 static int Quit(adbus_CbData* d)
 {
@@ -70,6 +71,7 @@ int main()
     if (!connection)
         abort();
 
+    adbus_conn_ref(connection);
     state = adbus_state_new();
     bus = adbus_busproxy_new(state, connection);
 
@@ -80,8 +82,6 @@ int main()
         b.interface = CreateInterface();
         b.path      = "/";
         adbus_state_bind(state, connection, &b);
-
-        adbus_iface_deref(b.interface);
     }
 
     /* Register for nz.co.foobar.adbus.PingServer */
@@ -93,11 +93,11 @@ int main()
     }
 
     /* Block for the quit method */
-    adbus_conn_block(connection, ADBUS_BLOCK, &blockhandle, -1);
+    adbus_conn_block(connection, ADBUS_BLOCK, &blockhandle, INT_MAX);
 
     adbus_proxy_free(bus);
     adbus_state_free(state);
-    adbus_conn_free(connection);
+    adbus_conn_deref(connection);
 
     return 0;
 }

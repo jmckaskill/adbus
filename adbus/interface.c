@@ -318,7 +318,9 @@ adbus_Interface* adbus_iface_new(
     adbus_Interface* i  = NEW(adbus_Interface);
     i->name.sz          = (size >= 0) ? size : strlen(name);
     i->name.str         = adbusI_strndup(name, i->name.sz);
-    i->ref              = 1;
+    i->ref              = 0;
+
+    assert(adbusI_isValidInterfaceName(i->name.str, i->name.sz));
 
     ADBUSI_LOG_1("new: \"%s\" (interface %p)", i->name.str, (void*) i);
 
@@ -350,7 +352,7 @@ void adbus_iface_deref(const adbus_Interface* iface)
     dh_Iter ii;
     adbus_Interface* i = (adbus_Interface*) iface;
 
-    if (i)
+    if (i == NULL)
         return;
 
     ref = adbusI_InterlockedDecrement(&i->ref);

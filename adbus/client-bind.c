@@ -333,6 +333,8 @@ adbus_ConnBind* adbus_conn_bind(
     adbusI_ObjectNode* node;
     adbus_ConnBind* ret;
 
+    assert(!c->closed);
+
     ADBUSI_LOG_BIND_1(
 			b,
 			"bind (connection %s, %p)",
@@ -343,6 +345,8 @@ adbus_ConnBind* adbus_conn_bind(
     adbusI_sanitisePath(&pstr, b->path, b->pathSize);
     path.str = ds_cstr(&pstr);
     path.sz = ds_size(&pstr);
+
+    assert(adbusI_isValidObjectPath(path.str, path.sz));
 
     node = adbusI_getObjectNode(c, path);
     ret = adbusI_createBind(&c->binds, node, b);

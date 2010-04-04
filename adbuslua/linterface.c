@@ -47,6 +47,7 @@ static int NewInterface(lua_State* L)
     lua_setmetatable(L, -2);
 
     i->interface = adbus_iface_new(name, (int) namesz);
+    adbus_iface_ref(i->interface);
 
     return 1;
 }
@@ -55,8 +56,8 @@ static int NewInterface(lua_State* L)
 
 static int FreeInterface(lua_State* L)
 {
-    struct Interface* iface = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
-    adbus_iface_deref(iface->interface);
+    struct Interface* i = (struct Interface*) luaL_checkudata(L, 1, INTERFACE);
+    adbus_iface_deref(i->interface);
     return 0;
 }
 
@@ -109,6 +110,9 @@ static int AddProperty(lua_State* L)
     const char* access = luaL_checkstring(L, 4);
     i->member = adbus_iface_addproperty(i->interface, name, (int) namesz, type, (int) typesz);
 
+    /* Dup the name in C rather than hold a ref to the string in lua, as the
+     * interface may be freed on any thread.
+     */
     namedup = adbusluaI_strndup(name, namesz);
     adbus_mbr_addrelease(i->member, &free, namedup);
 

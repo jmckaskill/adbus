@@ -495,8 +495,7 @@ static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connecti
     conn->connection = c;
     conn->refConnection = s->refConnection;
     dil_insert_after(StateConn, &s->connections, conn, &conn->hl);
-    adbus_conn_getproxy(c, NULL, &conn->proxy, &conn->puser);
-    adbus_conn_getproxy(c, &conn->relproxy, NULL, &conn->relpuser);
+    adbus_conn_getproxy(c, &conn->proxy, &conn->puser, &conn->relproxy, &conn->relpuser);
 
     if (s->refConnection) {
         adbus_conn_ref(c);

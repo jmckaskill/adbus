@@ -262,14 +262,17 @@ adbus_ConnMatch* adbus_conn_addmatch(
         const adbus_Match*      reg)
 {
     adbus_ConnMatch* m = NEW(adbus_ConnMatch);
-    CloneMatch(reg, &m->m);
 
+    assert(!c->closed);
     assert(reg->callback);
+
     ADBUSI_LOG_MATCH_1(
 			reg,
 			"add match (connection %s, %p)",
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
+
+    CloneMatch(reg, &m->m);
 
     if (m->m.sender) {
         m->sender = adbusI_getTrackedRemote(c, reg->sender, reg->senderSize);
@@ -283,7 +286,7 @@ adbus_ConnMatch* adbus_conn_addmatch(
         m->m.destinationSize = 0;
     }
 
-    if (m->m.addMatchToBusDaemon) {
+    if (m->m.addToBus) {
         adbus_Call f;
 
         adbusI_matchString(&m->matchString, &m->m);
@@ -352,7 +355,7 @@ void adbus_conn_removematch(
 				adbus_conn_uniquename(c, NULL),
 				(void*) c);
 
-        if (m->m.addMatchToBusDaemon) {
+        if (m->m.addToBus) {
             adbus_Call f;
             adbus_proxy_method(c->bus, &f, "RemoveMatch", -1);
 

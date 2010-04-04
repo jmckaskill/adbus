@@ -25,8 +25,9 @@
 
 #include <adbus.h>
 #include <stdio.h>
+#include <limits.h>
 
-void* blockhandle;
+static uintptr_t blockhandle;
 
 static int Quit(adbus_CbData* d)
 {
@@ -48,7 +49,6 @@ static adbus_Interface* CreateInterface()
 int main(int argc, char* argv[])
 {
     adbus_State* state = adbus_state_new();
-    adbus_Interface* iface = CreateInterface();
     adbus_Connection* conn;
     adbus_Proxy* bus;
 
@@ -65,11 +65,13 @@ int main(int argc, char* argv[])
         return 1;
     }
 
+    adbus_conn_ref(conn);
+
     {
         adbus_Bind b;
 
         adbus_bind_init(&b);
-        b.interface = iface;
+        b.interface = CreateInterface();
         b.path      = "/";
         adbus_state_bind(state, conn, &b);
     }
@@ -84,12 +86,12 @@ int main(int argc, char* argv[])
     }
 
     /* Wait for the quit call */
-    adbus_conn_block(conn, ADBUS_BLOCK, &blockhandle, -1);
+    adbus_conn_block(conn, ADBUS_BLOCK, &blockhandle, INT_MAX);
 
     adbus_state_free(state);
-    adbus_conn_free(conn);
-    adbus_iface_free(iface);
     adbus_proxy_free(bus);
+
+    adbus_conn_deref(conn);
 
     return 0;
 }

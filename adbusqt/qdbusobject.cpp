@@ -38,6 +38,10 @@ QDBusObject::QDBusObject(const QDBusConnection& connection, QObject* tracked)
     m_QConnection(connection),
     m_Tracked(tracked)
 {
+    memset(&m_Binds, 0, sizeof(m_Binds));
+    memset(&m_Replies, 0, sizeof(m_Replies));
+    memset(&m_Matches, 0, sizeof(m_Matches));
+
     if (m_Tracked) {
         // Filter events in order to get the ThreadChange event
         m_Tracked->installEventFilter(this);
@@ -103,12 +107,14 @@ int QDBusObject::MatchCallback(adbus_CbData* d)
         if (QDBusMessagePrivate::FromMessage(msg, d->msg))
             return -1;
 
-        data->arguments.setupMetacall(&msg);
+        data->arguments.setupMetacall(msg);
 
         data->object->qt_metacall(
                 QMetaObject::InvokeMetaMethod,
                 data->methodIndex,
                 data->arguments.metacallData());
+
+        data->arguments.finishMetacall();
     }
 
     return 0;
@@ -132,12 +138,14 @@ int QDBusObject::ReplyCallback(adbus_CbData* d)
         if (QDBusMessagePrivate::FromMessage(msg, d->msg, data->arguments))
             return -1;
 
-        data->arguments.setupMetacall(&msg);
+        data->arguments.setupMetacall(msg);
 
         data->object->qt_metacall(
                 QMetaObject::InvokeMetaMethod,
                 data->methodIndex,
                 data->arguments.metacallData());
+
+        data->arguments.finishMetacall();
     }
 
     dil_remove(QDBusReplyData, data, &data->hl);
@@ -196,15 +204,15 @@ int QDBusObject::MethodCallback(adbus_CbData* d)
     if (QDBusMessagePrivate::FromMessage(msg, d->msg, method->arguments))
         return -1;
 
-    method->arguments.setupMetacall(&msg);
+    method->arguments.setupMetacall(msg);
 
     bind->object->qt_metacall(
             QMetaObject::InvokeMetaMethod,
             method->methodIndex,
             method->arguments.metacallData());
 
-
-    QDBusMessagePrivate::GetReply(msg, &d->ret, method->arguments);
+    method->arguments.getReply(&d->ret);
+    method->arguments.finishMetacall();
 
     return 0;
 }
@@ -326,6 +334,8 @@ bool QDBusObject::addReply(const QByteArray& remote, uint32_t serial, QObject* r
     d->reply.proxy = &ProxyMsgCallback;
     d->reply.puser = this;
 
+    d->connection = m_Connection;
+
     dil_insert_after(QDBusReplyData, &m_Replies, d, &d->hl);
     adbus_conn_proxy(m_Connection, &DoAddReply, NULL, d);
 
@@ -406,6 +416,8 @@ bool QDBusObject::addMatch(
 
     d->match.release[0] = &ReleaseMatch;
     d->match.ruser[0] = d;
+
+    d->connection = m_Connection;
 
     dil_insert_after(QDBusMatchData, &m_Matches, d, &d->hl);
     adbus_conn_proxy(m_Connection, &DoAddMatch, NULL, d);
@@ -497,12 +509,14 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
                 QDBusArgumentList::Entry* e = &d->arguments.m_Args[i];
                 const QByteArray& dbus = e->type->m_DBusSignature;
 
-                if (e->inarg) {
-                    adbus_mbr_argsig(mbr, dbus.constData(), dbus.size());
-                    adbus_mbr_argname(mbr, e->name.constData(), e->name.size());
-                } else {
-                    adbus_mbr_retsig(mbr, dbus.constData(), dbus.size());
-                    adbus_mbr_retname(mbr, e->name.constData(), e->name.size());
+                if (e->type) {
+                    if (e->inarg) {
+                        adbus_mbr_argsig(mbr, dbus.constData(), dbus.size());
+                        adbus_mbr_argname(mbr, e->name.constData(), e->name.size());
+                    } else {
+                        adbus_mbr_retsig(mbr, dbus.constData(), dbus.size());
+                        adbus_mbr_retname(mbr, e->name.constData(), e->name.size());
+                    }
                 }
             }
 
@@ -602,16 +616,20 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
 
     const QMetaObject* meta;
     for (meta = object->metaObject(); meta != NULL; meta = meta->superClass()) {
-        // interface is deref'd in FreeDoBind
-        adbus_Interface* iface = adbus_iface_new(meta->className(), -1);
+        QByteArray name = "local.";
+        name += meta->className();
+        name.replace("::", ".");
+
+        adbus_Interface* iface = adbus_iface_new(name.constData(), name.size());
+        adbus_iface_ref(iface);
 
         int mbegin = meta->methodOffset();
-        int mend = mbegin + meta->methodCount();
+        int mend = meta->methodCount();
         for (int mi = mbegin; mi < mend; mi++)
             AddMethod(iface, meta->method(mi), mi);
 
         int pbegin = meta->propertyOffset();
-        int pend = pbegin + meta->propertyCount();
+        int pend = meta->propertyCount();
         for (int pi = pbegin; pi < pend; pi++)
             AddProperty(iface, meta->property(pi), pi);
 
@@ -631,6 +649,8 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
 
         d->bind.release[0] = &ReleaseBind;
         d->bind.ruser[0] = d;
+
+        d->connection = m_Connection;
 
         dil_insert_after(QDBusBindData, &m_Binds, d, &d->hl);
         adbus_conn_proxy(m_Connection, &DoBind, &FreeDoBind, d);
@@ -691,6 +711,7 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
         return false;
 
     adbus_Interface* iface = adbus_iface_new(ifaceName.constData(), ifaceName.size());
+    adbus_iface_ref(iface);
 
     QDomElement member;
     for (QDomElement xmlMember = xmlInterface.firstChildElement();
@@ -759,6 +780,8 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
 
     d->bind.release[0] = &ReleaseBind;
     d->bind.ruser[0] = d;
+
+    d->connection = m_Connection;
 
     dil_insert_after(QDBusBindData, &m_Binds, d, &d->hl);
     adbus_conn_proxy(m_Connection, &DoBind, &FreeDoBind, d);

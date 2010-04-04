@@ -57,8 +57,6 @@ struct Server* CreateServer(int efd, int fd)
     if (epoll_ctl(efd, EPOLL_CTL_ADD, fd, &event))
         abort();
 
-    adbus_iface_deref(iface);
-
     return s;
 }
 

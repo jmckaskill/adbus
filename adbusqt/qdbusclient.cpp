@@ -39,6 +39,34 @@
 #   include <unistd.h>
 #endif
 
+#define DEFAULT_TIMEOUT 25000
+
+/* ------------------------------------------------------------------------- */
+
+adbus_Connection* QDBusClient::Create(adbus_BusType type, bool connectToBus)
+{
+    QDBusClient* c = new QDBusClient();
+    if (!c->connectToServer(type, connectToBus)) {
+        adbus_conn_ref(c->base());
+        adbus_conn_deref(c->base());
+        return NULL;
+    }
+
+    return c->base();
+}
+
+adbus_Connection* QDBusClient::Create(const char* envstr, bool connectToBus)
+{
+    QDBusClient* c = new QDBusClient();
+    if (!c->connectToServer(envstr, connectToBus)) {
+        adbus_conn_ref(c->base());
+        adbus_conn_deref(c->base());
+        return NULL;
+    }
+
+    return c->base();
+}
+
 /* ------------------------------------------------------------------------- */
 
 const adbus_ConnVTable QDBusClient::s_VTable = {
@@ -46,7 +74,6 @@ const adbus_ConnVTable QDBusClient::s_VTable = {
     &QDBusClient::SendMsg,
     &QDBusClient::Recv,
     &QDBusClient::Proxy,
-    &QDBusClient::ShouldProxy,
     &QDBusClient::GetProxy,
     &QDBusClient::Block
 };
@@ -55,20 +82,21 @@ QDBusClient::QDBusClient()
 :   m_Connection(adbus_conn_new(&s_VTable, this)),
     m_ConnectToBus(false),
     m_Connected(false),
-    m_AppHasQuit(false),
     m_Authenticated(0),
     m_Auth(NULL),
-    m_IODevice(NULL)
+    m_IODevice(NULL),
+    m_Closed(false)
 {
+    adbus_conn_ref(m_Connection);
     m_Buffer = adbus_buf_new();
-    /* Bit of a special hack - since messages can contain open refs to the
-     * connection, the client can easily be deleted in the real late stages of
-     * app shutdown (when its flushing the event queue). At this point
-     * deleteLater doesn't work and deleting the socket results in a deadlock.
-     * So we detect this earlier and simply delay the actual delete until the
-     * refs have been cleared up.
+
+    /* We hold a ref on the connection, so the connection will not be deleted
+     * until the thread/app shuts down. This greatly simplifies the shutdown
+     * logic as we are guarenteed to run adbus_conn_close on the correct
+     * thread.
      */
-    connect(QCoreApplication::instance(), SIGNAL(aboutToQuit()), this, SLOT(appQuitting()));
+    connect(QThread::currentThread(), SIGNAL(finished()), this, SLOT(close()));
+    connect(QCoreApplication::instance(), SIGNAL(aboutToQuit()), this, SLOT(close()));
 }
 
 /* ------------------------------------------------------------------------- */
@@ -81,31 +109,32 @@ QDBusClient::~QDBusClient()
     }
     adbus_auth_free(m_Auth);
     adbus_buf_free(m_Buffer);
-    adbus_conn_free(m_Connection);
 }
 
 /* ------------------------------------------------------------------------- */
 
 void QDBusClient::Free(void* u)
-{
-    QDBusClient* d = (QDBusClient*) u;
-    if (d->m_AppHasQuit) {
-        delete d;
-    } else {
-        d->deleteLater();
-    }
-}
+{ delete (QDBusClient*) u; }
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusClient::appQuitting()
+void QDBusClient::close()
 {
-    setParent(NULL);
-    moveToThread(NULL);
-    QCoreApplication::removePostedEvents(this);
-    delete m_IODevice;
-    m_IODevice = NULL;
-    m_AppHasQuit = true;
+    if (!m_Closed) {
+        m_Closed = true;
+        moveToThread(NULL);
+        adbus_conn_close(m_Connection);
+        QCoreApplication::removePostedEvents(this);
+        adbus_conn_deref(m_Connection);
+        if (m_IODevice) {
+            if (m_IODevice->bytesToWrite() > 0) {
+                m_IODevice->waitForBytesWritten(0);
+            }
+            m_IODevice->close();
+            m_IODevice->deleteLater();
+            m_IODevice = NULL;
+        }
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -151,14 +180,6 @@ uint8_t QDBusClient::Rand(void* u)
 
 /* ------------------------------------------------------------------------- */
 
-adbus_Bool QDBusClient::ShouldProxy(void* u)
-{
-    QDBusClient* c = (QDBusClient*) u;
-    return QThread::currentThread() != c->thread();
-}
-
-/* ------------------------------------------------------------------------- */
-
 struct QDBusClientThreadData
 {
     ~QDBusClientThreadData();
@@ -175,7 +196,7 @@ QDBusClientThreadData::~QDBusClientThreadData()
 
 static QThreadStorage<QDBusClientThreadData*> s_ThreadData;
 
-void QDBusClient::GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallback* msgcb, void** data)
+void QDBusClient::GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser)
 {
     QDBusClient* c = (QDBusClient*) u;
 
@@ -200,7 +221,13 @@ void QDBusClient::GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallb
         p = new QDBusProxy(c->base());
     }
 
-    *data = p;
+    if (cbuser) {
+        *cbuser = p;
+    }
+
+    if (msguser) {
+        *msguser = p;
+    }
 }
 
 /* ------------------------------------------------------------------------- */
@@ -209,8 +236,20 @@ void QDBusClient::GetProxy(void* u, adbus_ProxyCallback* cb, adbus_ProxyMsgCallb
 void QDBusClient::Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser)
 {
     QDBusClient* s = (QDBusClient*) u;
+    QThread* clientThread = s->thread();
 
-    if (QThread::currentThread() == s->thread()) {
+    if (clientThread == NULL) {
+        QDBUS_LOG("QDBusClient %p calling %p/%p with %p at shutdown",
+                s,
+                cb,
+                release,
+                cbuser);
+
+        if (release) {
+            release(cbuser);
+        }
+
+    } else if (clientThread == QThread::currentThread()) {
         QDBUS_LOG("QDBusClient %p calling %p/%p with %p directly",
                 s,
                 cb,
@@ -269,7 +308,20 @@ bool QDBusClient::event(QEvent* event)
 
 #define UNBLOCK_CODE 6
 
-int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms)
+int QDBusClient::dispatchExisting()
+{
+    int ret = 0;
+    while (!ret) {
+        ret = adbus_conn_continue(m_Connection);
+    }
+    if (ret < 0) {
+        disconnect();
+        return -1;
+    }
+    return 0;
+}
+
+int QDBusClient::Block(void* u, adbus_BlockType type, uintptr_t* data, int timeoutms)
 {
     QDBusClient* d = (QDBusClient*) u;
 
@@ -280,36 +332,43 @@ int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms
 			if (d->m_Connected)
 				return 0;
 
-            QEventLoop loop;
-            *data = &loop;
+            QDBusEventLoop loop(timeoutms);
+            *data = (uintptr_t) &loop;
+            QDBUS_LOG("Block %p", (void*) &loop);
 
-            connect(d, SIGNAL(connected()), &loop, SLOT(quit()));
-            connect(d, SIGNAL(disconnected()), &loop, SLOT(quit()));
+            connect(d, SIGNAL(connected()), &loop, SLOT(success()));
+            connect(d, SIGNAL(disconnected()), &loop, SLOT(failure()));
 
-            if (timeoutms > 0) {
-                QTimer::singleShot(timeoutms, &loop, SLOT(quit()));
-            }
+            /* Dispatch existing messages */
+            if (QThread::currentThread() == d->thread() && d->dispatchExisting())
+                return -1;
 
-            if (loop.exec() == UNBLOCK_CODE)
-                return 0;
+            /* Get more messages */
+            QDBUS_LOG("Enter exec %p", (void*) *data);
+            if (loop.exec())
+                return -1; /* timeout or error */
 
             if (!d->m_Connected)
-                return -1; /* timeout or error */
+                return -1;
 
             return 0;
         }
 
     case ADBUS_BLOCK:
         {
-            QEventLoop loop;
-            *data = &loop;
+            QDBusEventLoop loop(timeoutms);
+            *data = (uintptr_t) &loop;
+            QDBUS_LOG("Block %p", (void*) &loop);
 
-            connect(d, SIGNAL(disconnected()), &loop, SLOT(quit()));
-            if (timeoutms > 0) {
-                QTimer::singleShot(timeoutms, &loop, SLOT(quit()));
-            }
+            connect(d, SIGNAL(disconnected()), &loop, SLOT(failure()));
 
-            if (loop.exec() != UNBLOCK_CODE)
+            /* Dispatch existing messages */
+            if (QThread::currentThread() == d->thread() && d->dispatchExisting())
+                return -1;
+
+            /* Get more messages */
+            QDBUS_LOG("Enter exec %p", (void*) *data);
+            if (loop.exec())
                 return -1; // timeout or error
 
             return 0;
@@ -317,13 +376,13 @@ int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms
 
     case ADBUS_UNBLOCK:
         {
-            QEventLoop* loop = (QEventLoop*) *data;
-            if (!loop)
-                return -1;
-
-            Q_ASSERT(loop->thread() == QThread::currentThread());
-            loop->exit(UNBLOCK_CODE);
-            *data = NULL;
+            QDBusEventLoop* loop = (QDBusEventLoop*) *data;
+            QDBUS_LOG("Unblock %p", (void*) loop);
+            if (loop) {
+                Q_ASSERT(loop->thread() == QThread::currentThread());
+                loop->success();
+                *data = 0;
+            }
             return 0;
         }
 
@@ -334,20 +393,59 @@ int QDBusClient::Block(void* u, adbus_BlockType type, void** data, int timeoutms
 
 /* ------------------------------------------------------------------------- */
 
+QDBusEventLoop::QDBusEventLoop(int timeoutms)
+:   m_Finished(false),
+    m_Return(-1)
+{
+    if (timeoutms < 0) {
+        timeoutms = DEFAULT_TIMEOUT;
+    }
+
+    if (timeoutms < INT_MAX) {
+        QTimer::singleShot(timeoutms, this, SLOT(failure()));
+    }
+}
+
+int QDBusEventLoop::exec()
+{
+    if (!m_Finished) {
+        QEventLoop::exec();
+    }
+    return m_Return;
+}
+
+void QDBusEventLoop::success()
+{
+    if (!m_Finished) {
+        m_Finished = true;
+        m_Return = 0;
+        if (QEventLoop::isRunning()) {
+            QEventLoop::quit();
+        }
+    }
+}
+
+void QDBusEventLoop::failure()
+{
+    if (!m_Finished) {
+        m_Finished = true;
+        m_Return = -1;
+        if (QEventLoop::isRunning()) {
+            QEventLoop::quit();
+        }
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+/* ------------------------------------------------------------------------- */
+/* ------------------------------------------------------------------------- */
+
 void QDBusClient::ConnectedToBus(void* u)
 {
     QDBusClient* d = (QDBusClient*) u;
     d->m_UniqueName = QString::fromUtf8(adbus_conn_uniquename(d->m_Connection, NULL));
     d->m_Connected = true;
     emit d->connected();
-}
-
-/* ------------------------------------------------------------------------- */
-
-bool QDBusClient::waitForConnected()
-{
-    void* block = NULL;
-    return adbus_conn_block(m_Connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1) == 0;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -388,7 +486,14 @@ bool QDBusClient::connectToServer(const char* envstr, bool connectToBus)
         s->connectToHost(fields["host"], fields["port"].toUInt());
         connect(s, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(disconnect()));
         connect(s, SIGNAL(disconnected()), this, SLOT(disconnect()));
-        connect(s, SIGNAL(readyRead()), this, SLOT(socketReadyRead()));
+        /* readyRead is not emitted recursively ie if socketReadyRead was
+         * called directly from the readyRead signal and that in turn dispatch
+         * a callback which started a new event loop (via Block), we would not
+         * be able to get the readyRead signal in the inner event loop. So to
+         * get around this we always get out of the sockets readyRead before
+         * processing data.
+         */
+        connect(s, SIGNAL(readyRead()), this, SLOT(socketReadyRead()), Qt::QueuedConnection);
         connect(s, SIGNAL(connected()), this, SLOT(socketConnected()));
         m_IODevice = s;
         return true;
@@ -407,7 +512,8 @@ bool QDBusClient::connectToServer(const char* envstr, bool connectToBus)
         s->setSocketDescriptor(sock, QLocalSocket::ConnectedState);
         connect(s, SIGNAL(error(QLocalSocket::LocalSocketError)), this, SLOT(disconnect()));
         connect(s, SIGNAL(disconnected()), this, SLOT(disconnect()));
-        connect(s, SIGNAL(readyRead()), this, SLOT(socketReadyRead()));
+        /* See the comment about readyRead above */
+        connect(s, SIGNAL(readyRead()), this, SLOT(socketReadyRead()), Qt::QueuedConnection);
         m_IODevice = s;
         socketConnected();
         return true;
@@ -468,11 +574,13 @@ void QDBusClient::socketReadyRead()
                 m_Connected = true;
                 emit connected();
             }
+            dispatchExisting();
         }
     } else {
         if (adbus_conn_parsecb(m_Connection)) {
             return disconnect();
         }
+        dispatchExisting();
     }
 }
 

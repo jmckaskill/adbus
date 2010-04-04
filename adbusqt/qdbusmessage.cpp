@@ -43,7 +43,7 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
     m_MetacallData.resize(types.size() + 1);
 
     QByteArray rettype = method.typeName();
-    if (rettype.isEmpty() && rettype != "void") {
+    if (!rettype.isEmpty() && rettype != "void") {
 
         int typeId = QMetaType::type(rettype.constData());
         if (typeId < 0)
@@ -106,27 +106,35 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentList::setupMetacall(const QDBusMessage* msg)
+void QDBusArgumentList::setupMetacall(const QDBusMessage& msg)
 {
-    QList<QVariant> args = msg->arguments();
+    m_Message = msg;
     int argi = 0;
 
     for (int i = 0; i < m_Args.size(); i++) {
         if (m_Args[i].inarg) {
-            QVariant arg = args.at(argi++);
+            /* Reference the variant inside the message directly as the
+             * pointer returned by constData is only valid whilst that
+             * particular QVariant is alive.
+             */
+            const QVariant& arg = QDBusMessagePrivate::Argument(m_Message, argi++);
 
             /* This should have already been assured by QDBusMessage::FromMessage */
             Q_ASSERT(arg.userType() == m_Args[i].type->m_TypeId);
 
-            m_MetacallData[i] = const_cast<void*>(arg.data());
+            m_MetacallData[i] = const_cast<void*>(arg.constData());
         }
     }
 
     if (m_AppendMessage) {
-        m_MetacallData[m_MetacallData.size() - 1] = (void*) msg;
+        m_MetacallData[m_MetacallData.size() - 1] = (void*) &m_Message;
     }
 }
 
+/* ------------------------------------------------------------------------- */
+
+void QDBusArgumentList::getReply(adbus_MsgFactory** ret)
+{ QDBusMessagePrivate::GetReply(m_Message, ret, *this); }
 
 
 
@@ -246,6 +254,7 @@ parse_error:
 bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* msg)
 {
     QDBusMessagePrivate* d = q.d_ptr;
+    Q_ASSERT(d);
 
     adbus_msg_reset(msg);
     adbus_msg_settype(msg, d->type);
@@ -315,6 +324,7 @@ bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* ms
 void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** ret, const QDBusArgumentList& args)
 {
     QDBusMessagePrivate* d = msg.d_ptr;
+    Q_ASSERT(d);
 
     if (*ret && !d->delayedReply) {
         adbus_Buffer* buf = adbus_msg_argbuffer(*ret);
@@ -331,6 +341,11 @@ void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** r
         *ret = NULL;
     }
 }
+
+/* ------------------------------------------------------------------------- */
+
+const QVariant& QDBusMessagePrivate::Argument(const QDBusMessage& msg, int num)
+{ return msg.d_ptr->arguments.at(num); }
 
 /* ------------------------------------------------------------------------- */
 
@@ -395,7 +410,7 @@ void QDBusMessagePrivate::getHeaders(adbus_Message* msg)
 /* ------------------------------------------------------------------------- */
 
 QDBusMessage::QDBusMessage()
-{ qCopySharedData(d_ptr, new QDBusMessagePrivate); }
+{ d_ptr = NULL; }
 
 QDBusMessage::~QDBusMessage()
 { qDestructSharedData(d_ptr); }
@@ -466,8 +481,12 @@ QDBusMessage QDBusMessage::createErrorReply(const QString name,
 
     ret.d_ptr->type = ADBUS_MSG_ERROR;
     ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
-    ret.d_ptr->destination = d_ptr->sender;
-    ret.d_ptr->replySerial = d_ptr->serial;
+
+    if (d_ptr) {
+        ret.d_ptr->destination = d_ptr->sender;
+        ret.d_ptr->replySerial = d_ptr->serial;
+    }
+
     ret.d_ptr->error = name;
     ret.d_ptr->arguments[0] = msg;
 
@@ -482,8 +501,12 @@ QDBusMessage QDBusMessage::createReply(const QList<QVariant> &arguments) const
 
     ret.d_ptr->type = ADBUS_MSG_RETURN;
     ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
-    ret.d_ptr->replySerial = d_ptr->serial;
-    ret.d_ptr->destination = d_ptr->sender;
+
+    if (d_ptr) {
+        ret.d_ptr->replySerial = d_ptr->serial;
+        ret.d_ptr->destination = d_ptr->sender;
+    }
+
     ret.d_ptr->arguments = arguments;
 
     return ret;
@@ -492,7 +515,7 @@ QDBusMessage QDBusMessage::createReply(const QList<QVariant> &arguments) const
 /* ------------------------------------------------------------------------- */
 
 QList<QVariant> QDBusMessage::arguments() const
-{ return d_ptr->arguments; }
+{ return d_ptr ? d_ptr->arguments : QList<QVariant>(); }
 
 void QDBusMessage::setArguments(const QList<QVariant>& arguments)
 {
@@ -510,40 +533,44 @@ QDBusMessage& QDBusMessage::operator<<(const QVariant& arg)
 /* ------------------------------------------------------------------------- */
 
 QString QDBusMessage::service() const
-{ return d_ptr->sender; }
+{ return d_ptr ? d_ptr->sender : QString(); }
 
 QString QDBusMessage::path() const
-{ return d_ptr->path; }
+{ return d_ptr ? d_ptr->path : QString(); }
 
 QString QDBusMessage::interface() const
-{ return d_ptr->interface; }
+{ return d_ptr ? d_ptr->interface : QString(); }
 
 QString QDBusMessage::member() const
-{ return d_ptr->member; }
+{ return d_ptr ? d_ptr->member : QString(); }
 
 QDBusMessage::MessageType QDBusMessage::type() const
-{ return (QDBusMessage::MessageType) d_ptr->type; }
+{ return d_ptr ? (MessageType) d_ptr->type : InvalidMessage; }
 
 QString QDBusMessage::signature() const
-{ return d_ptr->signature; }
+{ return d_ptr ? d_ptr->signature : QString(); }
 
 QString QDBusMessage::errorName() const
-{ return d_ptr->error; }
+{ return d_ptr ? d_ptr->error : QString(); }
 
 bool QDBusMessage::isReplyRequired() const
-{ return (d_ptr->flags & ADBUS_MSG_NO_REPLY) == 0; }
+{ return d_ptr ? (d_ptr->flags & ADBUS_MSG_NO_REPLY) == 0 : false; }
 
 void QDBusMessage::setDelayedReply(bool enable) const
-{ d_ptr->delayedReply = enable; }
+{ 
+    if (d_ptr) {
+        d_ptr->delayedReply = enable; 
+    }
+}
 
 bool QDBusMessage::isDelayedReply() const
-{ return d_ptr->delayedReply; }
+{ return d_ptr ? d_ptr->delayedReply : false; }
 
 /* ------------------------------------------------------------------------- */
 
 QString QDBusMessage::errorMessage() const
 {
-    if (d_ptr->type != ADBUS_MSG_ERROR || d_ptr->arguments.isEmpty()) {
+    if (!d_ptr || d_ptr->type != ADBUS_MSG_ERROR || d_ptr->arguments.isEmpty()) {
         return QString();
     } else {
         return d_ptr->arguments[0].toString();

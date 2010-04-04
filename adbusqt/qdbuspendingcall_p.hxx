@@ -72,11 +72,10 @@ private:
     void haveReply();
 
     QDBusConnection     m_QConnection;
-    adbus_Connection*   m_Connection;
     adbus_ConnReply*    m_ConnReply;
     QByteArray          m_Service;
     uint32_t            m_Serial;
-    void*               m_Block;
+    uintptr_t           m_Block;
     bool                m_Finished;
 };
 

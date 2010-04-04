@@ -24,9 +24,8 @@
  */
 
 #include <adbuscpp.h>
-#include <memory>
-
 #include <stdio.h>
+#include <limits.h>
 
 class Main : public adbus::State
 {
@@ -34,7 +33,7 @@ public:
     Main(adbus_Connection* c);
 
     void quit() {adbus_conn_block(m_Connection, ADBUS_UNBLOCK, &m_Block, -1);}
-    int run()   {return adbus_conn_block(m_Connection, ADBUS_BLOCK, &m_Block, -1);}
+    int run()   {return adbus_conn_block(m_Connection, ADBUS_BLOCK, &m_Block, INT_MAX);}
 
 private:
     static adbus::Interface<Main> CreateInterface();
@@ -43,7 +42,7 @@ private:
     void NameError(const char* err, const char* msg);
 
     adbus_Connection*   m_Connection;
-    void*               m_Block;
+    uintptr_t           m_Block;
 };
 
 adbus::Interface<Main> Main::CreateInterface()

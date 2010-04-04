@@ -74,8 +74,20 @@ QEvent::Type QDBusProxyEvent::type = (QEvent::Type) QEvent::registerEventType();
 void QDBusProxy::ProxyCallback(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser)
 {
     QDBusProxy* s = (QDBusProxy*) u;
+    QThread* proxyThread = s->thread();
 
-    if (QThread::currentThread() == s->thread()) {
+    if (proxyThread == NULL) {
+        QDBUS_LOG("QDBusProxy %p calling %p/%p with %p at shutdown",
+                s,
+                cb,
+                release,
+                cbuser);
+
+        if (release) {
+            release(cbuser);
+        }
+
+    } else if (proxyThread == QThread::currentThread()) {
         QDBUS_LOG("QDBusProxy %p calling %p/%p with %p directly",
                 s,
                 cb,

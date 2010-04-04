@@ -39,7 +39,10 @@ inline void qDeleteSharedData(T*& d)
 template <class T>
 inline void qDetachSharedData(T*& d)
 {
-    if (d && d->ref != 1) {
+    if (!d) {
+        d = new T;
+        d->ref.ref();
+    } else if (d && d->ref != 1) {
         T* x = new T(*d);
         x->ref.ref();
         if (!d->ref.deref())

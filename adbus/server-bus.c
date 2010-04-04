@@ -218,7 +218,6 @@ static adbus_ConnVTable sBusVTable = {
     &SendToServer,      /* send_message */
     NULL,               /* recv_data */
     NULL,               /* proxy */
-    NULL,               /* should_proxy */
     NULL,               /* get_proxy */
     NULL,               /* block */
 };
@@ -285,6 +284,8 @@ void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
     adbus_mbr_argsig(m, "s", -1);
 
     s->bus.connection = adbus_conn_new(&sBusVTable, s);
+    adbus_conn_ref(s->bus.connection);
+
     s->bus.nameOwnerChanged = adbus_sig_new(changedsig);
     s->bus.nameAcquired = adbus_sig_new(acquiredsig);
     s->bus.nameLost = adbus_sig_new(lostsig);
@@ -321,7 +322,7 @@ void adbusI_serv_freeBus(adbus_Server* s)
     adbus_sig_free(s->bus.nameOwnerChanged);
     adbus_sig_free(s->bus.nameAcquired);
     adbus_sig_free(s->bus.nameLost);
-    adbus_conn_free(s->bus.connection);
+    adbus_conn_deref(s->bus.connection);
     adbus_msg_free(s->bus.msg);
 }
 

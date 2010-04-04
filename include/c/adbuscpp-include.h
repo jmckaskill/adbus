@@ -259,12 +259,18 @@
         TEMPLATE_CLASS_DECLS
         void block(POINTER_ARGS)  // A0* a0, ...
         {
-            assert(!cuser);
             if (NUM() > 0) {
                 typedef NUM(detail::GetReturnsData) SB_CLASS_NAMES Data;
 
-                this->callback  = &NUM(detail::GetReturnsCallback) SB_CLASS_NAMES;
-                this->cuser     = CreateUser<Data>();
+                /* You can either set a callback or grab the return arguments
+                 * via a setCallback with block() or via the pointers given in
+                 * the block(&ret0, &ret1) call, but not both.
+                 */
+                assert(!callback && !cuser && !release[0] && !ruser[0]);
+                this->callback      = &NUM(detail::GetReturnsCallback) SB_CLASS_NAMES;
+                this->cuser         = CreateUser<Data>();
+                this->release[0]    = &free;
+                this->ruser[0]      = this->cuser;
 
                 Data* o = (Data*) this->cuser;
                 (void) o;

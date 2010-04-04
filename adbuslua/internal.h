@@ -54,8 +54,6 @@ struct Connection
     adbus_Connection*       connection;
     adbus_MsgFactory*       message;
     lua_State*              L;
-    int                     queue;
-    void*                   block;
 };
 
 struct Interface
@@ -64,18 +62,66 @@ struct Interface
     adbus_Member*           member;
 };
 
+/* The object structure holds the data for any connection services.
+ *
+ * Since the connection thread may be on a different thread than the lua vm,
+ * the following procedure is followed to make sure everything works
+ * correctly (without locks):
+ *
+ * 1. Create on local thread.
+ *
+ * 2. Send message to connection thread to add the service.
+ *      - This sets the service field on the connection thread.
+ *      - The release callbacks unsets the service pointer on the connection
+ *      thread (see ReleaseObject). This means we don't use a release proxy.
+ *      - Strings and interfaces in the reply, match and bind registration are
+ *      duped on our heap, so that #3 can happen before #2 reaches the
+ *      connection thread.
+ *
+ * 3. Lua GCs the object calling CloseObject
+ *      - Frees lua refs and unsets L so that any callbacks called before #5
+ *      dont call into lua (the lua vm may dissapear immediately after this).
+ *
+ * 4. Send message to connection thread to remove the service.
+ *      - If the service is still registered the service pointer will still be
+ *      set.
+ *
+ * 5. Send message back to free the object.
+ *
+ * The ping back on destruction is necessary to make sure we can handle
+ * callbacks sent from the connection thread between #3 and #4.
+ *
+ * Since the object needs to be deleted in #5 well after the lua vm may itself
+ * shut down in #3, the object is allocated on our heap with a pointer as the
+ * lua user data.
+ *
+ * If the lua vm and connection are on the same thread, then #1 and #2; and
+ * #3, #4, and #5 happen synchronously. String and interfaces are not duped
+ * for #2.
+ */
 struct Object
 {
+    /* Local thread data */
     lua_State*              L;
-    struct Connection*      connection;
+    adbus_Connection*       c;
     int                     connref;
     int                     callback;
     int                     object;
     int                     user;
-    int                     queue;
+
+    adbus_ProxyCallback     proxy;
+    void*                   puser;
+
+    /* Connection thread data */
     adbus_ConnMatch*        match;
     adbus_ConnReply*        reply;
     adbus_ConnBind*         bind;
+
+    union {
+        adbus_Reply         reply;
+        adbus_Match         match;
+        adbus_Bind          bind;
+    } u;
 };
 
 IFUNC int adbusluaI_callback(adbus_CbData* d);

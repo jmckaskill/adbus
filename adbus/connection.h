@@ -36,7 +36,8 @@ DLIST_INIT(ConnMsg, adbusI_ConnMsg)
 
 struct adbusI_ConnMsg
 {
-    d_List(ConnMsg)             hl;
+    adbusI_ConnMsg*             next;
+    adbusI_ConnMsg*             prev;
     int                         ref;
     adbus_Message               msg;
     adbus_Buffer*               buf;
@@ -53,6 +54,8 @@ struct adbus_Connection
     volatile long               ref;
     volatile long               nextSerial;
 
+    volatile long               closed;
+
     adbusI_thread_t             thread;
 
     adbus_ConnVTable            vtable;
@@ -65,11 +68,30 @@ struct adbus_Connection
     adbus_Interface*            properties;
 
     adbus_MsgFactory*           dispatchReturn;
-    adbusI_ConnMsg*             next;
-    d_List(ConnMsg)             extra;
 
-    adbusI_ConnMsg*             current;
-    adbusI_ConnMsg              toprocess;
+    /* The toprocess list is a doubly linked list where we track the
+     * beginning, end, and the next message to process. In reentrant cases the
+     * current message may not be the first message as the first message is
+     * required to hang around until the outer call finishes.
+     */
+    adbusI_ConnMsg*             processBegin;
+    adbusI_ConnMsg*             processEnd;
+    adbusI_ConnMsg*             processCurrent;
+
+    /* The freelist is a message stack implemented using a singly linked list.
+     * Messages are pushed onto it after we have finished with them (and all
+     * call frames that reference it have completed) and then popped out when
+     * we need a new message.
+     */
+    adbusI_ConnMsg*             freelist;
+
+    /* We keep one message seperate from the two lists. The buffer in this is
+     * used to append the next chunk of data. When we have enough data to
+     * complete the message we append it to the process list and move any
+     * extra data into more messages appended to the process list or the next
+     * value of parseMsg.
+     */
+    adbusI_ConnMsg*             parseMsg;
 
     adbusI_ConnBusData          connect;
     adbusI_ObjectTree           binds;

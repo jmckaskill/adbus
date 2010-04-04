@@ -54,6 +54,9 @@
     ADBUS_INLINE long adbusI_InterlockedDecrement(long volatile* addend)
     { return __sync_add_and_fetch(addend, -1); }
 
+    ADBUS_INLINE long adbusI_InterlockedExchange(long volatile* xch, long new_value)
+    { return __sync_lock_test_and_set(xch, new_value); }
+
     ADBUS_INLINE void* adbusI_InterlockedExchangePointer(void* volatile* xch, void* new_value)
     { return __sync_lock_test_and_set(xch, new_value); }
 
@@ -69,6 +72,9 @@
 
     ADBUS_INLINE long adbusI_InterlockedDecrement(long volatile* addend)
     { return InterlockedDecrement(addend); }
+
+    ADBUS_INLINE long adbusI_InterlockedExchange(long volatile* xch, long new_value)
+    { return InterlockedExchange(xch, new_value); }
 
 #   ifdef _MSC_VER
 #   pragma warning(push)

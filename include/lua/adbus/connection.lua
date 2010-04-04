@@ -48,6 +48,8 @@ function _M.enable_debug(dbg)
     end
 end
 
+local connections = {}
+
 --- Creates a connection
 -- \param bus       The bus to connect to.
 -- \param debug     boolean flag to enable/disable debugging (default
@@ -61,27 +63,34 @@ end
 --   respectively
 -- - A string giving the bus address in dbus form eg.
 --   'tcp:host=localhost,port=12345'
+function _M.connection(bus, block, onmsg)
+    bus = bus or 'default'
+    local c = connections[bus]
+    if not c then
+        block = block or default_block
+        onmsg = onmsg or adbuslua_core.connection.default_on_message
+        c = adbuslua_core.connection.new(bus, block, onmsg)
+        connections[bus] = c
+    end
+    return c
+end
 
-local connections = {}
-
-function _M.connection(bus)
-    local self = connections[bus or 'default']
-    if self then return self end
-
+function adbuslua_core.new_lua_connection(core_connection)
     local self = setmetatable({}, mt)
 
-    self._queue             = {}
-    self._connection        = adbuslua_core.connection.new(bus, self._queue)
+    self._connection        = core_connection
     self._current_message   = nil
-    self._return_message    = nil
-    self._return_yield      = {}
 
-    self._callback = function()
-        self._return_message = self:current_message()
-        self._return_yield.yield = true
+    local function yield(yielder)
+        self._connection:unblock(yielder)
     end
 
-    connections[bus or 'default'] = self
+    self.block = function(self, yielder)
+        yielder.yield = yield
+        self._connection:block(yielder)
+    end
+
+    self.process_message = mt.process_message
 
     return self
 end
@@ -105,179 +114,65 @@ function mt:serial()
     return self._connection:serial()
 end
 
-function mt:process(yieldtable)
-    while not yieldtable.yield do
+function mt:process_message(msg)
+    if DEBUG then
+        print(table.show(msg, "Received"))
+    end
 
-        -- Process the queue
-        local i = 1
-        while true do
-            local msg = self._queue[i]
-            self._queue[i] = nil
+    self._current_message = msg
 
-            if not msg then 
-                break 
-            end
+    if msg.callback then
 
-            i = i + 1
-
-            if DEBUG then
-                print(table.show(msg, "Received"))
-            end
-
-            self._current_message = msg
-
-            if msg.callback then
-
-                -- Match or reply callback
-                if msg.type == "error" then
-                    msg.callback(nil, msg.error, msg[1])
-                else
-                    msg.callback(unpack(msg))
-                end
-
-            elseif msg.object then
-                
-                -- Method call
-                local obj = msg.object
-                local retsigs = msg.user
-                local method = msg.member
-
-                if msg.no_reply then
-                    obj[method](obj, unpack(msg))
-                else
-                    local ret = {obj[method](obj, unpack(msg))}
-                    ret.destination = msg.sender
-                    ret.reply_serial = msg.serial
-                    if ret[1] == nil and ret[2] ~= nil then
-                        -- 1 is nil
-                        -- 2 is error name
-                        -- 3 is error msg
-                        ret[1] = ret[3]
-                        ret.error_name = ret[2]
-                        ret.type = "error"
-                        ret.signature = ret[1] and "s" or ""
-                    else
-                        ret.type = "method_return"
-                        ret.signature = retsigs[method]
-                    end
-                    self:send(ret)
-                end
-
-            end
-
-            self._current_message = nil
-
-            if yieldtable.yield then
-                return
-            end
+        -- Match or reply callback
+        if msg.type == "error" then
+            msg.callback(nil, msg.error, msg[1])
+        else
+            msg.callback(unpack(msg))
         end
 
-        -- Get more data
-        self._connection:process()
+    elseif msg.object then
+        
+        -- Method call
+        local obj = msg.object
+        local retsigs = msg.user
+        local method = msg.member
+
+        if msg.no_reply then
+            obj[method](obj, unpack(msg))
+        else
+            local ret = {obj[method](obj, unpack(msg))}
+            ret.destination = msg.sender
+            ret.reply_serial = msg.serial
+            if ret[1] == nil and ret[2] ~= nil then
+                -- 1 is nil
+                -- 2 is error name
+                -- 3 is error msg
+                ret[1] = ret[3]
+                ret.error_name = ret[2]
+                ret.type = "error"
+                ret.signature = ret[1] and "s" or ""
+            else
+                ret.type = "method_return"
+                ret.signature = retsigs[method]
+            end
+            self:send(ret)
+        end
+
     end
+
+    self._current_message = nil
 end
 
 function mt:current_message()
     return self._current_message
 end
 
---- Adds a match rule to the connection
---
--- The param is a table detailing the fields of messages to match against.
--- Only the callback is required. Optional fields not specified will always
--- match.
---
--- Arguments:
--- \param m.callback            Callback for when the match is hit
--- \param[opt] m.type           type of message. Valid values are:
---                               - 'method_call'
---                               - 'method_return'
---                               - 'error'
---                               - 'signal'
--- \param[opt] m.sender         Service name
--- \param[opt] m.destination    Service name
--- \param[opt] m.interface      String
--- \param[opt] m.reply_serial   Number
--- \param[opt] m.path           String
--- \param[opt] m.member         String
--- \param[opt] m.error          String
--- \param[opt] m.remove_on_first_match      Boolean
--- \param[opt] m.add_to_bus     Boolean
--- \param[opt] m.object         Anything
--- \param[opt] m.id             Number - should be an id returned from
---                              connection:match_id.
--- \param[opt] m.unpack_message Boolean
--- \return The match id. This will be the value of m.id if it is set.
---
--- Details:
--- The sender and destination fields should be valid dbus names (ascii dot
--- seperated string). They can either be a unique name (begins with : eg
--- :1.34) or a service name (reverse dns eg org.freedesktop.DBus) in which
--- case the service will be tracked.
---
--- The path should be a valid dbus path name (unix style path eg
--- /org/freedesktop/DBus).
---
--- The id can be filled out with a return number from connection:match_id
--- or it can be left blank in which case an id will be generated. Either way
--- the id is returned and should be used as the paramater to remove_match.
---
--- By default the match will be kept active until the match is explicitely
--- removed or the connection is destroyed. Alternatively setting
--- m.remove_on_first_match will remove the match the first time it hits a
--- match. This is most often used to match return values.
---
--- The match rule will normally be a local only match and thus can match
--- method_calls (method_calls should really be redirected via an interface),
--- method_returns and errors, but in order to match a signal the match rule
--- must be added to the bus daemon by setting m.add_to_bus.
--- Otherwise the bus will not redirect the signal message our way. This is not
--- necessary for non bus connection.
---
--- The arguments to the callback depend on two params (unpack_message and
--- object). If object is set then the first argument to the function will be
--- that object. If unpack_message is set to true or not set (ie default), the
--- message arguments will be unpacked so the call to the callback will be of
--- the form:
---
--- callback(object, arg0, arg1, ...) or callback(arg0, arg1, ...)
---
--- unpacked error message take a special form. In this case the callback is
--- callback is called with the object (optional), a nil, the message error
--- name, and then the message description (if provided). eg:
---
--- callback(object, nil, 'org.freedesktop.DBus.Error.UnknownMethod',
---          'org.freedesktop.DBus does not understand message foo')
---
--- If unpack_message is set to false then the second argument (if object is
--- set) will be a message object. See connection.send for the format of 
--- this object. eg
--- 
--- callback(object, message) or callback(message)
---
--- Example:
--- \code
--- local function owner_changed(name, from, to)
--- end
---
--- c:add_match{
---      type = 'signal',
---      add_to_bus = true,
---      sender = 'org.freedesktop.DBus',
---      member = NameOwnerChanged
--- }
--- \endcode
---          
---
--- \sa  connection:remove_match
---      connection:send_messsage
---
 function mt:add_match(m)
     if DEBUG then
         print(table.show(m, "Adding match"))
     end
 
-    return self._connection:add_match(m.callback, m)
+    return adbuslua_core.connection.add_match(self, m.callback, m)
 end
 
 function mt:add_reply(remote, serial, callback)
@@ -285,7 +180,7 @@ function mt:add_reply(remote, serial, callback)
         print(table.show(m, "Adding reply"))
     end
 
-    return self._connection:add_reply(remote, serial, callback)
+    return adbuslua_core.connection.add_reply(self, remote, serial, callback)
 end
 
 local bind = {}
@@ -316,7 +211,7 @@ function mt:bind(object, path, interface)
 
     local user      = interface._method_return_signature
     local b         = setmetatable({}, bind)
-    b._bind         = self._connection:bind(object, user, path, interface._interface)
+    b._bind         = adbuslua_core.connection.bind(self, object, user, path, interface._interface)
     b._interface    = interface
     b._path         = path
     b._connection   = self
@@ -421,6 +316,9 @@ function mt:async_call(msg)
     local reply
     if msg.callback then
         reply = self:add_reply(msg.destination, serial, msg.callback)
+        msg.no_reply = false
+    else
+        msg.no_reply = true
     end
 
     msg.type = "method_call"
@@ -433,19 +331,21 @@ function mt:async_call(msg)
 end
 
 function mt:call(msg)
-    if not msg.no_reply then
-        msg.callback = self._callback
+    local ret = nil
+
+    if msg.no_reply then
+        msg.callback = nil
+    else
+        msg.callback = function()
+            ret = self:current_message()
+            msg:yield()
+        end
     end
 
     local reply = self:async_call(msg)
-    msg._callback = nil
 
     if reply then
-        self._return_yield.yield = false
-        self._return_message = nil
-        self:process(self._return_yield)
-        
-        local ret = self._return_message
+        self:block(msg)
         if ret.type == "error" then
             return nil, ret.error, ret[1]
         else
