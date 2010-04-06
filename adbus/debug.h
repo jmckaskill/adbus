@@ -76,8 +76,8 @@ ADBUSI_FUNC void adbusI_log(const char* format, ...) ADBUSI_PRINTF(1,2);
 #define ADBUSI_LOG_3        if (adbusI_loglevel < 3) {} else adbusI_log
 
 #if defined _WIN32
-    typedef DWORD adbusI_thread_t;
-    typedef DWORD adbusI_process_t;
+    typedef unsigned long adbusI_thread_t;	/* DWORD */
+    typedef unsigned long adbusI_process_t;
 #   define PRI_THREAD "u"
 #   define PRI_PROCESS "u"
 

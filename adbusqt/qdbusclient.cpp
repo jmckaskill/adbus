@@ -345,11 +345,10 @@ int QDBusClient::Block(void* u, adbus_BlockType type, uintptr_t* data, int timeo
 
             /* Get more messages */
             QDBUS_LOG("Enter exec %p", (void*) *data);
-            if (loop.exec())
-                return -1; /* timeout or error */
-
-            if (!d->m_Connected)
-                return -1;
+            int ret = loop.exec();
+			*data = NULL;
+			if (ret || !d->m_Connected)
+				return -1;
 
             return 0;
         }
@@ -368,10 +367,9 @@ int QDBusClient::Block(void* u, adbus_BlockType type, uintptr_t* data, int timeo
 
             /* Get more messages */
             QDBUS_LOG("Enter exec %p", (void*) *data);
-            if (loop.exec())
-                return -1; // timeout or error
-
-            return 0;
+            int ret = loop.exec();
+			*data = NULL;
+			return ret;
         }
 
     case ADBUS_UNBLOCK:

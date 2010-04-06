@@ -63,7 +63,7 @@ public:
 
     adbus_Connection* base() {return m_Connection;}
 
-signals:
+Q_SIGNALS:
     void connected();
     void disconnected();
 
@@ -118,7 +118,7 @@ public:
 
     int exec();
 
-public slots:
+public Q_SLOTS:
     void success();
     void failure();
 

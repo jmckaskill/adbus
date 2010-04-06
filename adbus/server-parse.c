@@ -355,7 +355,7 @@ int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m)
 {
     int ret;
     adbus_Message m2;
-    assert(adbus_parse_size(m->data, m->size) == m->size);
+    assert(adbus_parse_size(m->data, m->size) == (int) m->size);
 
     ret = ServerParse(r, r->parseBuffer, &m2, m->data, m->size);
 

@@ -75,7 +75,7 @@ public:
 
     adbus_Connection* const     m_Connection;
 
-public slots:
+public Q_SLOTS:
     // Called on the local thread. This detaches from the current thread and
     // deletes later on the connection thread.
     void destroyOnConnectionThread();

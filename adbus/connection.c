@@ -740,7 +740,7 @@ static int SplitParseMessage(adbus_Connection* c)
         return -1;
 
     /* No complete messages */
-    if (firstsize == 0 || firstsize > size)
+    if (firstsize == 0 || firstsize > (int) size)
         return 0;
 
     /* The first message stays in parseMsg. The excess data in parseMsg will
@@ -760,7 +760,7 @@ static int SplitParseMessage(adbus_Connection* c)
             return -1;
         
         /* No more complete messages */
-        if (msgsize == 0 || msgsize > size)
+        if (msgsize == 0 || msgsize > (int) size)
             break;
 
         /* Append the next message to be parsed */

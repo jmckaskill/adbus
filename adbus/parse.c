@@ -253,7 +253,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     adbus_Iterator i;
     adbus_IterArray a;
 
-    assert(size == adbus_parse_size(data, size));
+    assert((int) size == adbus_parse_size(data, size));
     assert((char*) ADBUS_ALIGN(data, 8) == data);
     assert(size > sizeof(adbusI_ExtendedHeader));
 

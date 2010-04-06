@@ -754,21 +754,23 @@ namespace adbus
 
         Connection(adbus_Connection* c)
         :   m_C(c)
-        { adbus_conn_ref(m_C); }
+        { if (m_C) adbus_conn_ref(m_C); }
 
         Connection(const Connection& c)
         :   m_C(c.m_C)
-        { adbus_conn_ref(m_C); }
+        { if (m_C) adbus_conn_ref(m_C); }
 
         Connection& operator=(const Connection& c)
         {
-            adbus_conn_ref(c.m_C);
-            adbus_conn_deref(m_C);
+			if (c.m_C)
+	            adbus_conn_ref(c.m_C);
+			if (m_C)
+	            adbus_conn_deref(m_C);
             m_C = c.m_C;
             return *this;
         }
 
-        ~Connection() {adbus_conn_deref(m_C);}
+        ~Connection() { if (m_C) adbus_conn_deref(m_C);}
 
         adbus_ConnMatch* addMatch(adbus_Match* m) {return adbus_conn_addmatch(m_C, m);}
         void removeMatch(adbus_ConnMatch* m) {adbus_conn_removematch(m_C, m);}
@@ -793,6 +795,14 @@ namespace adbus
 
         void connectToBus(adbus_Callback callback, void* data)
         { adbus_conn_connect(m_C, callback, data); }
+
+		int waitForConnected(int timeoutms = -1)
+		{
+			uintptr_t handle;
+			return adbus_conn_block(m_C, ADBUS_WAIT_FOR_CONNECTED, &handle, timeoutms);
+		}
+
+		bool isValid() const {return m_C != NULL;}
 
         std::string uniqueName()
         {

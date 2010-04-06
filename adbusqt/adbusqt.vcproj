@@ -324,15 +324,31 @@
 			>
 		</File>
 		<File
+			RelativePath=".\qdbusclient.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusclient.hxx"
+			>
+		</File>
+		<File
 			RelativePath=".\qdbusconnection.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\qdbusconnection_p.hxx"
+			RelativePath=".\qdbusconnection_p.h"
 			>
 		</File>
 		<File
 			RelativePath=".\qdbusconnectioninterface.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusdebug.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusdebug.h"
 			>
 		</File>
 		<File
@@ -361,6 +377,14 @@
 		</File>
 		<File
 			RelativePath=".\qdbuspendingcall_p.hxx"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusproxy.cpp"
+			>
+		</File>
+		<File
+			RelativePath=".\qdbusproxy.hxx"
 			>
 		</File>
 		<File

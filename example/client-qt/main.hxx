@@ -36,6 +36,11 @@ extern "C" {
 
 #define HAVE_SYNC_PINGER
 
+#define THREAD_NUM 0
+#define CONCURRENT_PINGS_PER_THREAD 10
+#define PINGS_PER_THREAD 100
+#define BLOCK_PINGS_PER_THREAD 10
+
 class Pinger : public QObject, public adbus::State
 {
     Q_OBJECT
@@ -43,10 +48,10 @@ public:
     Pinger(const adbus::Connection& c);
     ~Pinger();
 
+public Q_SLOTS:
     void start();
-    bool isFinished() {return m_LeftToReceive == 0;}
 
-signals:
+Q_SIGNALS:
     void finished();
 
 private:
@@ -89,7 +94,7 @@ public:
     Main(const adbus::Connection& c);
     ~Main();
 
-public slots:
+public Q_SLOTS:
     void threadFinished();
 
 private:

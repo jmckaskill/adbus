@@ -27,11 +27,6 @@
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qtimer.h>
 
-#define THREAD_NUM 100
-#define CONCURRENT_PINGS_PER_THREAD 10
-#define PINGS_PER_THREAD 100
-#define BLOCK_PINGS_PER_THREAD 10
-
 static QAtomicInt sCount;
 
 Pinger::Pinger(const adbus::Connection& c)
@@ -75,14 +70,23 @@ Pinger::Pinger(const adbus::Connection& c)
         abort();
     }
 
+	QTimer::singleShot(0, this, SLOT(start()));
+}
+
+void Pinger::start()
+{
     // Startup some pings - more will be generated in the replies to the async
     // pings
+	m_LeftToReceive++;
     for (int i = 0; i < CONCURRENT_PINGS_PER_THREAD; i++) {
         asyncPing();
     }
     for (int i = 0; i < BLOCK_PINGS_PER_THREAD; i++) {
         blockPing();
     }
+	if (--m_LeftToReceive == 0) {
+		emit finished();
+	}
 }
 
 Pinger::~Pinger()
@@ -184,10 +188,8 @@ void Pinger::haveReply()
 void PingThread::run()
 {
     Pinger p(m_Connection);
-    if (!p.isFinished()) {
-        connect(&p, SIGNAL(finished()), this, SLOT(quit()));
-        exec();
-    }
+    connect(&p, SIGNAL(finished()), this, SLOT(quit()));
+    exec();
 }
 
 Main::Main(const adbus::Connection& c)
@@ -204,11 +206,10 @@ Main::Main(const adbus::Connection& c)
     m_ThreadsLeft = m_Threads.size();
 
 #ifdef HAVE_SYNC_PINGER
-    if (!m_Pinger.isFinished()) {
-        connect(&m_Pinger, SIGNAL(finished()), this, SLOT(threadFinished()), Qt::QueuedConnection);
-        m_ThreadsLeft += 1;
-    }
+    connect(&m_Pinger, SIGNAL(finished()), this, SLOT(threadFinished()), Qt::QueuedConnection);
+    m_ThreadsLeft += 1;
 #endif
+
 }
 
 Main::~Main()
@@ -233,9 +234,8 @@ int main(int argc, char* argv[])
 
     QCoreApplication app(argc, argv);
 
-    uintptr_t block;
-    adbus_Connection* c = QDBusClient::Create(ADBUS_DEFAULT_BUS);
-    if (!c || adbus_conn_block(c, ADBUS_WAIT_FOR_CONNECTED, &block, -1)) {
+	adbus::Connection c = QDBusClient::Create(ADBUS_DEFAULT_BUS);
+    if (!c.isValid() || c.waitForConnected()) {
         qFatal("Failed to connect");
     }
 
