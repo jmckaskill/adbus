@@ -259,7 +259,7 @@
         TEMPLATE_CLASS_DECLS
         void block(POINTER_ARGS)  // A0* a0, ...
         {
-            if (NUM(0!=)) {
+            if (NUM(EMPTY) > 0) {
                 typedef NUM(detail::GetReturnsData) SB_CLASS_NAMES Data;
 
                 /* You can either set a callback or grab the return arguments

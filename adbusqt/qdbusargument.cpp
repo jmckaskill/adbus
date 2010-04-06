@@ -82,13 +82,13 @@ void QDBusMetaType::registerMarshallOperators(
 
 const char* QDBusMetaType::typeToSignature(int typeId)
 {
-    QDBusArgumentType* type = QDBusArgumentType::Lookup(typeId);
+    QDBusArgumentType* type = QDBusArgumentType::FromMetatype(typeId);
     return type ? type->m_DBusSignature.constData() : NULL;
 }
 
 /* ------------------------------------------------------------------------- */
 
-QDBusArgumentType* QDBusArgumentType::Lookup(int type)
+QDBusArgumentType* QDBusArgumentType::FromMetatype(int type)
 {
     Init();
     QMutexLocker lock(sMutex);
@@ -97,11 +97,26 @@ QDBusArgumentType* QDBusArgumentType::Lookup(int type)
 
 /* ------------------------------------------------------------------------- */
 
-QDBusArgumentType* QDBusArgumentType::Lookup(const QByteArray& sig)
+QDBusArgumentType* QDBusArgumentType::FromDBusType(const QByteArray& sig)
 {
     Init();
     QMutexLocker lock(sMutex);
     return sDBus->value(sig);
+}
+
+/* ------------------------------------------------------------------------- */
+
+QDBusArgumentType* QDBusArgumentType::FromCppType(const QByteArray& type, QDBusArgumentDirection* dir)
+{
+    QByteArray copy = type;
+    if (copy.endsWith("&")) {
+        copy.remove(copy.size() - 1, 1);
+        *dir = QDBusOutArgument;
+    } else {
+        *dir = QDBusInArgument;
+    }
+    int id = QMetaType::type(copy.constData());
+    return (id >= 0) ? FromMetatype(id) : NULL;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -529,7 +544,7 @@ QDBusArgument& QDBusArgument::operator<<(const QByteArray& arg)
 void QDBusArgument::appendVariant(const QVariant& variant)
 {
     if (d->canBuffer()) {
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
+        QDBusArgumentType* type = QDBusArgumentType::FromMetatype(variant.userType());
         type->marshall(d->buf, variant, d->shouldAppendSignature(), d->sigonly);
     }
 }
@@ -551,7 +566,7 @@ QDBusArgument& QDBusArgument::operator<<(const QDBusVariant& arg)
 
         } else {
             QVariant variant = arg.variant();
-            QDBusArgumentType* type = QDBusArgumentType::Lookup(variant.userType());
+            QDBusArgumentType* type = QDBusArgumentType::FromMetatype(variant.userType());
             Q_ASSERT(type);
             
             adbus_buf_beginvariant(b, &v, type->m_DBusSignature.constData(), -1);
@@ -823,7 +838,7 @@ const QDBusArgument& QDBusArgument::operator>>(QDBusVariant& arg) const
             return *this;
 
         QVariant variant;
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(v.sig);
+        QDBusArgumentType* type = QDBusArgumentType::FromDBusType(v.sig);
         d->err = type->demarshall(d->iter, variant);
 
         if (!d->err)

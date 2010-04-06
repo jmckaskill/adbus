@@ -29,13 +29,19 @@ LDFLAGS_lua += -lm -lreadline
 
 # Examples
 
-LDFLAGS_ex_bus_qt       += $(LD_QT)
-LDFLAGS_ex_client_qt    += $(LD_QT)
-LDFLAGS_ex_simpleqt     += $(LD_QT)
-LDFLAGS_ex_client_qt    += $(LD_QT)
-LDFLAGS_ex_simpleqt     += $(LD_QT)
-LDFLAGS_ex_qtdbus_ping  += $(LD_QT)
-LDFLAGS_ex_qtdbus_pong  += $(LD_QT)
+LDFLAGS_ex_bus_qt               += $(LD_QT)
+LDFLAGS_ex_client_qt            += $(LD_QT)
+LDFLAGS_ex_simpleqt             += $(LD_QT)
+LDFLAGS_ex_client_qt            += $(LD_QT)
+LDFLAGS_ex_simpleqt             += $(LD_QT)
+LDFLAGS_ex_qtdbus_ping          += $(LD_QT)
+LDFLAGS_ex_qtdbus_pong          += $(LD_QT)
+LDFLAGS_ex_qtdbus_complexping   += $(LD_QT)
+LDFLAGS_ex_qtdbus_complexpong   += $(LD_QT)
+LDFLAGS_ex_qtdbus_listnames     += $(LD_QT)
+LDFLAGS_ex_qtdbus_dbuschat      += $(LD_QT) $(LDFLAGS_QT_GUI)
+LDFLAGS_ex_qtdbus_remotecontroller += $(LD_QT) $(LDFLAGS_QT_GUI)
+LDFLAGS_ex_qtdbus_remotecar     += $(LD_QT) $(LDFLAGS_QT_GUI)
 
 : example/ping/client.o adbus.so |> !ld |> ex_ping_client
 : example/ping/client-async.o adbus.so |> !ld |> ex_ping_client_async
@@ -52,4 +58,10 @@ LDFLAGS_ex_qtdbus_pong  += $(LD_QT)
 : example/simpleqt/*.o libQtDBus.so adbus.so |> !ldpp |> ex_simpleqt
 : example/qt-dbus/pingpong/ping_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_ping
 : example/qt-dbus/pingpong/pong_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_pong
+: example/qt-dbus/complexpingpong/ping_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_complexping
+: example/qt-dbus/complexpingpong/pong_*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_complexpong
+: example/qt-dbus/listnames/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_listnames
+: example/qt-dbus/dbus-chat/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_dbuschat
+: example/qt-dbus/remotecontrolledcar/controller/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_remotecontroller
+: example/qt-dbus/remotecontrolledcar/car/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_remotecar
 

@@ -49,49 +49,37 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
         if (typeId < 0)
             return false;
 
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(typeId);
+        QDBusArgumentType* type = QDBusArgumentType::FromMetatype(typeId);
         if (!type)
             return false;
 
-        m_Args += Entry(false, "", type);
+        m_Args += Entry(QDBusOutArgument, "", type);
     }
     else
     {
-        m_Args += Entry(false, "", NULL);
+        m_Args += Entry(QDBusOutArgument, "", NULL);
     }
 
     for (int i = 0; i < types.size(); i++) {
 
-        bool inarg = true;
+        QDBusArgumentDirection dir;
 
-        if (i == types.size() - 1 && (types[i] == "const QDBusMessage&" || types[i] == "QDBusMessage")) {
+        if (i == types.size() - 1 && types[i] == "QDBusMessage") {
             m_AppendMessage = true;
             continue;
-
-        } else if (types[i].startsWith("const ") && types[i].endsWith("&")) {
-            types[i].remove(0, 6);
-            types[i].remove(types[i].size() - 1, 1);
-
-        } else if (types[i].endsWith("&")) {
-            types[i].remove(types[i].size() - 1, 1);
-            inarg = false;
         }
 
-        int typeId = QMetaType::type(types[i].constData());
-        if (typeId < 0)
-            return false;
-
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(typeId);
+        QDBusArgumentType* type = QDBusArgumentType::FromCppType(types[i], &dir);
         if (!type)
             return false;
 
-        m_Args += Entry(inarg, names[i], type);
+        m_Args += Entry(dir, names[i], type);
     }
 
     Q_ASSERT(m_Args.size() == m_MetacallData.size() || (m_AppendMessage && m_Args.size() + 1 == m_MetacallData.size()));
 
     for (int i = 0; i < m_Args.size(); i++) {
-        if (!m_Args[i].inarg) {
+        if (m_Args[i].direction == QDBusOutArgument) {
             if (m_Args[i].type) {
                 m_MetacallData[i] = QMetaType::construct(m_Args[i].type->m_TypeId);
             } else {
@@ -112,7 +100,7 @@ void QDBusArgumentList::setupMetacall(const QDBusMessage& msg)
     int argi = 0;
 
     for (int i = 0; i < m_Args.size(); i++) {
-        if (m_Args[i].inarg) {
+        if (m_Args[i].direction == QDBusOutArgument) {
             /* Reference the variant inside the message directly as the
              * pointer returned by constData is only valid whilst that
              * particular QVariant is alive.
@@ -136,7 +124,31 @@ void QDBusArgumentList::setupMetacall(const QDBusMessage& msg)
 void QDBusArgumentList::getReply(adbus_MsgFactory** ret)
 { QDBusMessagePrivate::GetReply(m_Message, ret, *this); }
 
+/* ------------------------------------------------------------------------- */
 
+void QDBusArgumentList::appendArguments(adbus_MsgFactory* msg) const
+{
+    adbus_Buffer* buf = adbus_msg_argbuffer(msg);
+
+    for (int i = 0; i < m_Args.size(); i++) {
+        QDBusArgumentType* type = m_Args[i].type;
+
+        if (type && m_Args[i].direction == QDBusOutArgument) {
+            type->marshall(buf, m_MetacallData[i], false, false);
+        }
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+
+void QDBusArgumentList::appendArguments(adbus_MsgFactory* msg, void** args)
+{
+    /* Skip over return argument */
+    for (int i = 1; i < m_MetacallData.size(); i++) {
+        m_MetacallData[i] = args[i];
+    }
+    appendArguments(msg);
+}
 
 
 
@@ -170,7 +182,7 @@ int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg)
         sig.clear();
         sig.append(i.sig, sigend - i.sig);
 
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(sig);
+        QDBusArgumentType* type = QDBusArgumentType::FromDBusType(sig);
         if (type) {
             QVariant variant(type->m_TypeId, (const void*) NULL);
             if (type->demarshall(&i, variant)) {
@@ -206,7 +218,7 @@ int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg, const 
     adbus_iter_args(&iter, msg);
 
     for (int i = 0; i < types.m_Args.size(); i++) {
-        if (types.m_Args[i].inarg) {
+        if (types.m_Args[i].direction == QDBusInArgument) {
 
             QDBusArgumentType* type = types.m_Args[i].type;
 
@@ -308,7 +320,7 @@ bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* ms
 
         QVariant arg = d->arguments.at(i);
 
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(arg.userType());
+        QDBusArgumentType* type = QDBusArgumentType::FromMetatype(arg.userType());
         if (!type) {
             return false;
         }
@@ -327,20 +339,13 @@ void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** r
     Q_ASSERT(d);
 
     if (*ret && !d->delayedReply) {
-        adbus_Buffer* buf = adbus_msg_argbuffer(*ret);
-
-        for (int i = 0; i < args.m_Args.size(); i++) {
-            QDBusArgumentType* type = args.m_Args[i].type;
-
-            if (!args.m_Args[i].inarg && type) {
-                type->marshall(buf, args.m_MetacallData[i], false, false);
-            }
-        }
-
+        args.appendArguments(*ret);
     } else {
         *ret = NULL;
     }
 }
+
+
 
 /* ------------------------------------------------------------------------- */
 
@@ -429,6 +434,7 @@ QDBusMessage QDBusMessage::createSignal(const QString& path,
 {
     QDBusMessage ret;
 
+    qDetachSharedData(ret.d_ptr);
     ret.d_ptr->type = ADBUS_MSG_SIGNAL;
     ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
     ret.d_ptr->path = path;
@@ -447,6 +453,7 @@ QDBusMessage QDBusMessage::createMethodCall(const QString& destination,
 {
     QDBusMessage ret;
 
+    qDetachSharedData(ret.d_ptr);
     ret.d_ptr->type = ADBUS_MSG_METHOD;
     ret.d_ptr->destination = destination;
     ret.d_ptr->path = path;
@@ -463,6 +470,7 @@ QDBusMessage QDBusMessage::createError(const QString &name, const QString &msg)
 {
     QDBusMessage ret;
 
+    qDetachSharedData(ret.d_ptr);
     ret.d_ptr->type = ADBUS_MSG_ERROR;
     ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
     ret.d_ptr->error = name;
@@ -479,6 +487,7 @@ QDBusMessage QDBusMessage::createErrorReply(const QString name,
 {
     QDBusMessage ret;
 
+    qDetachSharedData(ret.d_ptr);
     ret.d_ptr->type = ADBUS_MSG_ERROR;
     ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
 
@@ -499,6 +508,7 @@ QDBusMessage QDBusMessage::createReply(const QList<QVariant> &arguments) const
 {
     QDBusMessage ret;
 
+    qDetachSharedData(ret.d_ptr);
     ret.d_ptr->type = ADBUS_MSG_RETURN;
     ret.d_ptr->flags = ADBUS_MSG_NO_REPLY;
 

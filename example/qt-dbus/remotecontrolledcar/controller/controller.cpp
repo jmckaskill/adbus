@@ -42,14 +42,15 @@
 #include <QtGui>
 
 #include "controller.h"
-#include "car_interface_p.h"
+#include "com.trolltech.Examples.Car_interface.h"
 
 Controller::Controller(QWidget *parent)
     : QWidget(parent)
 {
     ui.setupUi(this);
     car = new CarInterface("com.trolltech.CarExample", "/Car",
-                           QDBusConnection::sessionBus(), this);
+            QDBusConnection::sessionBus(), this);
+
     startTimer(1000);
 }
 

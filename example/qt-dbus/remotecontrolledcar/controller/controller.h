@@ -64,7 +64,7 @@ private slots:
 
 private:
     Ui::Controller ui;
-    CarInterface *car;
+    CarInterface* car;
 };
 
 #endif

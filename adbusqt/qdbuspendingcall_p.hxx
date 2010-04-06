@@ -50,7 +50,6 @@ public:
     bool                m_TypeCheckFailure;
     QList<int>          m_MetaTypes;
     QDBusMessage        m_Reply;
-    QDBusMessage        m_ErrorMessage;
     QDBusError          m_Error;
 
 Q_SIGNALS:

@@ -10,10 +10,3 @@ MOCFLAGS_qdbusservicewatcher.hxx += -fqdbusservicewatcher.hxx -fqdbusservicewatc
 : foreach *.hxx |> !moc |> moc_%B.cpp
 : foreach *.cpp |> !cpp |> %B.o
 
-adbusqt_srcs =  moc_qdbusclient.o   \
-                moc_qdbusproxy.cpp  \
-                qdbusclient.o       \
-                qdbusproxy.o
-
-: $(adbusqt_srcs) |> !ar |> adbusqt.a
-

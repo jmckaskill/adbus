@@ -32,12 +32,18 @@
 #include <QtCore/qshareddata.h>
 
 
+enum QDBusArgumentDirection
+{
+    QDBusInArgument,
+    QDBusOutArgument,
+};
+
 class QDBusArgumentType
 {
 public:
-
-    static QDBusArgumentType* Lookup(int type);
-    static QDBusArgumentType* Lookup(const QByteArray& sig);
+    static QDBusArgumentType* FromMetatype(int type);
+    static QDBusArgumentType* FromDBusType(const QByteArray& sig);
+    static QDBusArgumentType* FromCppType(const QByteArray& type, QDBusArgumentDirection* dir);
 
     int  demarshall(adbus_Iterator* iter, QVariant& variant) const;
     void marshall(adbus_Buffer* buf, const QVariant& variant, bool appendsig, bool sigonly) const;

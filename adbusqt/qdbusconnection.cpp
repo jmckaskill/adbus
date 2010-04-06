@@ -163,7 +163,7 @@ QDBusConnection QDBusConnectionPrivate::BusConnection(adbus_BusType type)
 {
 	QDBusConnection c = QDBusConnectionPrivate::GetConnection(type);
 
-    uintptr_t block;
+    uintptr_t block = 0;
     adbus_conn_block(c.d->connection, ADBUS_WAIT_FOR_CONNECTED, &block, -1);
 
     return c;

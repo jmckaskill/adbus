@@ -47,7 +47,7 @@
 #include <QtDBus/QtDBus>
 
 #include "ping-common.h"
-#include "complexpong.h"
+#include "complexpong.hxx"
 
 // the property
 QString Pong::value() const

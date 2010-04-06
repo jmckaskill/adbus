@@ -40,17 +40,19 @@ public:
     void    setupMetacall(const QDBusMessage& msg);
     void**  metacallData() {return m_MetacallData.data();}
     void    getReply(adbus_MsgFactory** ret);
+    void    appendArguments(adbus_MsgFactory* msg) const;
+    void    appendArguments(adbus_MsgFactory* msg, void** args);
     void    finishMetacall() {m_Message = QDBusMessage();}
 
     struct Entry
     {
-        Entry(bool inarg_, QByteArray name_, QDBusArgumentType* type_)
-            : inarg(inarg_), name(name_), type(type_)
+        Entry(QDBusArgumentDirection dir, QByteArray name_, QDBusArgumentType* type_)
+            : direction(dir), name(name_), type(type_)
         {}
 
-        bool                inarg;
-        QByteArray          name;
-        QDBusArgumentType*  type;
+        QDBusArgumentDirection  direction;
+        QByteArray              name;
+        QDBusArgumentType*      type;
     };
 
     bool                m_AppendMessage;

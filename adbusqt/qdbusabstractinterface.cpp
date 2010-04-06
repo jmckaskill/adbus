@@ -64,10 +64,7 @@ QDBusAbstractInterface::QDBusAbstractInterface(QDBusAbstractInterfacePrivate& pr
 {}
 
 QDBusAbstractInterface::~QDBusAbstractInterface()
-{
-    Q_D(QDBusAbstractInterface);
-    delete d;
-}
+{}
 
 QDBusAbstractInterfacePrivate::QDBusAbstractInterfacePrivate(const QDBusConnection& c)
 :   qconnection(c),
@@ -80,7 +77,6 @@ QDBusAbstractInterfacePrivate::QDBusAbstractInterfacePrivate(const QDBusConnecti
 QDBusAbstractInterfacePrivate::~QDBusAbstractInterfacePrivate()
 { 
     adbus_msg_free(msg); 
-    object->destroyOnConnectionThread();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -146,7 +142,7 @@ void QDBusAbstractInterface::internalPropSet(const char* propname, const QVarian
 {
     Q_D(QDBusAbstractInterface);
 
-    QDBusArgumentType* type = QDBusArgumentType::Lookup(value.userType());
+    QDBusArgumentType* type = QDBusArgumentType::FromMetatype(value.userType());
     if (!type)
         return;
 
@@ -221,7 +217,7 @@ static bool DoCall(
 
     adbus_Buffer* b = adbus_msg_argbuffer(d->msg);
     for (int i = 0; i < args.size(); i++) {
-        QDBusArgumentType* type = QDBusArgumentType::Lookup(args[i].userType());
+        QDBusArgumentType* type = QDBusArgumentType::FromMetatype(args[i].userType());
         if (!type) {
             return false;
         }

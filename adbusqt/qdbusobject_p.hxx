@@ -37,9 +37,12 @@
 /* ------------------------------------------------------------------------- */
 
 class QDBusObject;
+class QDBusSignal;
+
 struct QDBusMatchData;
 struct QDBusReplyData;
 struct QDBusBindData;
+
 DILIST_INIT(QDBusMatchData, QDBusMatchData)
 DILIST_INIT(QDBusReplyData, QDBusReplyData)
 DILIST_INIT(QDBusBindData, QDBusBindData)
@@ -94,12 +97,18 @@ struct QDBusMatchData : public QDBusMethodData
 struct QDBusBindData : public QDBusUserData
 {
     QDBusBindData() : connBind(NULL) {adbus_bind_init(&bind);}
-    ~QDBusBindData() {dil_remove(QDBusBindData, this, &hl);}
+    ~QDBusBindData() 
+    {
+        adbus_iface_deref(bind.interface);
+        dil_remove(QDBusBindData, this, &hl);
+    }
 
     d_IList(QDBusBindData)      hl;
     QByteArray                  path;
+    QByteArray                  interface;
     adbus_Bind                  bind;
     adbus_ConnBind*             connBind;
+    QList<QDBusSignal*>         sigs;
 };
 
 struct QDBusReplyData : public QDBusMethodData
@@ -146,7 +155,6 @@ public:
     static void Delete(void* u);
     static void Unregister(void* u);
     static void DoBind(void* u);
-    static void FreeDoBind(void* u);
     static void DoAddMatch(void* u);
     static void DoAddReply(void* u);
     static void DoRemoveMatch(void* u);
@@ -160,6 +168,7 @@ public:
 private:
     ~QDBusObject();
 
+    void createSignals(QObject* obj, const QMetaObject* meta, QDBusBindData* bind);
     virtual void unregister();
 
     QObject* const            m_Tracked;
@@ -171,4 +180,41 @@ private:
     d_IList(QDBusReplyData) m_Replies;
 };
 
+/* ------------------------------------------------------------------------- */
+
+class QDBusSignalBase : public QObject
+{
+    Q_OBJECT
+public:
+    QDBusSignalBase(QObject* parent);
+
+public Q_SLOTS:
+    void trigger();
+};
+
+/* ------------------------------------------------------------------------- */
+
+class QDBusSignal : public QDBusSignalBase
+{
+public:
+    QDBusSignal(
+            adbus_Connection*   connection,
+            QDBusBindData*      bind,
+            const QByteArray&   name,
+            QMetaMethod         method,
+            QObject*            parent);
+
+    ~QDBusSignal();
+
+    virtual int qt_metacall(QMetaObject::Call _c, int _id, void **_a);
+
+private:
+    void trigger(void** a);
+
+    adbus_Connection*           m_Connection;
+    QDBusArgumentList           m_Arguments;
+    QByteArray                  m_Name;
+    adbus_MsgFactory*           m_Message;
+    QDBusBindData*              m_Bind;
+};
 

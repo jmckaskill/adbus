@@ -48,7 +48,7 @@
 #include <QtDBus/QtDBus>
 
 #include "ping-common.h"
-#include "complexping.h"
+#include "complexping.hxx"
 
 void Ping::start(const QString &name, const QString &oldValue, const QString &newValue)
 {

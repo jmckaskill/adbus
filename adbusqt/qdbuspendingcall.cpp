@@ -70,6 +70,7 @@ void QDBusPendingCallPrivate::ReplyReceived(void* u)
 
 QDBusPendingCallPrivate::QDBusPendingCallPrivate(const QDBusConnection& c, const QByteArray& service, uint32_t serial)
 :   QDBusProxy(QDBusConnectionPrivate::Connection(c)),
+    m_CheckTypes(false),
     m_QConnection(c),
     m_ConnReply(NULL),
     m_Service(service),
@@ -94,7 +95,7 @@ void QDBusPendingCallPrivate::haveReply()
     m_Finished = true;
 
     QList<QVariant> args = m_Reply.arguments();
-    if (m_Error.isValid() && m_CheckTypes && args.size() == m_MetaTypes.size()) {
+    if (!m_Error.isValid() && m_CheckTypes && args.size() == m_MetaTypes.size()) {
         bool success = true;
         for (int i = 0; i < args.size(); i++) {
             success = success && args.at(i).canConvert((QVariant::Type) m_MetaTypes.at(i));
@@ -125,8 +126,8 @@ int QDBusPendingCallPrivate::ErrorCallback(adbus_CbData* data)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
 
-    QDBusMessagePrivate::FromMessage(d->m_ErrorMessage, data->msg);
-    d->m_Error = QDBusError(d->m_ErrorMessage);
+    QDBusMessagePrivate::FromMessage(d->m_Reply, data->msg);
+    d->m_Error = QDBusError(d->m_Reply);
     QDBusConnectionPrivate::SetLastError(d->m_QConnection, d->m_Error);
 
     d->haveReply();

@@ -26,9 +26,11 @@ LDFLAGS_QT_GUI      = -lQtGui
 LDFLAGS_QT_OPENGL   = -lQtOpenGL
 LDFLAGS_QT_XML      = -lQtXml
 
+MOCFLAGS += -nw
+
 !moc = |> ^ MOC %f^ $(MOC) %f -o %o $(MOCFLAGS) $(MOCFLAGS_%f)|>
 !rcc = |> ^ RCC %f^ $(RCC) %f -o %o $(RCCFLAGS) $(RCCFLAGS_%f)|>
 !uic = |> ^ UIC %f^ $(UIC) %f -o %o $(UICFLAGS) $(UICFLAGS_%f)|>
-!dbus_interface = |> ^ QDBUS INTERFACE %f^ $(QDBUSXML2CPP) %f -p %B_interface |>
-!dbus_adaptor = |> ^ QDBUS ADAPTOR %f^ $(QDBUSXML2CPP) %f -a %B_adaptor |>
+!dbus_interface = |> ^ QDBUS INTERFACE %f^ $(QDBUSXML2CPP) $(DBUS_INTERFACE_FLAGS) %f -p %B_interface |>
+!dbus_adaptor = |> ^ QDBUS ADAPTOR %f^ $(QDBUSXML2CPP) $(DBUS_ADAPTOR_FLAGS) %f -a %B_adaptor |>
 
