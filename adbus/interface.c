@@ -336,7 +336,7 @@ void adbus_iface_ref(const adbus_Interface* iface)
 { 
     adbus_Interface* i = (adbus_Interface*) iface;
     long ref = adbusI_InterlockedIncrement(&i->ref); 
-    ADBUSI_LOG_1("ref: %d (interface %s, %p)", (int) ref, i->name.str, (void*) i);
+    ADBUSI_LOG_1("ref: %d (interface '%s', %p)", (int) ref, i->name.str, (void*) i);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -356,7 +356,7 @@ void adbus_iface_deref(const adbus_Interface* iface)
         return;
 
     ref = adbusI_InterlockedDecrement(&i->ref);
-    ADBUSI_LOG_1("deref: %d (interface %s, %p)", (int) ref, i->name.str, (void*) i);
+    ADBUSI_LOG_1("deref: %d (interface '%s', %p)", (int) ref, i->name.str, (void*) i);
    
     if (ref != 0)
         return;
@@ -377,6 +377,7 @@ void adbus_iface_deref(const adbus_Interface* iface)
 static adbus_Member* AddMethod(
         adbus_Interface*    i,
         adbusI_MemberType   type,
+        const char*         logtype,
         const char*         name,
         int                 size)
 {
@@ -386,7 +387,7 @@ static adbus_Member* AddMethod(
     adbus_Member* m = NEW(adbus_Member);
     m->interface    = i;
     m->type         = type;
-    m->name.sz      = (size >= 0) ? size : strlen(name);
+    m->name.sz      = size >= 0 ? size : strlen(name);
     m->name.str     = adbusI_strndup(name, m->name.sz);
 
     mi = dh_put(Member, &i->members, m->name, &added);
@@ -397,6 +398,13 @@ static adbus_Member* AddMethod(
     dh_key(&i->members, mi) = m->name;
     dh_val(&i->members, mi) = m;
 
+    ADBUSI_LOG_2("add %s: '%s', %p (interface '%s', %p)",
+            logtype,
+            m->name.str,
+            (void*) m,
+            i->name.str,
+            (void*) i);
+
     return m;
 }
 
@@ -404,13 +412,13 @@ static adbus_Member* AddMethod(
  *  \relates adbus_Interface
  */
 adbus_Member* adbus_iface_addmethod(adbus_Interface* i, const char* name, int size)
-{ return AddMethod(i, ADBUSI_METHOD, name, size); }
+{ return AddMethod(i, ADBUSI_METHOD, "method", name, size); }
 
 /** Adds a new signal.
  *  \relates adbus_Interface
  */
 adbus_Member* adbus_iface_addsignal(adbus_Interface* i, const char* name, int size)
-{ return AddMethod(i, ADBUSI_SIGNAL, name, size); }
+{ return AddMethod(i, ADBUSI_SIGNAL, "signal", name, size); }
 
 /** Adds a new property.
  *  \relates adbus_Interface
@@ -422,10 +430,17 @@ adbus_Member* adbus_iface_addproperty(
         const char*         sig, 
         int                 sigsize)
 { 
-    adbus_Member* m = AddMethod(i, ADBUSI_PROPERTY, name, namesize); 
+    adbus_Member* m = AddMethod(i, ADBUSI_PROPERTY, "property", name, namesize); 
+
     m->propertyType = (sigsize >= 0)
                     ? adbusI_strndup(sig, sigsize)
                     : adbusI_strdup(sig);
+
+    ADBUSI_LOG_2("property type: '%s' (method '%s', %p)",
+            m->propertyType,
+            m->name.str,
+            (void*) m);
+
     return m;
 }
 
@@ -534,11 +549,16 @@ void adbus_mbr_argsig(adbus_Member* m, const char* sig, int size)
 {
     assert(m->type == ADBUSI_METHOD || m->type == ADBUSI_SIGNAL);
 
-    if (size >= 0) {
-        ds_cat_n(&m->argsig, sig, size);
-    } else {
-        ds_cat(&m->argsig, sig);
-    }
+    if (size < 0)
+        size = strlen(sig);
+
+    ADBUSI_LOG_2("append argsig: '%.*s' (method '%s', %p)",
+            size,
+            sig,
+            m->name.str,
+            (void*) m);
+
+    ds_cat_n(&m->argsig, sig, size);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -557,6 +577,11 @@ void adbus_mbr_argname(adbus_Member* m, const char* name, int size)
     char** pstr = dv_push(String, &m->arguments, 1);
     *pstr = (size >= 0) ? adbusI_strndup(name, size) : adbusI_strdup(name);
 
+    ADBUSI_LOG_2("argname: '%s' (method '%s', %p)",
+            *pstr,
+            m->name.str,
+            (void*) m);
+
     assert(m->type == ADBUSI_METHOD || m->type == ADBUSI_SIGNAL);
 }
 
@@ -574,11 +599,16 @@ void adbus_mbr_retsig(adbus_Member* m, const char* sig, int size)
 {
     assert(m->type == ADBUSI_METHOD);
 
-    if (size >= 0) {
-        ds_cat_n(&m->retsig, sig, size);
-    } else {
-        ds_cat(&m->retsig, sig);
-    }
+    if (size < 0)
+        size = strlen(sig);
+
+    ADBUSI_LOG_2("append retsig: '%.*s' (method '%s', %p)",
+            size,
+            sig,
+            m->name.str,
+            (void*) m);
+
+    ds_cat_n(&m->retsig, sig, size);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -597,6 +627,11 @@ void adbus_mbr_retname(adbus_Member* m, const char* name, int size)
 {
     char** pstr = dv_push(String, &m->returns, 1);
     *pstr = (size >= 0) ? adbusI_strndup(name, size) : adbusI_strdup(name);
+
+    ADBUSI_LOG_2("retname: '%s' (method '%s', %p)",
+            *pstr,
+            m->name.str,
+            (void*) m);
 
     assert(m->type == ADBUSI_METHOD);
 }
@@ -632,6 +667,12 @@ void adbus_mbr_annotate(
 
     dh_key(&m->annotations, ii) = (char*) name;
     dh_val(&m->annotations, ii) = (char*) value;
+
+    ADBUSI_LOG_2("annotate: '%s'='%s' (method '%s', %p)",
+            name,
+            value,
+            m->name.str,
+            (void*) m);
 }
 
 /* ------------------------------------------------------------------------- */

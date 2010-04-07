@@ -27,6 +27,7 @@
 #include "qdbusargument_p.h"
 #include "qsharedfunctions_p.h"
 #include "qdbusreply.h"
+#include "qdbusdebug.h"
 #include <QtCore/qthreadstorage.h>
 #include <QtCore/qmetaobject.h>
 
@@ -46,17 +47,22 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
     if (!rettype.isEmpty() && rettype != "void") {
 
         int typeId = QMetaType::type(rettype.constData());
-        if (typeId < 0)
-            return false;
 
         QDBusArgumentType* type = QDBusArgumentType::FromMetatype(typeId);
-        if (!type)
+
+        if (!type) {
+            QDBUS_LOG("failed to lookup return type '%s'", rettype.constData());
             return false;
+        }
+
+        QDBUS_LOG("looked up return: type '%s', dbus '%s', id %d",
+                rettype.constData(),
+                type->m_DBusSignature.constData(),
+                type->m_TypeId);
 
         m_Args += Entry(QDBusOutArgument, "", type);
-    }
-    else
-    {
+
+    } else {
         m_Args += Entry(QDBusOutArgument, "", NULL);
     }
 
@@ -70,8 +76,17 @@ bool QDBusArgumentList::init(const QMetaMethod& method)
         }
 
         QDBusArgumentType* type = QDBusArgumentType::FromCppType(types[i], &dir);
-        if (!type)
+        if (!type) {
+            QDBUS_LOG("failed to lookup argument type '%s'", types[i].constData());
             return false;
+        }
+
+        QDBUS_LOG("looked up argument: name '%s', type '%s', dbus '%s', id %d, direction %s",
+                names[i].constData(),
+                types[i].constData(),
+                type->m_DBusSignature.constData(),
+                type->m_TypeId,
+                (dir == QDBusInArgument) ? "in" : "out");
 
         m_Args += Entry(dir, names[i], type);
     }
@@ -100,7 +115,7 @@ void QDBusArgumentList::setupMetacall(const QDBusMessage& msg)
     int argi = 0;
 
     for (int i = 0; i < m_Args.size(); i++) {
-        if (m_Args[i].direction == QDBusOutArgument) {
+        if (m_Args[i].type && m_Args[i].direction == QDBusInArgument) {
             /* Reference the variant inside the message directly as the
              * pointer returned by constData is only valid whilst that
              * particular QVariant is alive.
@@ -126,7 +141,7 @@ void QDBusArgumentList::getReply(adbus_MsgFactory** ret)
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentList::appendArguments(adbus_MsgFactory* msg) const
+void QDBusArgumentList::bufferReturnArguments(adbus_MsgFactory* msg) const
 {
     adbus_Buffer* buf = adbus_msg_argbuffer(msg);
 
@@ -141,13 +156,16 @@ void QDBusArgumentList::appendArguments(adbus_MsgFactory* msg) const
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusArgumentList::appendArguments(adbus_MsgFactory* msg, void** args)
+void QDBusArgumentList::bufferSignalArguments(adbus_MsgFactory* msg, void** args)
 {
-    /* Skip over return argument */
-    for (int i = 1; i < m_MetacallData.size(); i++) {
-        m_MetacallData[i] = args[i];
+    adbus_Buffer* buf = adbus_msg_argbuffer(msg);
+
+    for (int i = 1; i < m_Args.size(); i++) {
+        QDBusArgumentType* type = m_Args[i].type;
+
+        Q_ASSERT(type && m_Args[i].direction == QDBusInArgument);
+        type->marshall(buf, args[i], true, false);
     }
-    appendArguments(msg);
 }
 
 
@@ -339,7 +357,7 @@ void QDBusMessagePrivate::GetReply(const QDBusMessage& msg, adbus_MsgFactory** r
     Q_ASSERT(d);
 
     if (*ret && !d->delayedReply) {
-        args.appendArguments(*ret);
+        args.bufferReturnArguments(*ret);
     } else {
         *ret = NULL;
     }

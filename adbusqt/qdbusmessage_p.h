@@ -40,8 +40,8 @@ public:
     void    setupMetacall(const QDBusMessage& msg);
     void**  metacallData() {return m_MetacallData.data();}
     void    getReply(adbus_MsgFactory** ret);
-    void    appendArguments(adbus_MsgFactory* msg) const;
-    void    appendArguments(adbus_MsgFactory* msg, void** args);
+    void    bufferReturnArguments(adbus_MsgFactory* msg) const;
+    void    bufferSignalArguments(adbus_MsgFactory* msg, void** args);
     void    finishMetacall() {m_Message = QDBusMessage();}
 
     struct Entry

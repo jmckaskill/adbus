@@ -26,6 +26,7 @@
 #include "qdbusobject_p.hxx"
 #include "qdbusmessage_p.h"
 #include "qdbusconnection_p.h"
+#include "qdbusdebug.h"
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qmetaobject.h>
 #include <QtCore/qthread.h>
@@ -104,7 +105,7 @@ int QDBusObject::MatchCallback(adbus_CbData* d)
         adbus_iter_args(&argiter, d->msg);
 
         /* Check that the message could be parsed correctly */
-        if (QDBusMessagePrivate::FromMessage(msg, d->msg))
+        if (QDBusMessagePrivate::FromMessage(msg, d->msg, data->arguments))
             return -1;
 
         data->arguments.setupMetacall(msg);
@@ -370,6 +371,8 @@ bool QDBusObject::addMatch(
 
     const QMetaObject* meta = receiver->metaObject();
     QByteArray normalized = QMetaObject::normalizedSignature(slot);
+    // Remove the leading "1"
+    normalized.remove(0, 1);
     int methodIndex = meta->indexOfMethod(normalized.constData());
 
     if (methodIndex < 0)
@@ -389,14 +392,20 @@ bool QDBusObject::addMatch(
     d->methodIndex = methodIndex;
     d->object = receiver;
     d->owner = this;
+    d->match.type = ADBUS_MSG_SIGNAL;
+    d->match.addToBus = 1;
 
-    d->sender = service;
-    d->match.sender = d->sender.constData();
-    d->match.senderSize = d->sender.size();
+    if (!service.isEmpty()) {
+        d->sender = service;
+        d->match.sender = d->sender.constData();
+        d->match.senderSize = d->sender.size();
+    }
 
-    d->path = path;
-    d->match.path = d->path.constData();
-    d->match.pathSize = d->path.size();
+    if (!path.isEmpty()) {
+        d->path = path;
+        d->match.path = d->path.constData();
+        d->match.pathSize = d->path.size();
+    }
 
     if (!interface.isEmpty()) {
         d->interface = interface;
@@ -404,9 +413,11 @@ bool QDBusObject::addMatch(
         d->match.interfaceSize = d->interface.size();
     }
 
-    d->member = name;
-    d->match.member = d->member.constData();
-    d->match.memberSize = d->member.size();
+    if (!name.isEmpty()) {
+        d->member = name;
+        d->match.member = d->member.constData();
+        d->match.memberSize = d->member.size();
+    }
 
     d->match.callback = &MatchCallback;
     d->match.cuser = d;
@@ -472,17 +483,23 @@ void QDBusObject::removeMatch(
 
 /* ------------------------------------------------------------------------- */
 
+static QByteArray MethodName(QMetaMethod method)
+{
+    const char* name = method.signature();
+    const char* nend = strchr(name, '(');
+    if (nend == NULL)
+        return QByteArray();
+
+    return QByteArray(name, int(nend - name));
+}
+
 // Signals and methods both come through QMetaObject::method
 static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int methodIndex)
 {
     QMetaMethod::MethodType type = method.methodType();
     QMetaMethod::Access access = method.access();
 
-    const char* name = method.signature();
-    const char* nend = strchr(name, '(');
-    if (nend == NULL)
-        return NULL;
-
+    QByteArray name = MethodName(method);
     QList<QByteArray> names = method.parameterNames();
 
     switch (type)
@@ -493,6 +510,8 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
             if (access < QMetaMethod::Public)
                 return NULL;
 
+            QDBUS_LOG("Adding method '%s'", name.constData());
+
             QDBusMethodData* d = new QDBusMethodData;
 
             if (!d->arguments.init(method)) {
@@ -502,7 +521,7 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
 
             d->methodIndex = methodIndex;
 
-            adbus_Member* mbr = adbus_iface_addmethod(iface, name, int(nend - name));
+            adbus_Member* mbr = adbus_iface_addmethod(iface, name.constData(), name.size());
 
             for (int i = 0; i < d->arguments.m_Args.size(); i++) {
 
@@ -531,6 +550,8 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
             if (access != QMetaMethod::Protected)
                 return NULL;
 
+            QDBUS_LOG("Adding signal '%s'", name.constData());
+
             QList<QByteArray> cpptypes = method.parameterTypes();
             QList<QDBusArgumentType*> types;
 
@@ -546,7 +567,7 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
             if (types.size() != names.size())
                 return NULL;
 
-            adbus_Member* mbr = adbus_iface_addsignal(iface, name, int(nend - name));
+            adbus_Member* mbr = adbus_iface_addsignal(iface, name.constData(), name.size());
 
             for (int i = 0; i < types.size(); i++) {
                 const QByteArray& sig = types[i]->m_DBusSignature;
@@ -567,11 +588,15 @@ static adbus_Member* AddMethod(adbus_Interface* iface, QMetaMethod method, int m
 static adbus_Member* AddProperty(adbus_Interface* iface, QMetaProperty prop, int propertyIndex)
 {
     QDBusArgumentType* type = QDBusArgumentType::FromMetatype(prop.type());
-    if (!type)
+    if (!type) {
+        QDBUS_LOG("Failed to lookup property type '%s'", prop.typeName());
         return NULL;
+    }
 
-    if (!(prop.isValid() || prop.isWritable()))
+    if (!(prop.isValid() || prop.isWritable())) {
+        qWarning("DBus can not export properties that are neither readable nor writable");
         return NULL;
+    }
 
     QDBusPropertyData* d = new QDBusPropertyData;
     d->propIndex    = propertyIndex;
@@ -607,12 +632,7 @@ void QDBusObject::createSignals(QObject* obj, const QMetaObject* meta, QDBusBind
         if (method.methodType() != QMetaMethod::Signal)
             continue;
 
-        QByteArray name = method.signature();
-        int nend = name.indexOf('(');
-        if (nend < 0)
-            continue;
-
-        name.remove(nend, name.size() - nend);
+        QByteArray name = MethodName(method);
 
         const adbus_Interface* iface = bind->bind.interface;
         const adbus_Member* mbr = adbus_iface_signal(iface, name.constData(), name.size());
@@ -622,8 +642,9 @@ void QDBusObject::createSignals(QObject* obj, const QMetaObject* meta, QDBusBind
         QDBusSignal* wrapper = new QDBusSignal(m_Connection, bind, name, method, this);
 
         // SIGNAL(x) == "2x"
-        name.prepend("2");
-        connect(obj, name.constData(), wrapper, SLOT(trigger()));
+        QByteArray signame = "2";
+        signame += method.signature();
+        connect(obj, signame.constData(), wrapper, SLOT(trigger()));
 
         bind->sigs += wrapper;
     }
@@ -661,17 +682,14 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
         adbus_iface_ref(iface);
 
         int mbrs = 0;
-        int mbegin = meta->methodOffset();
-        int mend = meta->methodCount();
-        for (int mi = mbegin; mi < mend; mi++) {
+
+        for (int mi = meta->methodOffset(); mi < meta->methodCount(); mi++) {
             if (AddMethod(iface, meta->method(mi), mi) != NULL) {
                 mbrs++;
             }
         }
 
-        int pbegin = meta->propertyOffset();
-        int pend = meta->propertyCount();
-        for (int pi = pbegin; pi < pend; pi++) {
+        for (int pi = meta->propertyOffset(); pi < meta->propertyCount(); pi++) {
             if (AddProperty(iface, meta->property(pi), pi) != NULL) {
                 mbrs++;
             }
@@ -702,6 +720,7 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
         d->bind.ruser[0] = d;
 
         d->connection = m_Connection;
+        d->interface = name;
 
         createSignals(object, meta, d);
 
@@ -744,6 +763,8 @@ static void GetAnnotations(adbus_Member* mbr, const QDomElement& xmlMember)
     }
 }
 
+
+
 bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const char* xml)
 {
     Q_ASSERT(QThread::currentThread() == thread());
@@ -756,78 +777,98 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
     if (!doc.setContent(QByteArray(xml), false))
         return false;
 
-    QDomElement xmlInterface = doc.documentElement();
-    if (xmlInterface.tagName() != "interface")
+    QDomElement xmlIface = doc.documentElement();
+    if (xmlIface.tagName() != "interface")
         return false;
 
     QByteArray ifaceName;
-    if (GetAttribute(xmlInterface, "name", &ifaceName))
+    if (GetAttribute(xmlIface, "name", &ifaceName))
         return false;
+
+    QDBUS_LOG("creating interface from xml '%s'", ifaceName.constData());
+
+    QHash<QByteArray, QDomElement> methods, sigs, properties;
+
+    for (QDomElement e = xmlIface.firstChildElement(); !e.isNull(); e = e.nextSiblingElement())
+    {
+        QString tag = e.tagName();
+
+        QByteArray name;
+        if (GetAttribute(e, "name", &name))
+            continue;
+
+        if (tag == "method") {
+            QDBUS_LOG("found XML method '%s'", name.constData());
+            methods[name] = e;
+        } else if (tag == "signal") {
+            QDBUS_LOG("found XML signal '%s'", name.constData());
+            sigs[name] = e;
+        } else if (tag == "property") {
+            QDBUS_LOG("found XML property '%s'", name.constData());
+            properties[name] = e;
+        }
+    }
 
     adbus_Interface* iface = adbus_iface_new(ifaceName.constData(), ifaceName.size());
     adbus_iface_ref(iface);
 
     int mbrs = 0;
-    QDomElement member;
-    for (QDomElement xmlMember = xmlInterface.firstChildElement();
-         !xmlMember.isNull();
-         xmlMember = xmlMember.nextSiblingElement())
-    {
-        QByteArray name;
-        if (GetAttribute(xmlMember, "name", &name))
+
+    for (int mi = meta->methodOffset(); mi < meta->methodCount(); mi++) {
+
+        QMetaMethod method = meta->method(mi);
+        QByteArray name = MethodName(method);
+        if (name.isEmpty())
             continue;
 
-        // Ignore the arguments and signatures given by the xml (its safer
-        // and easier to just pull the types out of QMetaObject). We need
-        // to pull the annotations from the xml.
-        QString tag = xmlMember.tagName();
-        if (tag == "method") {
+        QMetaMethod::MethodType type = method.methodType();
+        if (type == QMetaMethod::Method || type == QMetaMethod::Slot) {
+            QDBUS_LOG("found meta method '%s' '%s'", name.constData(), method.signature());
 
-            int methodIndex = meta->indexOfSlot(name.constData());
-            if (methodIndex < 0)
-                methodIndex = meta->indexOfMethod(name.constData());
-            if (methodIndex < 0)
+            QDomElement e = methods[name];
+            if (e.isNull())
                 continue;
 
-            QMetaMethod metaMethod = meta->method(methodIndex);
-
-            adbus_Member* mbr = AddMethod(iface, metaMethod, methodIndex);
+            adbus_Member* mbr = AddMethod(iface, method, mi);
             if (!mbr)
                 continue;
 
-            GetAnnotations(mbr, xmlMember);
+            GetAnnotations(mbr, e);
             mbrs++;
 
-        } else if (tag == "signal") {
+        } else if (type == QMetaMethod::Signal) {
+            QDBUS_LOG("found meta signal '%s' '%s'", name.constData(), method.signature());
 
-            int sigIndex = meta->indexOfSignal(name.constData());
-            if (sigIndex < 0)
+            QDomElement e = sigs[name];
+            if (e.isNull())
                 continue;
 
-            QMetaMethod metaMethod = meta->method(sigIndex);
-
-            adbus_Member* mbr = AddMethod(iface, metaMethod, sigIndex);
+            adbus_Member* mbr = AddMethod(iface, method, mi);
             if (!mbr)
                 continue;
 
-            GetAnnotations(mbr, xmlMember);
-            mbrs++;
-
-        } else if (tag == "property") {
-
-            int propIndex = meta->indexOfProperty(name.constData());
-            if (propIndex < 0)
-                continue;
-
-            QMetaProperty metaProperty = meta->property(propIndex);
-
-            adbus_Member* mbr = AddProperty(iface, metaProperty, propIndex);
-            if (!mbr)
-                continue;
-
-            GetAnnotations(mbr, xmlMember);
+            GetAnnotations(mbr, e);
             mbrs++;
         }
+    }
+
+    for (int pi = meta->propertyOffset(); pi < meta->propertyCount(); pi++) {
+
+        QMetaProperty property = meta->property(pi);
+        QByteArray name = property.name();
+        if (name.isEmpty())
+            continue;
+
+        QDomElement e = properties[name];
+        if (!e.isNull())
+            continue;
+
+        adbus_Member* mbr = AddProperty(iface, property, pi);
+        if (!mbr)
+            continue;
+
+        GetAnnotations(mbr, e);
+        mbrs++;
     }
 
     if (mbrs == 0) {
@@ -843,7 +884,6 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
     d->bind.path = d->path.constData();
     d->bind.pathSize = d->path.size();
 
-    // interface is freed in DoBind
     d->bind.interface = iface;
     d->bind.cuser2 = d;
 
@@ -854,6 +894,7 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
     d->bind.ruser[0] = d;
 
     d->connection = m_Connection;
+    d->interface = ifaceName;
 
     createSignals(object, meta, d);
 
@@ -962,7 +1003,7 @@ void QDBusSignal::trigger(void** a)
     adbus_msg_setinterface(m, m_Bind->interface.constData(), m_Bind->interface.size());
     adbus_msg_setmember(m, m_Name.constData(), m_Name.size());
 
-    m_Arguments.appendArguments(m, a);
+    m_Arguments.bufferSignalArguments(m, a);
 
     adbus_msg_send(m, m_Connection);
 }

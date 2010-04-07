@@ -295,7 +295,9 @@ static void Callback_(d_String* s, const char* field, void* cb, void* user)
 
 static const char* TypeString(adbus_MessageType type)
 {
-    if (type == ADBUS_MSG_METHOD) {
+    if (type == ADBUS_MSG_INVALID) {
+        return NULL;
+    } else if (type == ADBUS_MSG_METHOD) {
         return "method_call";
     } else if (type == ADBUS_MSG_RETURN) {
         return "method_return";
