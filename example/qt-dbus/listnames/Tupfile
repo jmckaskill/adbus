@@ -1,0 +1,5 @@
+include_rules
+
+CFLAGS += $(CFLAGS_QT_CORE) $(CFLAGS_QT_DBUS)
+
+: *.cpp |> !cpp |> %B.o

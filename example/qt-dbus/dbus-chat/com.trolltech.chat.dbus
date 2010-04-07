@@ -2,11 +2,6 @@
 "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
 <node>
   <interface name="com.trolltech.chat">
-      <method name="test">
-          <arg name="foo" type="s" direction="in"/>
-          <arg name="foo" type="s" direction="in"/>
-          <arg name="bar" type="s" direction="out"/>
-      </method>
     <signal name="message">
       <arg name="nickname" type="s" direction="out"/>
       <arg name="text" type="s" direction="out"/>

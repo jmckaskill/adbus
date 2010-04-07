@@ -1,0 +1,13 @@
+include_rules
+
+CFLAGS += $(CFLAGS_QT_CORE) $(CFLAGS_QT_DBUS) $(CFLAGS_QT_GUI)
+
+DBUS_INTERFACE_FLAGS += -c CarInterface
+
+: foreach *.dbus |> !dbus_interface |> %B_interface.h %B_interface.cpp
+: foreach *.dbus |> !dbus_adaptor |> %B_adaptor.h %B_adaptor.cpp
+: foreach *.ui |> !uic |> ui_%B.h
+: foreach *.h | *_interface.h *_adaptor.* ui_*.h |> !moc |> moc_%B.cpp
+: foreach *.cpp | ui_*.h *_adaptor.h *_interface.h |> !cpp |> %B.o
+
+

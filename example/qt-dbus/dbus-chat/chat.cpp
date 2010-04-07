@@ -115,10 +115,12 @@ void ChatMainWindow::textChangedSlot(const QString &newText)
 
 void ChatMainWindow::sendClickedSlot()
 {
-    //emit message(m_nickname, messageLineEdit->text());
+    emit message(m_nickname, messageLineEdit->text());
+#if 0
     QDBusMessage msg = QDBusMessage::createSignal("/", "com.trolltech.chat", "message");
     msg << m_nickname << messageLineEdit->text();
     QDBusConnection::sessionBus().send(msg);
+#endif
     messageLineEdit->setText(QString());
 }
 
