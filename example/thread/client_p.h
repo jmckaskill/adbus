@@ -25,78 +25,73 @@
 
 #pragma once
 #include "client.h"
-#include "HW/Lock.h"
-#include "HW/EventLoop.h"
-#include "HW/Freelist.h"
-#include "HW/EventQueue.h"
-
-#ifndef _WIN32
-# include <sys/types.h>
-# include <sys/socket.h>
-#endif
+#include "MT/Lock.h"
+#include "MT/EventLoop.h"
+#include "MT/Freelist.h"
 
 #define NEW(type) (type*) calloc(1, sizeof(type))
 
-typedef struct HWI_Client HWI_Client;
-typedef struct HWI_ClientMessage HWI_ClientMessage;
-typedef struct HWI_ProxyMessage HWI_ProxyMessage;
+typedef struct MTI_Client MTI_Client;
+typedef struct MTI_ClientMessage MTI_ClientMessage;
+typedef struct MTI_ProxyMessage MTI_ProxyMessage;
 
-struct HWI_Client
+struct MTI_Client
 {
 #ifdef _WIN32
-	HANDLE				handle;
+    HANDLE              handle;
 #endif
 
-	adbus_Socket		sock;
-	adbus_Connection*	connection;
-	HW_AtomicInt		connected;
-	adbus_Buffer*		txbuf;
-	HW_EventLoop*		loop;
+    adbus_Socket        sock;
+    adbus_Connection*   connection;
+    MT_AtomicInt        connected;
+    adbus_Buffer*       txbuf;
+    MT_EventLoop*       loop;
 };
 
 
-struct HWI_ClientMessage
+struct MTI_ClientMessage
 {
-	HW_FreelistHeader	freelistHeader;
-	HW_Message			msgHeader;
-	adbus_Connection*	connection;
-	adbus_Message		msg;
-	adbus_MsgFactory*	ret;
-	void*				user1;
-	void*				user2;
-	adbus_Bool			hasReturn;
-	adbus_MsgCallback	cb;
+    MT_FreelistHeader   freelistHeader;
+    MT_Message          msgHeader;
+    adbus_Connection*   connection;
+    adbus_Message       msg;
+    adbus_MsgFactory*   ret;
+    void*               user1;
+    void*               user2;
+    adbus_Bool          hasReturn;
+    adbus_MsgCallback   cb;
 };
 
-struct HWI_ProxyMessage
+struct MTI_ProxyMessage
 {
-	HW_FreelistHeader	freelistHeader;
-	HW_Message			msgHeader;
-	adbus_Callback		callback;
-	adbus_Callback		release;
-	adbus_Bool			releaseCalled;
-	void*				user;
+    MT_FreelistHeader   freelistHeader;
+    MT_Message          msgHeader;
+    adbus_Callback      callback;
+    adbus_Callback      release;
+    adbus_Bool          releaseCalled;
+    void*               user;
 };
 
-HW_FreelistHeader* HWI_ClientMessage_New(void);
-void HWI_ClientMessage_Free(HW_FreelistHeader* h);
+MT_FreelistHeader* MTI_ClientMessage_New(void);
+void MTI_ClientMessage_Free(MT_FreelistHeader* h);
 
-HW_FreelistHeader* HWI_ProxyMessage_New(void);
-void HWI_ProxyMessage_Free(HW_FreelistHeader* h);
+MT_FreelistHeader* MTI_ProxyMessage_New(void);
+void MTI_ProxyMessage_Free(MT_FreelistHeader* h);
 
-int		HWI_Client_SendFlush(HWI_Client* s, size_t req);
-int		HWI_Client_SendMsg(HWI_Client* s, adbus_Message* m);
-int		HWI_Client_Send(HWI_Client* s, const char* buf, size_t sz);
-int		HWI_Client_Recv(HWI_Client* s, char* buf, size_t sz);
-uint8_t HWI_Client_Rand(HWI_Client* s);
-void	HWI_Client_Disconnect(HWI_Client* s);
-int		HWI_Client_DispatchExisting(HWI_Client* s);
-void	HWI_Client_OnReceive(HWI_Client* s);
-int		HWI_Client_Block(HWI_Client* s, adbus_BlockType type, uintptr_t* block, int timeoutms);
-void	HWI_Client_Connected(HWI_Client* s);
-void	HWI_Client_ConnectionProxy(HWI_Client* s, adbus_Callback cb, adbus_Callback release, void* cbuser);
-void	HWI_Client_GetProxy(HWI_Client* s, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser);
-void	HWI_Client_Free(HWI_Client* s);;
+int     MTI_Client_SendFlush(MTI_Client* s, size_t req);
+void    MTI_Client_OnIdle(void* u);
+int     MTI_Client_SendMsg(void* u, adbus_Message* m);
+int     MTI_Client_Send(void* u, const char* buf, size_t sz);
+int     MTI_Client_Recv(void* u, char* buf, size_t sz);
+uint8_t MTI_Client_Rand(void* u);
+void    MTI_Client_Disconnect(MTI_Client* s);
+int     MTI_Client_DispatchExisting(MTI_Client* s);
+void    MTI_Client_OnReceive(void* u);
+int     MTI_Client_Block(void* u, adbus_BlockType type, uintptr_t* block, int timeoutms);
+void    MTI_Client_Connected(void* u);
+void    MTI_Client_ConnectionProxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);
+void    MTI_Client_GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser);
+void    MTI_Client_Free(void* u);;
 
-void	HWI_Client_Proxy(HW_EventLoop* s, adbus_Callback cb, adbus_Callback release, void* cbuser);
-int		HWI_Client_MsgProxy(HW_EventLoop* s, adbus_MsgCallback msgcb, adbus_CbData* d);
+void    MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);
+int     MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d);

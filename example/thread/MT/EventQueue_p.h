@@ -23,40 +23,16 @@
  * ----------------------------------------------------------------------------
  */
 
+#pragma once
+
 #include "Common.h"
+#include "EventLoop.h"
 #include "Lock.h"
-#include <stdint.h>
 
-typedef void (*HW_ThreadFunction)(void* arg);
+MTI_EventQueue* MTI_Queue_New(MT_EventLoop* loop);
+void MTI_Queue_Free(MTI_EventQueue* q);
+void MTI_Queue_Dispatch(void* u);
 
-HW_API void HW_Thread_Start(HW_ThreadFunction func, void* arg);
-
-#ifdef _WIN32
-#	include <windows.h>
-#else
-#	include <pthreads.h>
-#endif
-
-/* Needs to be memset to 0 if not a global */
-struct HW_ThreadStorage
-{
-	HW_Spinlock		lock;
-	int				ref;
-#ifdef _WIN32
-	uint32_t		tls;
-#else
-	pthread_key_t	tls;
-#endif
-};
-
-HW_API void HW_ThreadStorage_Ref(HW_ThreadStorage* s);
-HW_API void HW_ThreadStorage_Deref(HW_ThreadStorage* s);
-
-#ifdef _WIN32
-#	define HW_ThreadStorage_Get(pstorage)		TlsGetValue((pstorage)->tls)
-#	define HW_ThreadStorage_Set(pstorage, val)	TlsSetValue((pstorage)->tls, val)
-#else
-#	define HW_ThreadStorage_Get(pstorage)		pthread_getspecific((pstorage)->tls)
-#	define HW_ThreadStorage_Set(pstorage, val)	pthread_setspecific((pstorage)->tls, val)
-#endif
+/* Thread safe as long as the queue is not freed */
+void MTI_Queue_Post(MTI_EventQueue* q, MT_Message* m);
 

@@ -25,7 +25,8 @@
 
 #pragma once
 
-#include "HW/Common.h"
+#include "MT/Common.h"
 #include <adbus.h>
 
-HW_API adbus_Connection* HW_CreateDBusConnection(adbus_BusType type);
+adbus_Connection* MT_CreateDBusConnection(adbus_BusType type);
+

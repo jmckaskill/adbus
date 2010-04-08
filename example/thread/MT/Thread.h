@@ -23,32 +23,44 @@
  * ----------------------------------------------------------------------------
  */
 
+#include "Common.h"
+#include "Lock.h"
+#include <stdint.h>
+
+typedef void (*MT_ThreadFunction)(void* arg);
+
+
 #ifdef _WIN32
-
-#define HW_LIBRARY
-#include "Thread.h"
-#include <process.h>
-#include <windows.h>
-
-void HW_Thread_Start(HW_ThreadFunction func, void* arg)
-{ _beginthread(func, 0, arg); }
-
-void HW_ThreadStorage_Ref(HW_ThreadStorage* s)
-{
-	HW_Spinlock_Enter(&s->lock);
-	if (s->ref++ == 0) {
-		s->tls = TlsAlloc();
-	}
-	HW_Spinlock_Exit(&s->lock);
-}
-
-void HW_ThreadStorage_Deref(HW_ThreadStorage* s)
-{
-	HW_Spinlock_Enter(&s->lock);
-	if (--s->ref == 0) {
-		TlsFree(s->tls);
-	}
-	HW_Spinlock_Exit(&s->lock);
-}
-
+#   include <windows.h>
+    typedef MT_Handle MT_Thread;
+#else
+#   include <pthread.h>
+    typedef pthread_t MT_Thread;
 #endif
+
+MT_API MT_Thread    MT_Thread_Start(MT_ThreadFunction func, void* arg);
+MT_API void         MT_Thread_Join(MT_Thread thread);
+
+/* Needs to be memset to 0 if not a global */
+struct MT_ThreadStorage
+{
+    MT_Spinlock     lock;
+    int             ref;
+#ifdef _WIN32
+    uint32_t        tls;
+#else
+    pthread_key_t   tls;
+#endif
+};
+
+MT_API void MT_ThreadStorage_Ref(MT_ThreadStorage* s);
+MT_API void MT_ThreadStorage_Deref(MT_ThreadStorage* s);
+
+#ifdef _WIN32
+#   define MT_ThreadStorage_Get(pstorage)       TlsGetValue((pstorage)->tls)
+#   define MT_ThreadStorage_Set(pstorage, val)  TlsSetValue((pstorage)->tls, val)
+#else
+#   define MT_ThreadStorage_Get(pstorage)       pthread_getspecific((pstorage)->tls)
+#   define MT_ThreadStorage_Set(pstorage, val)  pthread_setspecific((pstorage)->tls, val)
+#endif
+

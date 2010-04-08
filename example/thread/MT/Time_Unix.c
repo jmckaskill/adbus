@@ -25,54 +25,39 @@
 
 #ifndef _WIN32
 
-#define HW_LIBRARY
-#include "Thread.h"
-#include <pthreads.h>
+#define MT_LIBRARY
+#include "Time.h"
+#include <sys/time.h>
+#include <time.h>
 
-struct ThreadData
+
+MT_Time MT_CurrentTime()
 {
-  HW_ThreadFunction func;
-  void*             arg;
-};
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL))
+        return MT_TIME_INVALID;
 
-static void* start_thread(void* arg)
-{
-  struct ThreadData* d = (struct ThreadData*) arg;
-  HW_ThreadFunction func = d->func;
-  void* funcarg = d->arg;
-  free(d);
-
-  func(funcarg);
-  return 0;
+    return (MT_Time) (tv.tv_sec * 1000000UL + tv.tv_usec);
 }
 
-void HW_Thread_Start(HW_ThreadFunction func, void* arg)
+
+int MT_TIME_TO_TM(MT_Time t, struct tm* tm)
 {
-  pthread_t threadid;
+    time_t timet = (time_t) MT_TIME_TO_SEC(t);
+    if (localtime_r(&timet, tm) == NULL)
+        return -1;
 
-  ThreadData* d = NEW(struct ThreadData);
-  d->func = func;
-  d->arg = arg;
-
-  pthread_create(&threadid, NULL, &start_thread, d);
+    return 0;
 }
 
-void HW_ThreadStorage_Ref(HW_ThreadStorage* s)
+MT_Time MT_TIME_FROM_TM(struct tm* tm)
 {
-	HW_Spinlock_Enter(&s->lock);
-	if (s->ref++ == 0) {
-		pthread_key_create(&s->tls);
-	}
-	HW_Spinlock_Exit(&s->lock);
-}
+    time_t t = mktime(tm);
+    if (t == -1)
+        return MT_TIME_INVALID;
 
-void HW_ThreadStorage_Deref(HW_ThreadStorage* s)
-{
-	HW_Spinlock_Enter(&s->lock);
-	if (--s->ref == 0) {
-		pthread_key_destroy(s->tls);
-	}
-	HW_Spinlock_Exit(&s->lock);
+    return MT_TIME_FROM_SEC(t);
 }
 
 #endif
+

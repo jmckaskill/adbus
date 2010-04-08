@@ -29,27 +29,27 @@
 #include <stdint.h>
 #include <time.h>
 
-/* HW_Time gives the time in microseconds centered on the unix epoch (midnight Jan 1 1970) */
-typedef int64_t                   HW_Time;
-#define HW_TIME_INVALID           INT64_MAX
-#define HW_TIME_ISVALID(x)        ((x) != HW_TIME_INVALID)
+/* MT_Time gives the time in microseconds centered on the unix epoch (midnight Jan 1 1970) */
+typedef int64_t                   MT_Time;
+#define MT_TIME_INVALID           INT64_MAX
+#define MT_TIME_ISVALID(x)        ((x) != MT_TIME_INVALID)
 
-#define HW_TIME_FROM_US(x)        HW_Time(x)
-#define HW_TIME_FROM_MS(x)        HW_Time(double(x) * 1000)
-#define HW_TIME_FROM_SEC(x)       HW_Time(double(x) * 1000000)
-#define HW_TIME_FROM_HOURS(x)     HW_Time(double(x) * 1000000 * 3600)
-#define HW_TIME_FROM_DAYS(x)      HW_Time(double(x) * 1000000 * 3600 * 24)
-#define HW_TIME_FROM_WEEKS(x)     HW_Time(double(x) * 1000000 * 3600 * 24 * 7)
-#define HW_TIME_FROM_HZ(x)        HW_Time((1.0 / double(x)) * 1000000)
+#define MT_TIME_FROM_US(x)        ((MT_Time) (x))
+#define MT_TIME_FROM_MS(x)        ((MT_Time) ((double) (x) * 1000))
+#define MT_TIME_FROM_SEC(x)       ((MT_Time) ((double) (x) * 1000000))
+#define MT_TIME_FROM_HOURS(x)     ((MT_Time) ((double) (x) * 1000000 * 3600))
+#define MT_TIME_FROM_DAYS(x)      ((MT_Time) ((double) (x) * 1000000 * 3600 * 24))
+#define MT_TIME_FROM_WEEKS(x)     ((MT_Time) ((double) (x) * 1000000 * 3600 * 24 * 7))
+#define MT_TIME_FROM_HZ(x)        ((MT_Time) ((1.0 / (double) (x)) * 1000000))
 
-#define HW_TIME_TO_US(x)          (x)
-#define HW_TIME_TO_MS(x)          (double(x) / 1000)
-#define HW_TIME_TO_SEC(x)         (double(x) / 1000000)
-#define HW_TIME_TO_HOURS(x)       (double(x) / 1000000 / 3600)
-#define HW_TIME_TO_DAYS(x)        (double(x) / 1000000 / 3600 / 24 / 7)
-#define HW_TIME_TO_WEEKS(x)       (double(x) / 1000000 / 3600 / 24 / 7)
+#define MT_TIME_TO_US(x)          (x)
+#define MT_TIME_TO_MS(x)          ((double) (x) / 1000)
+#define MT_TIME_TO_SEC(x)         ((double) (x) / 1000000)
+#define MT_TIME_TO_HOURS(x)       ((double) (x) / 1000000 / 3600)
+#define MT_TIME_TO_DAYS(x)        ((double) (x) / 1000000 / 3600 / 24 / 7)
+#define MT_TIME_TO_WEEKS(x)       ((double) (x) / 1000000 / 3600 / 24 / 7)
 
-#define HW_TIME_GPS_EPOCH         HW_TIME_FROM_SEC(315964800)
+#define MT_TIME_GPS_EPOCH         MT_TIME_FROM_SEC(315964800)
 
 
 /* Functions to convert to/from broken down time. We use struct tm here
@@ -95,26 +95,26 @@ struct tm {
  *   described. The value is positive if daylight saving time is in effect, zero
  *   if it is not, and negative if the information is not available.
  */
-HW_API HW_Time HW_TIME_FROM_TM(struct tm* tm); /* Returns HW_TIME_INVALID on error */
-HW_API int     HW_TIME_TO_TM(HW_Time t, struct tm* tm); /* Returns non zero on error */
+MT_API MT_Time MT_TIME_FROM_TM(struct tm* tm); /* Returns MT_TIME_INVALID on error */
+MT_API int     MT_TIME_TO_TM(MT_Time t, struct tm* tm); /* Returns non zero on error */
 
-HW_API HW_Time HW_CurrentTime();
+MT_API MT_Time MT_CurrentTime();
 
-HW_API char* HW_NewDateString(HW_Time t);
-HW_API char* HW_NewDateTimeString(HW_Time t);
-HW_API void  HW_FreeDateString(char* str);
+MT_API char* MT_NewDateString(MT_Time t);
+MT_API char* MT_NewDateTimeString(MT_Time t);
+MT_API void  MT_FreeDateString(char* str);
 
 #ifdef __cplusplus
-	struct HW_DateString
-	{
-	  HW_DateString(char* str) : m_Str(str) {}
-	  ~HW_DateString(){HW_FreeDateString(m_Str);}
-	  char* m_Str;
-	};
+    struct MT_DateString
+    {
+      MT_DateString(char* str) : m_Str(str) {}
+      ~MT_DateString(){MT_FreeDateString(m_Str);}
+      char* m_Str;
+    };
 
-	/* These return ISO 8601 strings eg "2010-02-16" and "2010-02-16 22:00:08.067890Z" */
-#	define HW_LogDateString(t) HW_DateString(HW_NewDateString(t)).m_Str
-#	define HW_LogDateTimeString(t) HW_DateString(HW_NewDateTimeString(t)).m_Str
+    /* These return ISO 8601 strings eg "2010-02-16" and "2010-02-16 22:00:08.067890Z" */
+#   define MT_LogDateString(t) MT_DateString(MT_NewDateString(t)).m_Str
+#   define MT_LogDateTimeString(t) MT_DateString(MT_NewDateTimeString(t)).m_Str
 #endif
 
 

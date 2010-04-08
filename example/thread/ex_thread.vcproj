@@ -158,66 +158,66 @@
 	</References>
 	<Files>
 		<Filter
-			Name="HW"
+			Name="MT"
 			>
 			<File
-				RelativePath=".\HW\Common.h"
+				RelativePath=".\MT\Common.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\EventLoop.h"
+				RelativePath=".\MT\EventLoop.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\EventLoop_Unix.c"
+				RelativePath=".\MT\EventLoop_Unix.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\EventLoop_Win.c"
+				RelativePath=".\MT\EventLoop_Win.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\EventQueue.c"
+				RelativePath=".\MT\EventQueue.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\EventQueue_p.h"
+				RelativePath=".\MT\EventQueue_p.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Freelist.h"
+				RelativePath=".\MT\Freelist.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Lock.h"
+				RelativePath=".\MT\Lock.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Thread.h"
+				RelativePath=".\MT\Thread.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Thread_Unix.c"
+				RelativePath=".\MT\Thread_Unix.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Thread_Win.c"
+				RelativePath=".\MT\Thread_Win.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Time.c"
+				RelativePath=".\MT\Time.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Time.h"
+				RelativePath=".\MT\Time.h"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Time_Unix.c"
+				RelativePath=".\MT\Time_Unix.c"
 				>
 			</File>
 			<File
-				RelativePath=".\HW\Time_Win.c"
+				RelativePath=".\MT\Time_Win.c"
 				>
 			</File>
 		</Filter>

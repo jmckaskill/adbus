@@ -113,16 +113,17 @@ int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d)
 {
     int ret = setjmp(d->jmpbuf);
     if (ret == ADBUSI_ERROR) {
-        goto end;
+        return 0;
     } else if (ret) {
         return ret;
     }
 
     adbus_iter_args(&d->checkiter, d->msg);
-    if (callback(d))
-        return -1;
+    return callback(d);
+}
 
-end:
+int adbus_send_reply(adbus_CbData* d)
+{
     if (d->ret && d->msg->type == ADBUS_MSG_METHOD) {
         if (adbus_msg_type(d->ret) == ADBUS_MSG_INVALID) {
             adbus_msg_settype(d->ret, ADBUS_MSG_RETURN);
@@ -131,9 +132,8 @@ end:
         adbus_msg_setdestination(d->ret, d->msg->sender, d->msg->senderSize);
         adbus_msg_setreply(d->ret, d->msg->serial);
         adbus_msg_setflags(d->ret, adbus_msg_flags(d->ret) | ADBUS_MSG_NO_REPLY);
-        adbus_msg_send(d->ret, d->connection);
+        return adbus_msg_send(d->ret, d->connection);
     }
-
     return 0;
 }
 

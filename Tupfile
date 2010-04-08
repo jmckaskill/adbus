@@ -65,3 +65,8 @@ LDFLAGS_ex_qtdbus_remotecar     += $(LD_QT) $(LDFLAGS_QT_GUI)
 : example/qt-dbus/remotecontrolledcar/controller/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_remotecontroller
 : example/qt-dbus/remotecontrolledcar/car/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_remotecar
 
+LDFLAGS_libMT.so += -lpthread
+
+: example/thread/MT/*.o |> !ld-so |> libMT.so
+: example/thread/*.o adbus.so libMT.so |> !ld |> ex_thread
+

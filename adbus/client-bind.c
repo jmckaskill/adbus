@@ -423,6 +423,13 @@ int adbusI_dispatchMethod(adbus_Connection* c, adbus_CbData* d)
     adbus_ConnBind* bind;
     const adbus_Member* member;
 
+    assert(d->ret);
+    adbus_msg_reset(d->ret);
+
+    if (d->msg->flags & ADBUS_MSG_NO_REPLY) {
+        d->ret = NULL;
+    }
+
     if (d->msg->interface) {
         /* If we know the interface, then we try and find the method on that
          * interface.

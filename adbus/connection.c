@@ -627,12 +627,13 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
 
     } else if (d.msg->type == ADBUS_MSG_METHOD) {
 
-        if ((d.msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
-            d.ret = c->dispatchReturn;
-            adbus_msg_reset(d.ret);
-        }
+        d.ret = c->dispatchReturn;
 
         if (adbusI_dispatchMethod(c, &d)) {
+            return -1;
+        }
+
+        if (adbus_send_reply(&d)) {
             return -1;
         }
     }
@@ -696,14 +697,16 @@ int adbus_conn_continue(adbus_Connection* c)
 
         } else if (d.msg->type == ADBUS_MSG_METHOD) {
 
-            if ((d.msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
-                d.ret = msg->ret;
-                adbus_msg_reset(d.ret);
-            }
+            d.ret = msg->ret;
 
             if (adbusI_dispatchMethod(c, &d)) {
                 return -1;
             }
+
+            if (adbus_send_reply(&d)) {
+                return -1;
+            }
+
         }
 
         msg->msgFinished = 1;

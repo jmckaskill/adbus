@@ -23,58 +23,19 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+#include "Common.h"
+#include "Lock.h"
 
-#include <stdlib.h>
+struct MT_FreelistHeader
+{
+    MT_AtomicPtr    next;
+};
 
-#if !defined HW_INLINE
-#   if defined __cplusplus || __STDC_VERSION__ + 0 >= 199901L
-#       define HW_INLINE static inline
-#   else
-#       define HW_INLINE static
-#   endif
-#endif
+typedef MT_FreelistHeader* (*MT_CreateCallback)(void);
+typedef void (*MT_FreeCallback)(MT_FreelistHeader*);
 
-#ifdef __cplusplus
-# define HW_EXTERN_C extern "C"
-#else
-# define HW_EXTERN_C extern
-#endif
+MT_API void MT_Freelist_Ref(MT_Freelist** s, MT_CreateCallback create, MT_FreeCallback free);
+MT_API void MT_Freelist_Deref(MT_Freelist** s);
 
-#ifdef HW_BUILD_AS_DLL
-# ifdef HW_LIBRARY
-#   define HW_API HW_EXTERN_C __declspec(dllexport)
-# else
-#   define HW_API HW_EXTERN_C __declspec(dllimport)
-# endif
-#else
-# define HW_API HW_EXTERN_C
-#endif
-
-typedef struct HW_EventLoop HW_EventLoop;
-typedef struct HW_Can HW_Can;
-typedef struct HW_Serial HW_Serial;
-typedef struct HW_Lock HW_Lock;
-typedef struct HWI_EventQueue HWI_EventQueue;
-typedef struct HW_Message HW_Message;
-typedef struct HW_Freelist HW_Freelist;
-typedef struct HW_FreelistHeader HW_FreelistHeader;
-typedef struct HW_ThreadStorage HW_ThreadStorage;
-
-typedef void (*HW_Callback)(void*);
-
-#ifndef HW_NOT_COPYABLE
-# define HW_NOT_COPYABLE(c) private: c(c& __DummyArg); c& operator=(c& __DummyArg)
-#endif
-
-#ifdef _WIN32
-  typedef void* HW_Handle; /* HANDLE */
-#else
-  typedef int HW_Handle;   /* fd_t */
-#endif
-
-#ifdef HW_LIBRARY
-#	define NEW(type) (type*) calloc(1, sizeof(type))
-#endif
-
-
+MT_API MT_FreelistHeader* MT_Freelist_Pop(MT_Freelist* s);
+MT_API void MT_Freelist_Push(MT_Freelist* s, MT_FreelistHeader* h);

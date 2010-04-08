@@ -230,6 +230,7 @@ struct adbus_CbData
 };
 
 ADBUS_API int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d);
+ADBUS_API int adbus_send_reply(adbus_CbData* d);
 
 
 struct adbus_Argument

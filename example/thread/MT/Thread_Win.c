@@ -23,73 +23,63 @@
  * ----------------------------------------------------------------------------
  */
 
-#define _CRT_SECURE_NO_WARNINGS
-#define HW_LIBRARY
-#include "Time.h"
+#ifdef _WIN32
 
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
+#define MT_LIBRARY
+#include "Thread.h"
+#include <process.h>
+#include <windows.h>
 
-#ifdef _MSC_VER
-#	define snprintf _snprintf
-#	define strdup _strdup
+struct ThreadData
+{
+    MT_ThreadFunction   func;
+    void*               arg;
+};
+
+DWORD __stdcall start_thread(void* arg)
+{
+    struct ThreadData* d = (struct ThreadData*) arg;
+    MT_ThreadFunction func = d->func;
+    void* funcarg = d->arg;
+    free(d);
+
+    func(funcarg);
+    return 0;
+}
+
+MT_Thread MT_Thread_Start(MT_ThreadFunction func, void* arg)
+{ 
+    MT_Thread handle = HW_HANDLE_INVALID;
+
+    struct ThreadData* d = NEW(struct ThreadData);
+    d->func = func;
+    d->arg = arg;
+
+    _beginthreadex(NULL, 0, &start_thread, d, 0, &handle);
+
+    return handle;
+}
+
+
+void MT_Thread_Join(MT_Thread thread)
+{ WaitForSingleObject(thread, INFINITE); }
+
+void MT_ThreadStorage_Ref(MT_ThreadStorage* s)
+{
+    MT_Spinlock_Enter(&s->lock);
+    if (s->ref++ == 0) {
+        s->tls = TlsAlloc();
+    }
+    MT_Spinlock_Exit(&s->lock);
+}
+
+void MT_ThreadStorage_Deref(MT_ThreadStorage* s)
+{
+    MT_Spinlock_Enter(&s->lock);
+    if (--s->ref == 0) {
+        TlsFree(s->tls);
+    }
+    MT_Spinlock_Exit(&s->lock);
+}
+
 #endif
-
-/* -------------------------------------------------------------------------- */
-
-#define BUFSZ 64
-
-char* HW_NewDateString(HW_Time t)
-{
-	struct tm tm;
-	int ret;
-	char* buf;
-
-	if (HW_TIME_TO_TM(t, &tm))
-		return strdup("invalid date");
-
-	buf = (char*) malloc(BUFSZ + 1);
-	buf[BUFSZ] = '\0';
-
-	ret = snprintf(buf, BUFSZ, "%d-%02d-%02d",
-		(int) tm.tm_year + 1900,
-		(int) tm.tm_mon + 1,
-		(int) tm.tm_mday);
-
-	(void) ret;
-	assert(0 <= ret && ret <= BUFSZ);
-
-	return buf;
-}
-
-char* HW_NewDateTimeString(HW_Time t)
-{
-	struct tm tm;
-	char* buf;
-	int ret;
-
-	if (HW_TIME_TO_TM(t, &tm))
-		return strdup("invalid date");
-
-	buf = (char*) malloc(BUFSZ + 1);
-	buf[BUFSZ] = '\0';
-
-	ret = snprintf(buf, BUFSZ, "%d-%02d-%02d %02d:%02d:%02d.%06dZ",
-		(int) tm.tm_year + 1900,
-		(int) tm.tm_mon + 1,
-		(int) tm.tm_mday,
-		(int) tm.tm_hour,
-		(int) tm.tm_min,
-		(int) tm.tm_sec,
-		(int) (HW_TIME_TO_US(t) % 1000000));
-
-	(void) ret;
-	assert(0 <= ret && ret <= BUFSZ);
-
-	return buf;
-}
-
-void HW_FreeDateString(char* str)
-{ free(str); }
-
