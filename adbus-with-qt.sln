@@ -70,6 +70,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ex_clientqt", "example\clie
 		{6AE1B2DE-3495-443F-9A00-3FEBA1DAFD29} = {6AE1B2DE-3495-443F-9A00-3FEBA1DAFD29}
 	EndProjectSection
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ex_thread", "example\thread\ex_thread.vcproj", "{328CFA09-92FF-4D12-92C4-2B52A7975EDD}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A5F66934-13F7-4015-92F2-3A3F6EC8DA04} = {A5F66934-13F7-4015-92F2-3A3F6EC8DA04}
+		{AECA1398-1927-4487-8357-F9C5DAE69774} = {AECA1398-1927-4487-8357-F9C5DAE69774}
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -132,6 +138,10 @@ Global
 		{0CA3D458-2960-4EE7-9BEC-BEC2DA6EE5C4}.Debug|Win32.Build.0 = Debug|Win32
 		{0CA3D458-2960-4EE7-9BEC-BEC2DA6EE5C4}.Release|Win32.ActiveCfg = Release|Win32
 		{0CA3D458-2960-4EE7-9BEC-BEC2DA6EE5C4}.Release|Win32.Build.0 = Release|Win32
+		{328CFA09-92FF-4D12-92C4-2B52A7975EDD}.Debug|Win32.ActiveCfg = Debug|Win32
+		{328CFA09-92FF-4D12-92C4-2B52A7975EDD}.Debug|Win32.Build.0 = Debug|Win32
+		{328CFA09-92FF-4D12-92C4-2B52A7975EDD}.Release|Win32.ActiveCfg = Release|Win32
+		{328CFA09-92FF-4D12-92C4-2B52A7975EDD}.Release|Win32.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -929,9 +929,9 @@ bool QDBusObject::eventFilter(QObject* object, QEvent* event)
         // We get the thread change event before the actual thread change occurs.
         // We want to move with the object (ie whilst the lock in
         // QObject::moveToThread is still held), so that we don't get events on
-        // the wrong thread. The only of doing this is to insert ourselves as a
-        // child of the tracked object, and then remove ourselves after we've
-        // moved.
+        // the wrong thread. The only way of doing this is to insert ourselves
+		// as a child of the tracked object, and then remove ourselves after
+		// we've moved.
         setParent(m_Tracked);
         // Post ourselves the thread change event which we will catch in
         // QDBusObject::event on the new thread.
