@@ -23,69 +23,37 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifdef _WIN32
+#pragma once
 
-#define MT_LIBRARY
-#include "Thread.h"
-#include <process.h>
-#include <windows.h>
-
-struct ThreadData
-{
-    MT_Callback  func;
-    void*        arg;
-};
-
-unsigned int __stdcall start_thread(void* arg)
-{
-    struct ThreadData* d = (struct ThreadData*) arg;
-    MT_Callback func = d->func;
-    void* funcarg = d->arg;
-    free(d);
-
-    func(funcarg);
-    return 0;
-}
-
-MT_Thread MT_Thread_StartJoinable(MT_Callback func, void* arg)
+void MT_Target_Init(MT_Target* t)
 { 
-	unsigned int handle;
-
-    struct ThreadData* d = NEW(struct ThreadData);
-    d->func = func;
-    d->arg = arg;
-
-    _beginthreadex(NULL, 0, &start_thread, d, 0, &handle);
-
-    return (MT_Thread) handle;
+	t->loop = MT_Current();
 }
 
-void MT_Thread_Start(MT_Callback func, void* arg)
-{
-	MT_Thread handle = MT_Thread_StartJoinable(func, arg);
-	CloseHandle(handle);
+void MT_Target_InitToLoop(MT_Target* t, MT_EventLoop* loop)
+{ 
+	t->loop = loop; 
 }
 
-
-void MT_Thread_Join(MT_Thread thread)
-{ WaitForSingleObject(thread, INFINITE); }
-
-void MT_ThreadStorage_Ref(MT_ThreadStorage* s)
+void MT_Target_Destroy(MT_Target* t)
 {
-    MT_Spinlock_Enter(&s->lock);
-    if (s->ref++ == 0) {
-        s->tls = TlsAlloc();
+    MT_Message* m = t->first;
+    for (m = t->first; m != NULL; m = (MT_Message*) m->targetNext) {
+        /* Disable the calling of this message */
+        m->target = NULL;
+        m->call = NULL;
     }
-    MT_Spinlock_Exit(&s->lock);
 }
 
-void MT_ThreadStorage_Deref(MT_ThreadStorage* s)
+void MT_Message_Post(MT_Message* m, MT_Target* t)
 {
-    MT_Spinlock_Enter(&s->lock);
-    if (--s->ref == 0) {
-        TlsFree(s->tls);
-    }
-    MT_Spinlock_Exit(&s->lock);
-}
+    MT_Message* prevlast;
 
-#endif
+	m->target = t;
+    /* Grab last pointer */
+    prevlast = MT_AtomicPtr_Set(&t->last, t);
+    /* Release to target thread */
+    MT_AtomicPtr_Set(&prevlast->targetNext, m);
+
+    MT_Loop_Post(t->loop, m);
+}

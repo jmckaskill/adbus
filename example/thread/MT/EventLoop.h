@@ -31,34 +31,61 @@
 
 struct MT_Message
 {
-    MT_AtomicInt            ref;
-    MT_AtomicPtr            next;
+	MT_Target*				target;
+    MT_AtomicPtr            targetNext;
+    MT_AtomicPtr            queueNext;
     MT_Callback             call;
     MT_Callback             free;
     void*                   user;
 };
 
-MT_API void MT_Message_Ref(MT_Message* m);
-MT_API void MT_Message_Deref(MT_Message* m);
+MT_API void MT_Message_Post(MT_Message* m, MT_Target* t);
 
 MT_API MT_EventLoop* MT_Loop_New(void);
 MT_API void MT_Loop_Free(MT_EventLoop* e);
+
+MT_API void MT_SetCurrent(MT_EventLoop* e);
+MT_API MT_EventLoop* MT_Current(void);
 
 MT_API void MT_Loop_SetTick(MT_EventLoop* e, MT_Time period, MT_Callback cb, void* user);
 MT_API void MT_Loop_Register(MT_EventLoop* e, MT_Handle h, MT_Callback cb, void* user);
 MT_API void MT_Loop_Unregister(MT_EventLoop* e, MT_Handle h);
 MT_API void MT_Loop_AddIdle(MT_EventLoop* e, MT_Callback cb, void* user);
 MT_API void MT_Loop_RemoveIdle(MT_EventLoop* e, MT_Callback cb, void* user);
+MT_API void MT_Loop_Post(MT_EventLoop* e, MT_Message* m);
 
-MT_API int  MT_Loop_Step(MT_EventLoop* e);
-MT_API int  MT_Loop_Run(MT_EventLoop* e);
-MT_API void MT_Loop_Exit(MT_EventLoop* e, int code);
+MT_INLINE void MT_Current_SetTick(MT_Time period, MT_Callback cb, void* user)
+{ MT_Loop_SetTick(MT_Current(), period, cb, user); }
 
-/* Thread safe as long as the loop is not freed */
-MT_API void MT_Loop_Post(MT_EventLoop* q, MT_Message* m);
-MT_API void MT_Loop_Broadcast(MT_Message* m); 
+MT_INLINE void MT_Current_Register(MT_Handle h, MT_Callback cb, void* user)
+{ MT_Loop_Register(MT_Current(), h, cb, user); }
 
-MT_API MT_EventLoop* MT_Loop_Current(void);
+MT_INLINE void MT_Current_Unregister(MT_Handle h)
+{ MT_Loop_Unregister(MT_Current(), h); }
+
+MT_INLINE void MT_Current_AddIdle(MT_Callback cb, void* user)
+{ MT_Loop_AddIdle(MT_Current(), cb, user); }
+
+MT_INLINE void MT_Current_RemoveIdle(MT_Callback cb, void* user)
+{ MT_Loop_RemoveIdle(MT_Current(), cb, user); }
+
+MT_API int  MT_Current_Step(void);
+MT_API int  MT_Current_Run(void);
+MT_API void MT_Current_Exit(int code);
+
+#if defined _WIN32
+#	define MT_PRI_LOOP "%u"
+MT_API unsigned int MT_Loop_Printable(MT_EventLoop* e);
+
+#elif defined __linux__
+#	define MT_PRI_LOOP "%p"
+MT_API void* MT_Loop_Printable(MT_EventLoop* e);
+
+#else
+#	define MT_PRI_LOOP "%p"
+MT_API void* MT_Loop_Printable(MT_EventLoop* e);
+
+#endif
 
 
 #ifdef __cplusplus
@@ -70,8 +97,7 @@ namespace MT
         virtual void Call() = 0;
         virtual ~Event() {}
 
-        void Broadcast()                {Setup(); MT_BroadcastMessage(&m_Header);}
-        void Post(MT_EventLoop* loop)   {Setup(); MT_PostMessage(loop, &m_Header);}
+        void Post(MT_EventLoop* loop)   {Setup(); MT_Message_Post(&m_Header, loop);}
 
         void Ref()                      {MT_Message_Ref(&m_Header);}
         void Deref()                    {MT_Message_Deref(&m_Header);}

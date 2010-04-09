@@ -457,45 +457,60 @@ err:
     return -1;
 }
 
-/** Frees the argument vector allocated by adbus_parse_args().
- *  \relates adbus_Message
- */
-void adbus_freeargs(adbus_Message* m)
-{
-    if (m) {
-        free(m->arguments);
-        m->argumentsSize = 0;
-    }
-}
-
 /** Clones the message data in \a from into \a to.
  *  \relates adbus_Message
- *
- *  Afterwards the message needs to be freed via adbus_freedata.
  */
-void adbus_clonedata(adbus_Message* from, adbus_Message* to)
+void adbus_clonedata(adbus_Buffer* buf, adbus_Message* from, adbus_Message* to)
 {
     ptrdiff_t off;
+	size_t alloc;
 
-    *to = *from;
-    to->data = (char*) malloc(from->size);
+	memcpy(to, from, sizeof(adbus_Message));
+
+	alloc = ADBUS_ALIGN(from->size, 8) + sizeof(adbus_Argument) * from->argumentsSize;
+	adbus_buf_resize(buf, alloc);
+
+	to->data = adbus_buf_data(buf);
+
     memcpy((char*) to->data, from->data, from->size);
 
     off = to->data - from->data;
 
     /* Update all data pointers to point into the new data section */
     to->argdata += off;
-    to->signature += off;
-    to->path += off;
-    to->interface += off;
-    to->member += off;
-    to->error += off;
-    to->destination += off;
-    to->sender += off;
+
+	if (to->signature) {
+	    to->signature += off;
+	}
+
+	if (to->path) {
+	    to->path += off;
+	}
+
+	if (to->interface) {
+	    to->interface += off;
+	}
+
+	if (to->member) {
+	    to->member += off;
+	}
+
+	if (to->error) {
+	    to->error += off;
+	}
+
+	if (to->destination) {
+	    to->destination += off;
+	}
+
+	if (to->sender) {
+	    to->sender += off;
+	}
 
     if (from->arguments) {
         size_t i;
-        to->arguments = (adbus_Argument*) malloc(sizeof(adbus_Argument) * from->argumentsSize);
+		to->arguments = (adbus_Argument*) ADBUS_ALIGN(to->data + to->size, 8);
+		memcpy(to->arguments, from->arguments, sizeof(adbus_Argument) * from->argumentsSize);
 
         for (i = 0; i < to->argumentsSize; i++) {
             if (to->arguments[i].value) {
@@ -506,11 +521,6 @@ void adbus_clonedata(adbus_Message* from, adbus_Message* to)
 
 }
 
-void adbus_freedata(adbus_Message* m)
-{
-    adbus_freeargs(m);
-    if (m) {
-        free((char*) m->data);
-    }
-}
+void adbus_freeargs(adbus_Message* m)
+{ free(m->arguments); }
 

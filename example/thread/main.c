@@ -25,7 +25,35 @@
 
 #include "main.h"
 #include "client.h"
+#include "dmem/string.h"
 #include <stdio.h>
+
+#if defined _WIN32 && !defined NDEBUG
+#	include <crtdbg.h>
+#endif
+
+int MT_Log(const char* format, ...)
+{
+	d_String str;
+	va_list ap;
+	MT_EventLoop* e = MT_Current();
+
+	memset(&str, 0, sizeof(str));
+	va_start(ap, format);
+	if (e) {
+		ds_cat_f(&str, "[MT "MT_PRI_LOOP"] ", MT_Loop_Printable(MT_Current()));
+	} else {
+		ds_cat_f(&str, "[MT (null)] ");
+	}
+	ds_cat_vf(&str, format, ap);
+	ds_cat(&str, "\n");
+#if defined _WIN32 && !defined NDEBUG
+	_CrtDbgReport(_CRT_WARN, NULL, 0, NULL, "%.*s", (int) ds_size(&str), ds_cstr(&str));
+#else
+	fwrite(ds_cstr(&str), 1, ds_size(&str), stderr);
+#endif
+	return 0;
+}
 
 #define NEW(type) (type*) calloc(1, sizeof(type))
 
@@ -72,10 +100,10 @@ void Pinger_OnSend(Pinger* p)
 void Pinger_OnReceive(Pinger* p)
 {
     if (--p->leftToReceive == 0) {
-        if (MT_Loop_Current() == sMainLoop) {
+        if (MT_Current() == sMainLoop) {
             PingerFinished();
         } else {
-            MT_Loop_Exit(MT_Loop_Current(), 0);
+            MT_Current_Exit(0);
         }
     }
 }
@@ -109,7 +137,7 @@ int Pinger_AsyncError(adbus_CbData* d)
 {
     /*Pinger* p = (Pinger*) d->user1; */
     fprintf(stderr, "Error %s\n", d->msg->error);
-    MT_Loop_Exit(MT_Loop_Current(), 0);
+    MT_Current_Exit(0);
     return 0;
 }
 
@@ -119,36 +147,37 @@ void PingThread_Create(adbus_Connection* c)
 {
     PingThread* s = NEW(PingThread);
     s->connection = c;
+	s->loop = MT_Loop_New();
 
     adbus_conn_ref(c);
 
-    s->thread = MT_Thread_Start(&PingThread_Run, s);
+    s->thread = MT_Thread_StartJoinable(&PingThread_Run, s);
 }
 
 void PingThread_Run(void* u)
 {
     PingThread* s = (PingThread*) u;
-    MT_EventLoop* loop = MT_Loop_New();
+	MT_SetCurrent(s->loop);
 
     Pinger_Init(&s->pinger, s->connection);
     if (Pinger_Run(&s->pinger)) {
-        MT_Loop_Run(loop);
+        MT_Current_Run();
     }
 
-    MT_Loop_Free(loop);
     Pinger_Destroy(&s->pinger);
 
     s->finished.call = &PingThread_Finish;
     s->finished.user = s;
 
-    MT_Loop_Post(sMainLoop, &s->finished);
+	MT_Message_Post(&s->finished, sMainLoop);
 }
 
 void PingThread_Finish(void* u)
 {
     PingThread* s = (PingThread*) u;
-    adbus_conn_deref(s->connection);
     MT_Thread_Join(s->thread);
+	MT_Loop_Free(s->loop);
+    adbus_conn_deref(s->connection);
     free(s);
     PingerFinished();
 }
@@ -158,15 +187,19 @@ void PingThread_Finish(void* u)
 static void PingerFinished()
 {
     if (--sPingersLeft == 0) {
-        MT_Loop_Exit(sMainLoop, 0);
+        MT_Current_Exit(0);
     }
 }
 
 int main(void)
 {
-    sMainLoop = MT_Loop_New();
-    adbus_Connection* c = MT_CreateDBusConnection(ADBUS_DEFAULT_BUS);
+	adbus_Connection* c;
+	adbus_set_loglevel(3);
 
+    sMainLoop = MT_Loop_New();
+	MT_SetCurrent(sMainLoop);
+
+    c = MT_CreateDBusConnection(ADBUS_DEFAULT_BUS);
     if (c == NULL) {
         fprintf(stderr, "Failed to connect\n");
         return -1;
@@ -176,7 +209,7 @@ int main(void)
 
     PingThread_Create(c);
 
-    MT_Loop_Run(sMainLoop);
+    MT_Current_Run();
 
     adbus_conn_deref(c);
     MT_Loop_Free(sMainLoop);

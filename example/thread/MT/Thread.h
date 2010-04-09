@@ -27,9 +27,6 @@
 #include "Lock.h"
 #include <stdint.h>
 
-typedef void (*MT_ThreadFunction)(void* arg);
-
-
 #ifdef _WIN32
 #   include <windows.h>
     typedef MT_Handle MT_Thread;
@@ -38,7 +35,8 @@ typedef void (*MT_ThreadFunction)(void* arg);
     typedef pthread_t MT_Thread;
 #endif
 
-MT_API MT_Thread    MT_Thread_Start(MT_ThreadFunction func, void* arg);
+MT_API void         MT_Thread_Start(MT_Callback func, void* arg);
+MT_API MT_Thread    MT_Thread_StartJoinable(MT_Callback func, void* arg);
 MT_API void         MT_Thread_Join(MT_Thread thread);
 
 /* Needs to be memset to 0 if not a global */

@@ -23,13 +23,14 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifndef _WIN32
-
 #define MT_LIBRARY
 #include "EventLoop.h"
 #include "Thread.h"
 #include "EventQueue_p.h"
 #include "dmem/vector.h"
+
+#ifndef _WIN32
+
 #include <sys/time.h>
 #include <errno.h>
 
@@ -53,6 +54,7 @@ DVECTOR_INIT(Idle, struct Idle)
 
 struct MT_EventLoop
 {
+	pthread_t					threadid;
     int                         exit;
     int                         exitcode;
     struct timeval              tick;
@@ -72,7 +74,6 @@ MT_EventLoop* MT_Loop_New(void)
     e->exit         = 0;
 
     MT_ThreadStorage_Ref(&sEventLoops);
-    MT_ThreadStorage_Set(&sEventLoops, e);
 
     e->queue = MTI_Queue_New(e);
 
@@ -83,13 +84,18 @@ void MT_Loop_Free(MT_EventLoop* e)
 { 
     MTI_Queue_Free(e->queue);
 
-    MT_ThreadStorage_Set(&sEventLoops, NULL);
     MT_ThreadStorage_Deref(&sEventLoops);
 
     free(e); 
 }
 
-MT_EventLoop* MT_Loop_Current(void)
+void MT_SetCurrent(MT_EventLoop* e)
+{ 
+	e->threadid = pthread_self();
+	MT_ThreadStorage_Set(&sEventLoops, e); 
+}
+
+MT_EventLoop* MT_Current(void)
 { return (MT_EventLoop*) MT_ThreadStorage_Get(&sEventLoops); }
 
 void MT_Loop_SetTick(MT_EventLoop* e, MT_Time period, MT_Callback cb, void* user)
@@ -145,8 +151,9 @@ static void RunIdle(MT_EventLoop* e)
     }
 }
 
-int MT_Loop_Step(MT_EventLoop* e)
+int MT_Current_Step(void)
 {
+	MT_EventLoop* e = MT_Current();
     struct timeval time, timeout;
     fd_set fds;
     int maxfd = 0;
@@ -200,8 +207,9 @@ int MT_Loop_Step(MT_EventLoop* e)
     return e->exitcode;
 }
 
-int MT_Loop_Run(MT_EventLoop* e)
+int MT_Current_Run(void)
 {
+	MT_EventLoop* e = MT_Current();
     int ret = 0;
     while (!ret && !e->exit) {
         ret = MT_Loop_Step(e);
@@ -210,14 +218,25 @@ int MT_Loop_Run(MT_EventLoop* e)
 }
 
 
-void MT_Loop_Exit(MT_EventLoop* e, int code)
+void MT_Current_Exit(int code)
 {
+	MT_EventLoop* e = MT_Current();
     e->exit = 1;
     e->exitcode = code;
 }
 
-void MT_Loop_Post(MT_EventLoop* e, MT_Message* m)
+void MT_Message_Post(MT_Message* m, MT_EventLoop* e)
 { MTI_Queue_Post(e->queue, m); }
+
+#ifdef __linux__
+void* MT_Loop_Printable(MT_EventLoop* e)
+{ return (void*) e->threadid; }
+
+#else
+void* MT_Loop_Printable(MT_EventLoop* e)
+{ return (void*) e; }
+
+#endif
 
 #endif
 

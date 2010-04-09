@@ -143,7 +143,10 @@ extern "C" {
                 _index++;                                                   \
             }                                                               \
         }                                                                   \
-    } while (0)
+	DMEM_MSC_WARNING(push)													\
+	DMEM_MSC_WARNING(disable:4127)											\
+    } while (0)																\
+	DMEM_MSC_WARNING(pop)
 
 #define dv_find(name, pvec, result, test)                                   \
     do {                                                                    \
@@ -156,7 +159,10 @@ extern "C" {
                 break;                                                      \
             }                                                               \
         }                                                                   \
-    } while (0)
+	DMEM_MSC_WARNING(push)													\
+	DMEM_MSC_WARNING(disable:4127)											\
+    } while (0)																\
+	DMEM_MSC_WARNING(pop)
 
 DMEM_INLINE size_t dv_a_check(size_t sz, size_t i)
 {

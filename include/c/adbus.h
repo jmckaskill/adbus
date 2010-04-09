@@ -278,8 +278,7 @@ ADBUS_API int adbus_parse(adbus_Message* m, char* data, size_t size);
 ADBUS_API int adbus_parseargs(adbus_Message* m);
 ADBUS_API void adbus_freeargs(adbus_Message* m);
 ADBUS_API int adbus_parse_size(const char* data, size_t size);
-ADBUS_API void adbus_clonedata(adbus_Message* from, adbus_Message* to);
-ADBUS_API void adbus_freedata(adbus_Message* m);
+ADBUS_API void adbus_clonedata(adbus_Buffer* buf, adbus_Message* from, adbus_Message* to);
 
 
 ADBUS_API int adbus_connect_address(
@@ -758,6 +757,7 @@ ADBUS_API adbus_Buffer* adbus_buf_new(void);
 ADBUS_API void adbus_buf_free(adbus_Buffer* b);
 ADBUS_API size_t adbus_buf_size(const adbus_Buffer* b);
 ADBUS_API char* adbus_buf_data(const adbus_Buffer* b);
+ADBUS_API void adbus_buf_resize(adbus_Buffer* b, size_t sz);
 ADBUS_API size_t adbus_buf_reserved(adbus_Buffer* b);
 ADBUS_API char* adbus_buf_release(adbus_Buffer* b);
 ADBUS_API void adbus_buf_reset(adbus_Buffer* b);

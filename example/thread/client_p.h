@@ -24,10 +24,16 @@
  */
 
 #pragma once
+
+#ifdef _WIN32
+#	include <winsock2.h>
+#endif
+
 #include "client.h"
 #include "MT/Lock.h"
 #include "MT/EventLoop.h"
 #include "MT/Freelist.h"
+
 
 #define NEW(type) (type*) calloc(1, sizeof(type))
 
@@ -38,7 +44,7 @@ typedef struct MTI_ProxyMessage MTI_ProxyMessage;
 struct MTI_Client
 {
 #ifdef _WIN32
-    HANDLE              handle;
+    WSAEVENT            handle;
 #endif
 
     adbus_Socket        sock;
@@ -54,6 +60,7 @@ struct MTI_ClientMessage
     MT_FreelistHeader   freelistHeader;
     MT_Message          msgHeader;
     adbus_Connection*   connection;
+	adbus_Buffer*		msgBuffer;
     adbus_Message       msg;
     adbus_MsgFactory*   ret;
     void*               user1;

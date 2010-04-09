@@ -54,10 +54,11 @@ struct QDBusProxyMsgEvent : public QEvent
 
     adbus_MsgCallback   cb;
     adbus_Connection*   connection;
+	adbus_Buffer*		msgBuffer;
+	adbus_MsgFactory*	ret;
     adbus_Message       msg;
     void*               user1;
     void*               user2;
-    bool                ret;
 };
 
 class QDBUS_EXPORT QDBusProxy : public QObject

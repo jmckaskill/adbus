@@ -418,30 +418,32 @@ void adbus_conn_deref(adbus_Connection* c)
 struct Message
 {
     adbus_Connection*   c;
-    adbus_Message       m;
+	adbus_Buffer*		buf;
+    adbus_Message       msg;
 };
 
 static void ProxyMessage(void* d)
 {
-    struct Message* msg = (struct Message*) d;
-    adbus_Message* m = &msg->m;
-    adbus_Connection* c = msg->c;
+    struct Message* m = (struct Message*) d;
+    adbus_Message* msg = &m->msg;
+    adbus_Connection* c = m->c;
 
     ADBUSI_LOG_DATA_3(
-			m->data,
-			m->size,
+			msg->data,
+			msg->size,
 			"sending data (connection %s, %p)",
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
 
-    c->vtable.send_message(c->obj, m);
+    c->vtable.send_message(c->obj, msg);
     assert(!adbus_conn_shouldproxy(c));
 }
 
 static void FreeProxiedMessage(void* d)
 {
     struct Message* m = (struct Message*) d;
-    adbus_freedata(&m->m);
+	adbus_buf_free(m->buf);
+	adbus_conn_deref(m->c);
     free(m);
 }
 
@@ -466,8 +468,10 @@ int adbus_conn_send(
 
     if (adbus_conn_shouldproxy(c)) {
         struct Message* msg = NEW(struct Message);
+		msg->buf = adbus_buf_new();
         msg->c = c;
-        adbus_clonedata(m, &msg->m);
+		adbus_conn_ref(c);
+        adbus_clonedata(msg->buf, m, &msg->msg);
         adbus_conn_proxy(c, &ProxyMessage, &FreeProxiedMessage, msg); 
         return 0;
 

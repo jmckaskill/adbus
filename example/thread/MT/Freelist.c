@@ -47,6 +47,7 @@ void MT_Freelist_Ref(MT_Freelist** s, MT_CreateCallback create, MT_FreeCallback 
 void MT_Freelist_Deref(MT_Freelist** s)
 {
     if (MT_AtomicInt_Increment(&(*s)->ref) == 0) {
+#ifdef MT_FREELIST_ENABLE
         MT_FreelistHeader *head = (MT_FreelistHeader*) (*s)->head;
 
         while (head != NULL) {
@@ -56,6 +57,7 @@ void MT_Freelist_Deref(MT_Freelist** s)
             }
             head = next;
         }
+#endif
 
         free(*s);
         *s = NULL;
@@ -64,6 +66,7 @@ void MT_Freelist_Deref(MT_Freelist** s)
 
 MT_FreelistHeader* MT_Freelist_Pop(MT_Freelist* s)
 {
+#ifdef MT_FREELIST_ENABLE
     MT_FreelistHeader *head, *next;
 
     head = (MT_FreelistHeader*) s->head;
@@ -80,17 +83,23 @@ MT_FreelistHeader* MT_Freelist_Pop(MT_Freelist* s)
         return head;
 
     }
-
+#else
+	return s->create();
+#endif
 }
 
 void MT_Freelist_Push(MT_Freelist* s, MT_FreelistHeader* h)
 {
+#ifdef MT_FREELIST_ENABLE
     MT_FreelistHeader *head;
 
     do { 
         head = (MT_FreelistHeader*) s->head;
         h->next = head;
     } while (!MT_AtomicPtr_SetFrom(&s->head, head, h));
+#else
+	s->free(h);
+#endif
 }
 
 

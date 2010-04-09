@@ -45,6 +45,7 @@
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
 				WarningLevel="4"
+				WarnAsError="true"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -58,6 +59,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				AdditionalDependencies="ws2_32.lib winmm.lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -185,11 +187,23 @@
 				>
 			</File>
 			<File
+				RelativePath=".\MT\Freelist.c"
+				>
+			</File>
+			<File
 				RelativePath=".\MT\Freelist.h"
 				>
 			</File>
 			<File
 				RelativePath=".\MT\Lock.h"
+				>
+			</File>
+			<File
+				RelativePath=".\MT\Target.c"
+				>
+			</File>
+			<File
+				RelativePath=".\MT\Target.h"
 				>
 			</File>
 			<File

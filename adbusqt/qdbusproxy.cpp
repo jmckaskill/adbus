@@ -125,7 +125,8 @@ QEvent::Type QDBusProxyMsgEvent::type = (QEvent::Type)QEvent::registerEventType(
 QDBusProxyMsgEvent::~QDBusProxyMsgEvent()
 {
     adbus_conn_deref(connection);
-    adbus_freedata(&msg);
+	adbus_buf_free(msgBuffer);
+	adbus_msg_free(ret);
 }
 
 // Called on the connection thread
@@ -139,14 +140,15 @@ int QDBusProxy::ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData*
 
     } else {
         QDBusProxyMsgEvent* e = new QDBusProxyMsgEvent;
+		e->msgBuffer = adbus_buf_new();
         e->cb = cb;
         e->connection = d->connection;
         e->user1 = d->user1;
         e->user2 = d->user2;
-        e->ret = (d->ret != NULL);
+		e->ret = d->ret ? adbus_msg_new() : NULL;
 
 
-        adbus_clonedata(d->msg, &e->msg);
+        adbus_clonedata(e->msgBuffer, d->msg, &e->msg);
         adbus_conn_ref(e->connection);
 
         QCoreApplication::postEvent(s, e);
@@ -184,11 +186,7 @@ bool QDBusProxy::event(QEvent* event)
         d.msg   = &e->msg;
         d.user1 = e->user1;
         d.user2 = e->user2;
-
-        if (e->ret) {
-            d.ret = m_Return;
-            adbus_msg_reset(d.ret);
-        }
+        d.ret = e->ret;
 
         adbus_dispatch(e->cb, &d);
         return true;

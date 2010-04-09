@@ -25,34 +25,14 @@
 
 #pragma once
 
-#include "Common.h"
-#include "EventLoop.h"
-#include "Lock.h"
-
-struct MTI_EventQueue
+struct MT_Target
 {
-	MT_EventLoop*			loop;
-
-    MT_AtomicPtr            last;
-
-    char                    pad[16 - sizeof(MT_Spinlock) - sizeof(MT_Message*)];
-    MT_Message*             first;
-    MT_Message              dummy;
-
-#ifdef _WIN32
-    MT_Handle               handle;
-#else
-    int                     pipe[2];
-#endif
+	MT_EventLoop*		loop;
+	MT_Message* 		first;
+	MT_AtomicPtr		last;
+	MT_Message			dummy;
 };
 
-void MTI_Queue_Init(MTI_EventQueue* q, MT_EventLoop* loop);
-void MTI_Queue_Destroy(MTI_EventQueue* q);
-void MTI_Queue_Dispatch(void* u);
-
-MTI_EventQueue* MTI_Loop_Queue(MT_EventLoop* loop);
-void MTI_Queue_Cancel(MTI_EventQueue* q, MT_Message* m);
-
-/* Thread safe as long as the queue is not freed */
-void MTI_Queue_Post(MTI_EventQueue* q, MT_Target* t, MT_Message* m);
-
+MT_API void MT_Target_Init(MT_Target* t);
+MT_API void MT_Target_InitToLoop(MT_Target* t, MT_EventLoop* loop);
+MT_API void MT_Target_Destroy(MT_Target* t);

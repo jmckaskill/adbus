@@ -196,6 +196,16 @@ char* adbus_buf_data(const adbus_Buffer* b)
 size_t adbus_buf_size(const adbus_Buffer* b)
 { return dv_size(&b->b); }
 
+void adbus_buf_resize(adbus_Buffer* b, size_t sz)
+{
+	size_t cur = dv_size(&b->b);
+	if (sz > cur) {
+		dv_push(char, &b->b, sz - cur);
+	} else if (sz < cur) {
+		dv_pop(char, &b->b, cur - sz);
+	}
+}
+
 /** Releases the internal buffer and returns it.
  *
  *  \relates adbus_Buffer

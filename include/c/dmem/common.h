@@ -9,5 +9,11 @@
 #   define DMEM_INLINE static
 #endif
 
+#ifdef _MSC_VER
+#	define DMEM_MSC_WARNING(x) __pragma(warning(x))
+#else
+#	define DMEM_MSC_WARNING(x) 
+#endif
+
 #endif
 

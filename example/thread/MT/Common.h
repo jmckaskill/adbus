@@ -59,11 +59,11 @@
 
 typedef struct MT_EventLoop MT_EventLoop;
 typedef struct MT_Lock MT_Lock;
-typedef struct MTI_EventQueue MTI_EventQueue;
 typedef struct MT_Message MT_Message;
 typedef struct MT_Freelist MT_Freelist;
 typedef struct MT_FreelistHeader MT_FreelistHeader;
 typedef struct MT_ThreadStorage MT_ThreadStorage;
+typedef struct MT_Target MT_Target;
 
 typedef void (*MT_Callback)(void*);
 
@@ -78,7 +78,14 @@ typedef void (*MT_Callback)(void*);
 #endif
 
 #ifdef MT_LIBRARY
+    typedef struct MTI_EventQueue MTI_EventQueue;
 #   define NEW(type) (type*) calloc(1, sizeof(type))
+#	ifdef _MSC_VER
+#		pragma warning(disable:4206) /* Translation unit is empty */
+#	endif
+#	define LOG MT_Log
 #endif
+
+int MT_Log(const char* format, ...);
 
 

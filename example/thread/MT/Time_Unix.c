@@ -23,13 +23,13 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifndef _WIN32
-
 #define MT_LIBRARY
 #include "Time.h"
+
+#ifndef _WIN32
+
 #include <sys/time.h>
 #include <time.h>
-
 
 MT_Time MT_CurrentTime()
 {

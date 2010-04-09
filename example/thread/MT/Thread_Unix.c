@@ -23,22 +23,23 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifndef _WIN32
-
 #define MT_LIBRARY
 #include "Thread.h"
+
+#ifndef _WIN32
+
 #include <pthread.h>
 
 struct ThreadData
 {
-  MT_ThreadFunction func;
-  void*             arg;
+  MT_Callback	func;
+  void*			arg;
 };
 
 static void* start_thread(void* arg)
 {
   struct ThreadData* d = (struct ThreadData*) arg;
-  MT_ThreadFunction func = d->func;
+  MT_Callback func = d->func;
   void* funcarg = d->arg;
   free(d);
 
@@ -46,7 +47,7 @@ static void* start_thread(void* arg)
   return 0;
 }
 
-pthread_t MT_Thread_Start(MT_ThreadFunction func, void* arg)
+static MT_Thread Start(MT_Callback func, void* arg, int detachstate)
 {
   pthread_t threadid;
   pthread_attr_t attr;
@@ -56,7 +57,7 @@ pthread_t MT_Thread_Start(MT_ThreadFunction func, void* arg)
   d->arg = arg;
 
   pthread_attr_init(&attr);
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+  pthread_attr_setdetachstate(&attr, detachstate);
 
   pthread_create(&threadid, &attr, &start_thread, d);
 
@@ -64,6 +65,12 @@ pthread_t MT_Thread_Start(MT_ThreadFunction func, void* arg)
 
   return threadid;
 }
+
+void MT_Thread_Start(MT_Callback func, void* arg)
+{ Start(func, arg, PTHREAD_CREATE_DETACHED); }
+
+MT_Thread MT_Thread_StartJoinable(MT_Callback func, void* arg)
+{ return Start(func, arg, PTHREAD_CREATE_JOINABLE); }
 
 void MT_Thread_Join(MT_Thread thread)
 {

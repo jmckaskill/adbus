@@ -30,6 +30,7 @@
 #include "Lock.h"
 #include "Thread.h"
 #include "EventQueue_p.h"
+#include "Target.h"
 #include "dmem/vector.h"
 #include <windows.h>
 
@@ -51,13 +52,14 @@ DVECTOR_INIT(Registration, struct Registration)
 
 struct MT_EventLoop
 {
+	DWORD						threadid;
     int                         exit;
     int                         exitcode;
     HANDLE                      timer;
     d_Vector(HANDLE)            handles;
     d_Vector(Registration)      regs;
     d_Vector(Idle)              idle;
-    MTI_EventQueue*             queue;
+    MTI_EventQueue              queue;
 };
 
 static MT_ThreadStorage sEventLoops;
@@ -68,18 +70,16 @@ MT_EventLoop* MT_Loop_New(void)
     e->timer = INVALID_HANDLE_VALUE;
 
     MT_ThreadStorage_Ref(&sEventLoops);
-    MT_ThreadStorage_Set(&sEventLoops, e);
 
-    e->queue = MTI_Queue_New(e);
+    MTI_Queue_Init(&e->queue, e);
 
     return e;
 }
 
 void MT_Loop_Free(MT_EventLoop* e)
 { 
-    MTI_Queue_Free(e->queue);
+    MTI_Queue_Destroy(&e->queue);
 
-    MT_ThreadStorage_Set(&sEventLoops, NULL);
     MT_ThreadStorage_Deref(&sEventLoops);
 
     if (e->timer != INVALID_HANDLE_VALUE) {
@@ -88,8 +88,18 @@ void MT_Loop_Free(MT_EventLoop* e)
     free(e); 
 }
 
-MT_EventLoop* MT_Loop_Current(void)
+void MT_SetCurrent(MT_EventLoop* e)
+{ 
+	e->threadid = GetCurrentThreadId();
+	MT_ThreadStorage_Set(&sEventLoops, e); 
+}
+
+MT_EventLoop* MT_Current(void)
 { return (MT_EventLoop*) MT_ThreadStorage_Get(&sEventLoops); }
+
+#ifdef _MSC_VER
+#	pragma warning(disable:4055) /* type cast HANDLE to LPTIMECALLBACK */
+#endif
 
 void MT_Loop_SetTick(MT_EventLoop* e, MT_Time period, MT_Callback cb, void* user)
 {
@@ -158,11 +168,13 @@ static void RunIdle(MT_EventLoop* e)
     }
 }
 
-int MT_Loop_Step(MT_EventLoop* e)
+int MT_Current_Step(void)
 {
+	MT_EventLoop* e = MT_Current();
     struct Registration* r;
     DWORD ret;
 
+	LOG("Step");
     if (e->exit)
         return e->exitcode;
 
@@ -177,23 +189,39 @@ int MT_Loop_Step(MT_EventLoop* e)
     return 0;
 }
 
-int MT_Loop_Run(MT_EventLoop* e)
+int MT_Current_Run(void)
 {
+	MT_EventLoop* e = MT_Current();
     int ret = 0;
+	LOG("Run");
     while (!ret && !e->exit) {
-        ret = MT_Loop_Step(e);
+        ret = MT_Current_Step();
     }
     return ret;
 }
 
-void MT_Loop_Exit(MT_EventLoop* e, int code)
+void MT_Current_Exit(int code)
 {
+	MT_EventLoop* e = MT_Current();
+	LOG("Exit %d", code);
     e->exit = 1;
     e->exitcode = code;
 }
 
-void MT_Loop_Post(MT_EventLoop* e, MT_Message* m)
-{ MTI_Queue_Post(e->queue, m); }
+void MT_Message_Post(MT_Message* m, MT_Target* t)
+{ 
+	LOG("Post: Dest %p/"MT_PRI_LOOP", Call %p, Free %p, User %p",
+        t,
+		MT_Loop_Printable(t->loop),
+		m->call,
+		m->free,
+		m->user);
+
+	MTI_Queue_Post(&t->loop->queue, t, m);
+}
+
+unsigned int MT_Loop_Printable(MT_EventLoop* e)
+{ return e->threadid; }
 
 #endif
 

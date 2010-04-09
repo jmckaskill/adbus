@@ -44,6 +44,7 @@ struct Pinger
 
 struct PingThread
 {
+	MT_EventLoop*		loop;
     adbus_Connection*   connection;
     MT_Message          finished;
     MT_Thread           thread;
