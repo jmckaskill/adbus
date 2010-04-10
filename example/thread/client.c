@@ -39,31 +39,31 @@ static MT_Freelist* sProxyList;
 
 /* ------------------------------------------------------------------------- */
 
-MT_FreelistHeader* MTI_ClientMessage_New(void)
+MT_Header* MTI_ClientMessage_New(void)
 {
     MTI_ClientMessage* m = NEW(MTI_ClientMessage);
     m->ret = adbus_msg_new();
 	m->msgBuffer = adbus_buf_new();
-    return &m->freelistHeader;
+    return &m->header;
 }
 
-void MTI_ClientMessage_Free(MT_FreelistHeader* h)
+void MTI_ClientMessage_Free(MT_Header* h)
 {
     MTI_ClientMessage* m = (MTI_ClientMessage*) h;
-	adbus_buf_reset(m->msgBuffer);
+	adbus_buf_free(m->msgBuffer);
     adbus_msg_free(m->ret);
     free(m);
 }
 
 /* ------------------------------------------------------------------------- */
 
-MT_FreelistHeader* MTI_ProxyMessage_New(void)
+MT_Header* MTI_ProxyMessage_New(void)
 {
     MTI_ProxyMessage* m = NEW(MTI_ProxyMessage);
-    return &m->freelistHeader;
+    return &m->header;
 }
 
-void MTI_ProxyMessage_Free(MT_FreelistHeader* h)
+void MTI_ProxyMessage_Free(MT_Header* h)
 {
     MTI_ProxyMessage* m = (MTI_ProxyMessage*) h;
     free(m);
@@ -270,12 +270,12 @@ static void FreeMessage(void* u)
 {
     MTI_ClientMessage* m = (MTI_ClientMessage*) u;
     adbus_conn_deref(m->connection);
-    MT_Freelist_Push(sMsgList, &m->freelistHeader);
+    MT_Freelist_Push(sMsgList, &m->header);
 }
 
 int MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d)
 {
-    MT_EventLoop* s = (MT_EventLoop*) u;
+    MT_MainLoop* s = (MT_MainLoop*) u;
     MTI_ClientMessage* m = (MTI_ClientMessage*) MT_Freelist_Pop(sMsgList);
 
     m->user1 = d->user1;
@@ -291,7 +291,9 @@ int MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d)
     m->msgHeader.free = &FreeMessage;
     m->msgHeader.user = m;
 
-	MT_Message_Post(&m->msgHeader, s);
+    MT_Loop_Post(s, &m->msgHeader);
+
+    d->ret = NULL;
     return 0;
 }
 
@@ -316,12 +318,12 @@ static void FreeProxy(void* u)
         m->release(m->user);
     }
 
-    MT_Freelist_Push(sProxyList, &m->freelistHeader);
+    MT_Freelist_Push(sProxyList, &m->header);
 }
 
 void MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser)
 { 
-    MT_EventLoop* s = (MT_EventLoop*) u;
+    MT_MainLoop* s = (MT_MainLoop*) u;
     MTI_ProxyMessage* m = (MTI_ProxyMessage*) MT_Freelist_Pop(sProxyList);
 
     m->callback = cb;
@@ -333,7 +335,7 @@ void MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* 
     m->msgHeader.free = &FreeProxy;
     m->msgHeader.user = m;
 
-	MT_Message_Post(&m->msgHeader, s);
+    MT_Loop_Post(s, &m->msgHeader);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -360,20 +362,20 @@ void MTI_Client_ConnectionProxy(void* u, adbus_Callback cb, adbus_Callback relea
 void MTI_Client_GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser)
 {
     MTI_Client* s = (MTI_Client*) u;
-    MT_EventLoop* e = MT_Current();
+    MT_MainLoop* loop = MT_Current();
     (void) s;
 
     if (msgcb) {
         *msgcb = &MTI_Client_MsgProxy;
     }
     if (msguser) {
-        *msguser = e;
+        *msguser = loop;
     }
     if (cb) {
         *cb = &MTI_Client_Proxy;
     }
     if (cbuser) {
-        *cbuser = e;
+        *cbuser = loop;
     }
 }
 

@@ -23,29 +23,29 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifdef _WIN32
+#include "internal.h"
 
-#define MT_LIBRARY
-#include "Time.h"
-#include <windows.h>
+#ifdef _WIN32
 
 /* -------------------------------------------------------------------------- */
 
-MT_Time MT_TIME_FROM_FILETIME(FILETIME* ft)
+MT_Time MT_FromFiletime(FILETIME* ft)
 {
     uint64_t res = 0;
     res |= ft->dwHighDateTime;
     res <<= 32;
     res |= ft->dwLowDateTime;
-    res /= 10; /*convert into microseconds*/
+    res /= 10; /* convert into microseconds */
 
-    /*converting file Time to unix epoch*/
+    /* converting file Time to unix epoch */
     return (MT_Time) (res - INT64_C(11644473600000000));
 }
 
-void MT_TIME_TO_FILETIME(MT_Time t, FILETIME* ft)
+/* -------------------------------------------------------------------------- */
+
+void MT_ToFiletime(MT_Time t, FILETIME* ft)
 {
-    /*converting unix epoch to filetime epoch*/
+    /* converting unix epoch to filetime epoch */
     uint64_t res = t + UINT64_C(11644473600000000);
     res *= 10; /* convert to 100ns increments */
 
@@ -53,18 +53,21 @@ void MT_TIME_TO_FILETIME(MT_Time t, FILETIME* ft)
     ft->dwLowDateTime  = (uint32_t) res;
 }
 
+/* -------------------------------------------------------------------------- */
+
 MT_Time MT_CurrentTime()
 {
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
-    return MT_TIME_FROM_FILETIME(&ft);
+    return MT_FromFileTime(&ft);
 }
 
 /* -------------------------------------------------------------------------- */
 
-// Use of localtime is discouraged since it may not be thread safe.  We can't
-// reliably use localtime_s or mktime on windows since they are not available
-// under wince.
+/* Use of localtime is discouraged since it may not be thread safe.  We can't
+ * reliably use localtime_s or mktime on windows since they are not available
+ * under wince.
+ */
 
 static int IsLeapYear(int year)
 {
@@ -91,12 +94,14 @@ static int DayOfYear(int year, int month, int day)
     }
 }
 
-int MT_TIME_TO_TM(MT_Time t, struct tm* tm)
+/* ------------------------------------------------------------------------- */
+
+int MT_ToBrokenDownTime(MT_Time t, struct tm* tm)
 {
     FILETIME ft, lft;
     SYSTEMTIME st;
 
-    MT_TIME_TO_FILETIME(t, &ft);
+    MT_ToFileTime(t, &ft);
     if (!FileTimeToLocalFileTime(&ft, &lft))
         return -1;
     if (!FileTimeToSystemTime(&lft, &st))
@@ -115,7 +120,9 @@ int MT_TIME_TO_TM(MT_Time t, struct tm* tm)
     return 0;
 }
 
-MT_Time MT_TIME_FROM_TM(struct tm* tm)
+/* ------------------------------------------------------------------------- */
+
+MT_Time MT_FromBrokenDownTime(struct tm* tm)
 {
     FILETIME ft, lft;
     SYSTEMTIME st;
@@ -132,7 +139,8 @@ MT_Time MT_TIME_FROM_TM(struct tm* tm)
     if (!LocalFileTimeToFileTime(&lft, &ft))
         return MT_TIME_INVALID;
 
-    return MT_TIME_FROM_FILETIME(&ft);
+    return MT_FromFileTime(&ft);
 }
 
 #endif
+

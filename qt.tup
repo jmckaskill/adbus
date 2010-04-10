@@ -1,26 +1,24 @@
 # vim: set et sts=2 ts=2 sw=2 tw=78:
 
-QTDIR = @(QTDIR)
+MOC = @(QTDIR)/bin/moc
+RCC = @(QTDIR)/bin/rcc
+UIC = @(QTDIR)/bin/uic
+QDBUSXML2CPP = @(QTDIR)/bin/qdbusxml2cpp
 
-MOC = $(QTDIR)/bin/moc
-RCC = $(QTDIR)/bin/rcc
-UIC = $(QTDIR)/bin/uic
-QDBUSXML2CPP = $(QTDIR)/bin/qdbusxml2cpp
+CFLAGS_QT_CORE  = -I@(QTDIR)/include
+CFLAGS_QT_CORE += -I@(QTDIR)/include/Qt
+CFLAGS_QT_CORE += -I@(QTDIR)/include/QtCore
+CFLAGS_QT_CORE += -I@(QTDIR)/include/qt4
+CFLAGS_QT_CORE += -I@(QTDIR)/include/qt4/Qt
+CFLAGS_QT_CORE += -I@(QTDIR)/include/qt4/QtCore
 
-CFLAGS_QT_CORE  = -I$(QTDIR)/include
-CFLAGS_QT_CORE += -I$(QTDIR)/include/Qt
-CFLAGS_QT_CORE += -I$(QTDIR)/include/QtCore
-CFLAGS_QT_CORE += -I$(QTDIR)/include/qt4
-CFLAGS_QT_CORE += -I$(QTDIR)/include/qt4/Qt
-CFLAGS_QT_CORE += -I$(QTDIR)/include/qt4/QtCore
+CFLAGS_QT_NETWORK   = -I@(QTDIR)/include/QtNetwork -I@(QTDIR)/include/qt4/QtNetwork
+CFLAGS_QT_GUI       = -I@(QTDIR)/include/QtGui -I@(QTDIR)/include/qt4/QtGui
+CFLAGS_QT_OPENGL    = -I@(QTDIR)/include/QtOpenGL -I@(QTDIR)/include/qt4/QtOpenGL
+CFLAGS_QT_DBUS      = -I@(QTDIR)/include/QtDBus -I@(QTDIR)/include/qt4/QtDBus
+CFLAGS_QT_XML       = -I@(QTDIR)/include/QtXml -I@(QTDIR)/include/qt4/QtXml
 
-CFLAGS_QT_NETWORK   = -I$(QTDIR)/include/QtNetwork -I$(QTDIR)/include/qt4/QtNetwork
-CFLAGS_QT_GUI       = -I$(QTDIR)/include/QtGui -I$(QTDIR)/include/qt4/QtGui
-CFLAGS_QT_OPENGL    = -I$(QTDIR)/include/QtOpenGL -I$(QTDIR)/include/qt4/QtOpenGL
-CFLAGS_QT_DBUS      = -I$(QTDIR)/include/QtDBus -I$(QTDIR)/include/qt4/QtDBus
-CFLAGS_QT_XML       = -I$(QTDIR)/include/QtXml -I$(QTDIR)/include/qt4/QtXml
-
-LDFLAGS_QT_CORE     = -L$(QTDIR)/lib/ -lQtCore
+LDFLAGS_QT_CORE     = -L@(QTDIR)/lib/ -lQtCore
 LDFLAGS_QT_NETWORK  = -lQtNetwork
 LDFLAGS_QT_GUI      = -lQtGui
 LDFLAGS_QT_OPENGL   = -lQtOpenGL

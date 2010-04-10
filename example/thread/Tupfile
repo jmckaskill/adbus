@@ -1,3 +1,5 @@
 include_rules
 
+CFLAGS += -IMT
+
 : foreach *.c |> !cc |> %B.o

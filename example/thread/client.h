@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "MT/Common.h"
+#include <libmt.h>
 #include <adbus.h>
 
 adbus_Connection* MT_CreateDBusConnection(adbus_BusType type);

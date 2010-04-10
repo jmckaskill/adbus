@@ -30,9 +30,6 @@
 #endif
 
 #include "client.h"
-#include "MT/Lock.h"
-#include "MT/EventLoop.h"
-#include "MT/Freelist.h"
 
 
 #define NEW(type) (type*) calloc(1, sizeof(type))
@@ -51,13 +48,13 @@ struct MTI_Client
     adbus_Connection*   connection;
     MT_AtomicInt        connected;
     adbus_Buffer*       txbuf;
-    MT_EventLoop*       loop;
+    MT_MainLoop*        loop;
 };
 
 
 struct MTI_ClientMessage
 {
-    MT_FreelistHeader   freelistHeader;
+    MT_Header           header;
     MT_Message          msgHeader;
     adbus_Connection*   connection;
 	adbus_Buffer*		msgBuffer;
@@ -71,7 +68,7 @@ struct MTI_ClientMessage
 
 struct MTI_ProxyMessage
 {
-    MT_FreelistHeader   freelistHeader;
+    MT_Header           header;
     MT_Message          msgHeader;
     adbus_Callback      callback;
     adbus_Callback      release;
@@ -79,11 +76,11 @@ struct MTI_ProxyMessage
     void*               user;
 };
 
-MT_FreelistHeader* MTI_ClientMessage_New(void);
-void MTI_ClientMessage_Free(MT_FreelistHeader* h);
+MT_Header* MTI_ClientMessage_New(void);
+void MTI_ClientMessage_Free(MT_Header* h);
 
-MT_FreelistHeader* MTI_ProxyMessage_New(void);
-void MTI_ProxyMessage_Free(MT_FreelistHeader* h);
+MT_Header* MTI_ProxyMessage_New(void);
+void MTI_ProxyMessage_Free(MT_Header* h);
 
 int     MTI_Client_SendFlush(MTI_Client* s, size_t req);
 void    MTI_Client_OnIdle(void* u);

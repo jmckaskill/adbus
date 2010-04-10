@@ -23,42 +23,23 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Common.h"
-#include "Lock.h"
-#include <stdint.h>
+#pragma once
 
-#ifdef _WIN32
-#   include <windows.h>
-    typedef MT_Handle MT_Thread;
-#else
-#   include <pthread.h>
-    typedef pthread_t MT_Thread;
-#endif
+#include "internal.h"
 
-MT_API void         MT_Thread_Start(MT_Callback func, void* arg);
-MT_API MT_Thread    MT_Thread_StartJoinable(MT_Callback func, void* arg);
-MT_API void         MT_Thread_Join(MT_Thread thread);
-
-/* Needs to be memset to 0 if not a global */
-struct MT_ThreadStorage
+struct MTI_MessageQueue
 {
-    MT_Spinlock     lock;
-    int             ref;
-#ifdef _WIN32
-    uint32_t        tls;
-#else
-    pthread_key_t   tls;
-#endif
+    MT_Queue    queue;
+    MT_Handle   handles[2];
 };
 
-MT_API void MT_ThreadStorage_Ref(MT_ThreadStorage* s);
-MT_API void MT_ThreadStorage_Deref(MT_ThreadStorage* s);
+MT_Handle MTI_Queue_Init(MTI_MessageQueue* q);
+void MTI_Queue_Destroy(MTI_MessageQueue* q);
+void MTI_Queue_Dispatch(void* u);
 
-#ifdef _WIN32
-#   define MT_ThreadStorage_Get(pstorage)       TlsGetValue((pstorage)->tls)
-#   define MT_ThreadStorage_Set(pstorage, val)  TlsSetValue((pstorage)->tls, val)
-#else
-#   define MT_ThreadStorage_Get(pstorage)       pthread_getspecific((pstorage)->tls)
-#   define MT_ThreadStorage_Set(pstorage, val)  pthread_setspecific((pstorage)->tls, val)
-#endif
+MTI_MessageQueue* MTI_Loop_Queue(MT_MainLoop* loop);
+void MTI_Queue_Cancel(MTI_MessageQueue* q, MT_Message* m);
+
+/* Thread safe as long as the queue is not freed */
+void MTI_Queue_Post(MTI_MessageQueue* q, MT_Message* m);
 

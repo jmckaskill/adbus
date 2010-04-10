@@ -23,36 +23,37 @@
  * ----------------------------------------------------------------------------
  */
 
-#define _CRT_SECURE_NO_WARNINGS
-#define MT_LIBRARY
-#include "Time.h"
+#include "internal.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
 #ifdef _MSC_VER
+#   define _CRT_SECURE_NO_WARNINGS
 #   define snprintf _snprintf
 #   define strdup _strdup
 #endif
 
 /* -------------------------------------------------------------------------- */
 
-#define BUFSZ 64
+#define BUFSZ 128
 
 char* MT_NewDateString(MT_Time t)
 {
     struct tm tm;
     int ret;
-    char* buf;
+    char* buf = (char*) malloc(BUFSZ + 1);
 
-    if (MT_TIME_TO_TM(t, &tm))
-        return strdup("invalid date");
-
-    buf = (char*) malloc(BUFSZ + 1);
     buf[BUFSZ] = '\0';
 
-    ret = snprintf(buf, BUFSZ, "%d-%02d-%02d",
+    if (MT_ToBrokenDownTime(t, &tm)) {
+        strcat(buf, "invalid date");
+        return buf;
+    }
+
+    /* The fields are fixed size so can use sprintf */
+    ret = sprintf(buf, "%d-%02d-%02d",
         (int) tm.tm_year + 1900,
         (int) tm.tm_mon + 1,
         (int) tm.tm_mday);
@@ -63,19 +64,23 @@ char* MT_NewDateString(MT_Time t)
     return buf;
 }
 
+/* -------------------------------------------------------------------------- */
+
 char* MT_NewDateTimeString(MT_Time t)
 {
     struct tm tm;
-    char* buf;
     int ret;
+    char* buf = (char*) malloc(BUFSZ + 1);
 
-    if (MT_TIME_TO_TM(t, &tm))
-        return strdup("invalid date");
-
-    buf = (char*) malloc(BUFSZ + 1);
     buf[BUFSZ] = '\0';
 
-    ret = snprintf(buf, BUFSZ, "%d-%02d-%02d %02d:%02d:%02d.%06dZ",
+    if (MT_ToBrokenDownTime(t, &tm)) {
+        strcat(buf, "invalid date");
+        return buf;
+    }
+
+    /* The fields are fixed size so can use sprintf */
+    ret = sprintf(buf, "%d-%02d-%02d %02d:%02d:%02d.%06dZ",
         (int) tm.tm_year + 1900,
         (int) tm.tm_mon + 1,
         (int) tm.tm_mday,
@@ -89,6 +94,8 @@ char* MT_NewDateTimeString(MT_Time t)
 
     return buf;
 }
+
+/* -------------------------------------------------------------------------- */
 
 void MT_FreeDateString(char* str)
 { free(str); }

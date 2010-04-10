@@ -25,44 +25,19 @@
 
 #pragma once
 
-#include <libmt.h>
-#include <adbus.h>
+#define MT_LIBRARY
+#include "libmt.h"
+#include <string.h>
 
+typedef struct MTI_MessageQueue MTI_MessageQueue;
 
-typedef struct Pinger Pinger;
-typedef struct PingThread PingThread;
+#define NEW(type) (type*) calloc(1, sizeof(type))
 
-struct Pinger
-{
-    adbus_Connection*   connection;
-    adbus_State*        state;
-    adbus_Proxy*        proxy;
-    int                 asyncPingsLeft;
-    int                 leftToReceive;
-};
+#ifdef _MSC_VER
+#   pragma warning(disable:4206) /* Translation unit is empty */
+#	pragma warning(disable:4127) /* conditional expression is constant */
+#endif
 
-struct PingThread
-{
-    MT_MainLoop*        loop;
-    adbus_Connection*   connection;
-    MT_Message          finished;
-    MT_Thread           thread;
-    Pinger              pinger;
-};
-
-void Pinger_Init(Pinger* p, adbus_Connection* c);
-int  Pinger_Run(Pinger* p);
-void Pinger_Destroy(Pinger* p);
-void Pinger_AsyncPing(Pinger* p);
-int  Pinger_AsyncReply(adbus_CbData* d);
-int  Pinger_AsyncError(adbus_CbData* d);
-void Pinger_OnSend(Pinger* p);
-void Pinger_OnReceive(Pinger* p);
-
-
-void PingThread_Create(adbus_Connection* c);
-void PingThread_Run(void* u);
-void PingThread_Join(void* u);
-void PingThread_Free(void* u);
-
+void MT_Log(const char* format, ...);
+#define LOG MT_Log
 

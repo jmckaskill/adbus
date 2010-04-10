@@ -32,32 +32,10 @@
 #	include <crtdbg.h>
 #endif
 
-int MT_Log(const char* format, ...)
-{
-	d_String str;
-	va_list ap;
-	MT_EventLoop* e = MT_Current();
-
-	memset(&str, 0, sizeof(str));
-	va_start(ap, format);
-	if (e) {
-		ds_cat_f(&str, "[MT "MT_PRI_LOOP"] ", MT_Loop_Printable(MT_Current()));
-	} else {
-		ds_cat_f(&str, "[MT (null)] ");
-	}
-	ds_cat_vf(&str, format, ap);
-	ds_cat(&str, "\n");
-#if defined _WIN32 && !defined NDEBUG
-	_CrtDbgReport(_CRT_WARN, NULL, 0, NULL, "%.*s", (int) ds_size(&str), ds_cstr(&str));
-#else
-	fwrite(ds_cstr(&str), 1, ds_size(&str), stderr);
-#endif
-	return 0;
-}
 
 #define NEW(type) (type*) calloc(1, sizeof(type))
 
-static MT_EventLoop* sMainLoop;
+static MT_MainLoop* sMainLoop;
 static int sPingersLeft;
 
 static void PingerFinished();
@@ -166,20 +144,26 @@ void PingThread_Run(void* u)
 
     Pinger_Destroy(&s->pinger);
 
-    s->finished.call = &PingThread_Finish;
+    s->finished.call = &PingThread_Join;
+    s->finished.free = &PingThread_Free;
     s->finished.user = s;
 
-	MT_Message_Post(&s->finished, sMainLoop);
+	MT_Loop_Post(sMainLoop, &s->finished);
 }
 
-void PingThread_Finish(void* u)
+void PingThread_Join(void* u)
 {
     PingThread* s = (PingThread*) u;
     MT_Thread_Join(s->thread);
+    PingerFinished();
+}
+
+void PingThread_Free(void* u)
+{
+    PingThread* s = (PingThread*) u;
 	MT_Loop_Free(s->loop);
     adbus_conn_deref(s->connection);
     free(s);
-    PingerFinished();
 }
 
 /* -------------------------------------------------------------------------- */
@@ -194,7 +178,6 @@ static void PingerFinished()
 int main(void)
 {
 	adbus_Connection* c;
-	adbus_set_loglevel(3);
 
     sMainLoop = MT_Loop_New();
 	MT_SetCurrent(sMainLoop);
@@ -204,8 +187,9 @@ int main(void)
         fprintf(stderr, "Failed to connect\n");
         return -1;
     }
-
     adbus_conn_ref(c);
+
+    sPingersLeft = 1;
 
     PingThread_Create(c);
 

@@ -23,46 +23,35 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+#include "internal.h"
+#include <dmem/string.h>
+#include <stdio.h>
 
-#include <libmt.h>
-#include <adbus.h>
+/* ------------------------------------------------------------------------- */
 
-
-typedef struct Pinger Pinger;
-typedef struct PingThread PingThread;
-
-struct Pinger
+void MT_Log(const char* format, ...)
 {
-    adbus_Connection*   connection;
-    adbus_State*        state;
-    adbus_Proxy*        proxy;
-    int                 asyncPingsLeft;
-    int                 leftToReceive;
-};
+	d_String str;
+	va_list ap;
 
-struct PingThread
-{
-    MT_MainLoop*        loop;
-    adbus_Connection*   connection;
-    MT_Message          finished;
-    MT_Thread           thread;
-    Pinger              pinger;
-};
+	memset(&str, 0, sizeof(str));
 
-void Pinger_Init(Pinger* p, adbus_Connection* c);
-int  Pinger_Run(Pinger* p);
-void Pinger_Destroy(Pinger* p);
-void Pinger_AsyncPing(Pinger* p);
-int  Pinger_AsyncReply(adbus_CbData* d);
-int  Pinger_AsyncError(adbus_CbData* d);
-void Pinger_OnSend(Pinger* p);
-void Pinger_OnReceive(Pinger* p);
+#ifdef _WIN32
+    ds_cat_f(&str, "[libmt %d] ", GetCurrentThreadId());
+#elif __linux__
+    ds_cat_f(&str, "[libmt %p] ", (void*) pthread_self());
+#endif
 
+	va_start(ap, format);
+	ds_cat_vf(&str, format, ap);
+    va_end(ap);
 
-void PingThread_Create(adbus_Connection* c);
-void PingThread_Run(void* u);
-void PingThread_Join(void* u);
-void PingThread_Free(void* u);
+	ds_cat(&str, "\n");
 
+#if defined _WIN32 && !defined NDEBUG
+	_CrtDbgReport(_CRT_WARN, NULL, 0, NULL, "%.*s", (int) ds_size(&str), ds_cstr(&str));
+#else
+	fwrite(ds_cstr(&str), 1, ds_size(&str), stderr);
+#endif
+}
 

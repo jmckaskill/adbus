@@ -23,37 +23,48 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+/* To get localtime_r */
+#define _POSIX_SOURCE
 
-void MT_Target_Init(MT_Target* t)
-{ 
-	t->loop = MT_Current();
-}
+#include "internal.h"
 
-void MT_Target_InitToLoop(MT_Target* t, MT_EventLoop* loop)
-{ 
-	t->loop = loop; 
-}
+#ifndef _WIN32
 
-void MT_Target_Destroy(MT_Target* t)
+#include <sys/time.h>
+#include <time.h>
+
+/* ------------------------------------------------------------------------- */
+
+MT_Time MT_CurrentTime()
 {
-    MT_Message* m = t->first;
-    for (m = t->first; m != NULL; m = (MT_Message*) m->targetNext) {
-        /* Disable the calling of this message */
-        m->target = NULL;
-        m->call = NULL;
-    }
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL))
+        return MT_TIME_INVALID;
+
+    return (MT_Time) (tv.tv_sec * 1000000UL + tv.tv_usec);
 }
 
-void MT_Message_Post(MT_Message* m, MT_Target* t)
+/* ------------------------------------------------------------------------- */
+
+int MT_ToBrokenDownTime(MT_Time t, struct tm* tm)
 {
-    MT_Message* prevlast;
+    time_t timet = (time_t) MT_TIME_TO_SEC(t);
+    if (localtime_r(&timet, tm) == NULL)
+        return -1;
 
-	m->target = t;
-    /* Grab last pointer */
-    prevlast = MT_AtomicPtr_Set(&t->last, t);
-    /* Release to target thread */
-    MT_AtomicPtr_Set(&prevlast->targetNext, m);
-
-    MT_Loop_Post(t->loop, m);
+    return 0;
 }
+
+/* ------------------------------------------------------------------------- */
+
+MT_Time MT_FromBrokenDownTime(struct tm* tm)
+{
+    time_t t = mktime(tm);
+    if (t == -1)
+        return MT_TIME_INVALID;
+
+    return MT_TIME_FROM_SEC(t);
+}
+
+#endif
+

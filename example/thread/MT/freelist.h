@@ -23,19 +23,15 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "Common.h"
-#include "Lock.h"
+#pragma once
 
-struct MT_FreelistHeader
+#include "internal.h"
+
+struct MT_Freelist
 {
-    MT_AtomicPtr    next;
+    MT_AtomicInt            ref;
+    MT_CreateCallback       create;
+    MT_FreeCallback         free;
+    MT_Header* volatile     head;
 };
 
-typedef MT_FreelistHeader* (*MT_CreateCallback)(void);
-typedef void (*MT_FreeCallback)(MT_FreelistHeader*);
-
-MT_API void MT_Freelist_Ref(MT_Freelist** s, MT_CreateCallback create, MT_FreeCallback free);
-MT_API void MT_Freelist_Deref(MT_Freelist** s);
-
-MT_API MT_FreelistHeader* MT_Freelist_Pop(MT_Freelist* s);
-MT_API void MT_Freelist_Push(MT_Freelist* s, MT_FreelistHeader* h);

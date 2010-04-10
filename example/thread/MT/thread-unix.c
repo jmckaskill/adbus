@@ -23,69 +23,91 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifdef _WIN32
+#include "internal.h"
 
-#define MT_LIBRARY
-#include "Thread.h"
-#include <process.h>
-#include <windows.h>
+#ifndef _WIN32
+
+/* ------------------------------------------------------------------------- */
 
 struct ThreadData
 {
-    MT_Callback  func;
-    void*        arg;
+  MT_Callback	func;
+  void*			arg;
 };
 
-unsigned int __stdcall start_thread(void* arg)
+/* ------------------------------------------------------------------------- */
+
+static void* start_thread(void* arg)
 {
-    struct ThreadData* d = (struct ThreadData*) arg;
-    MT_Callback func = d->func;
-    void* funcarg = d->arg;
-    free(d);
+  struct ThreadData* d = (struct ThreadData*) arg;
+  MT_Callback func = d->func;
+  void* funcarg = d->arg;
+  free(d);
 
-    func(funcarg);
-    return 0;
+  func(funcarg);
+  return 0;
 }
 
-MT_Thread MT_Thread_StartJoinable(MT_Callback func, void* arg)
-{ 
-	unsigned int handle;
+/* ------------------------------------------------------------------------- */
 
-    struct ThreadData* d = NEW(struct ThreadData);
-    d->func = func;
-    d->arg = arg;
+static MT_Thread Start(MT_Callback func, void* arg, int detachstate)
+{
+  pthread_t threadid;
+  pthread_attr_t attr;
 
-    _beginthreadex(NULL, 0, &start_thread, d, 0, &handle);
+  struct ThreadData* d = NEW(struct ThreadData);
+  d->func = func;
+  d->arg = arg;
 
-    return (MT_Thread) handle;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, detachstate);
+
+  pthread_create(&threadid, &attr, &start_thread, d);
+
+  pthread_attr_destroy(&attr);
+
+  return threadid;
 }
+
+/* ------------------------------------------------------------------------- */
 
 void MT_Thread_Start(MT_Callback func, void* arg)
-{
-	MT_Thread handle = MT_Thread_StartJoinable(func, arg);
-	CloseHandle(handle);
-}
+{ Start(func, arg, PTHREAD_CREATE_DETACHED); }
 
+/* ------------------------------------------------------------------------- */
+
+MT_Thread MT_Thread_StartJoinable(MT_Callback func, void* arg)
+{ return Start(func, arg, PTHREAD_CREATE_JOINABLE); }
+
+/* ------------------------------------------------------------------------- */
 
 void MT_Thread_Join(MT_Thread thread)
-{ WaitForSingleObject(thread, INFINITE); }
+{
+    void* status;
+    pthread_join(thread, &status);
+}
+
+/* ------------------------------------------------------------------------- */
 
 void MT_ThreadStorage_Ref(MT_ThreadStorage* s)
 {
     MT_Spinlock_Enter(&s->lock);
     if (s->ref++ == 0) {
-        s->tls = TlsAlloc();
+        pthread_key_create(&s->tls, NULL);
     }
     MT_Spinlock_Exit(&s->lock);
 }
+
+/* ------------------------------------------------------------------------- */
 
 void MT_ThreadStorage_Deref(MT_ThreadStorage* s)
 {
     MT_Spinlock_Enter(&s->lock);
     if (--s->ref == 0) {
-        TlsFree(s->tls);
+        pthread_key_delete(s->tls);
     }
     MT_Spinlock_Exit(&s->lock);
 }
 
 #endif
+

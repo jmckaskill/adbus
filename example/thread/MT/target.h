@@ -25,44 +25,7 @@
 
 #pragma once
 
-#include <libmt.h>
-#include <adbus.h>
+#include "internal.h"
 
-
-typedef struct Pinger Pinger;
-typedef struct PingThread PingThread;
-
-struct Pinger
-{
-    adbus_Connection*   connection;
-    adbus_State*        state;
-    adbus_Proxy*        proxy;
-    int                 asyncPingsLeft;
-    int                 leftToReceive;
-};
-
-struct PingThread
-{
-    MT_MainLoop*        loop;
-    adbus_Connection*   connection;
-    MT_Message          finished;
-    MT_Thread           thread;
-    Pinger              pinger;
-};
-
-void Pinger_Init(Pinger* p, adbus_Connection* c);
-int  Pinger_Run(Pinger* p);
-void Pinger_Destroy(Pinger* p);
-void Pinger_AsyncPing(Pinger* p);
-int  Pinger_AsyncReply(adbus_CbData* d);
-int  Pinger_AsyncError(adbus_CbData* d);
-void Pinger_OnSend(Pinger* p);
-void Pinger_OnReceive(Pinger* p);
-
-
-void PingThread_Create(adbus_Connection* c);
-void PingThread_Run(void* u);
-void PingThread_Join(void* u);
-void PingThread_Free(void* u);
-
+void MTI_Target_FinishMessage(MT_Message* m);
 

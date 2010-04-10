@@ -25,34 +25,50 @@
 
 #pragma once
 
-#include "Common.h"
-#include "EventLoop.h"
-#include "Lock.h"
+#include "internal.h"
+#include "message-queue.h"
+#include <dmem/vector.h>
 
-struct MTI_EventQueue
+#ifndef _WIN32
+#   include <sys/time.h>
+#endif
+
+typedef struct MTI_LoopRegistration MTI_LoopRegistration;
+typedef struct MTI_LoopIdle MTI_LoopIdle;
+
+struct MTI_LoopRegistration
 {
-	MT_EventLoop*			loop;
+    MT_Callback  cb;
+    void*        user;
+};
 
-    MT_AtomicPtr            last;
+struct MTI_LoopIdle
+{
+    MT_Callback cb;
+    void*       user;
+};
 
-    char                    pad[16 - sizeof(MT_Spinlock) - sizeof(MT_Message*)];
-    MT_Message*             first;
-    MT_Message              dummy;
+DVECTOR_INIT(Handle, MT_Handle)
+DVECTOR_INIT(LoopIdle, MTI_LoopIdle)
+DVECTOR_INIT(LoopRegistration, MTI_LoopRegistration)
+
+struct MT_MainLoop
+{
+    int                         exit;
+    int                         exitcode;
+    d_Vector(Handle)            handles;
+    d_Vector(LoopRegistration)  regs;
+    d_Vector(LoopIdle)          idle;
+    MTI_MessageQueue            queue;
 
 #ifdef _WIN32
-    MT_Handle               handle;
+    HANDLE                      timer;
 #else
-    int                     pipe[2];
+    MTI_LoopRegistration        tickreg;
+    struct timeval              tick;
+    struct timeval              nexttick;
 #endif
 };
 
-void MTI_Queue_Init(MTI_EventQueue* q, MT_EventLoop* loop);
-void MTI_Queue_Destroy(MTI_EventQueue* q);
-void MTI_Queue_Dispatch(void* u);
-
-MTI_EventQueue* MTI_Loop_Queue(MT_EventLoop* loop);
-void MTI_Queue_Cancel(MTI_EventQueue* q, MT_Message* m);
-
-/* Thread safe as long as the queue is not freed */
-void MTI_Queue_Post(MTI_EventQueue* q, MT_Target* t, MT_Message* m);
+void MTI_CallIdle(MT_MainLoop* e);
 

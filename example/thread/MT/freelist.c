@@ -23,16 +23,9 @@
  * ----------------------------------------------------------------------------
  */
 
-#define MT_LIBRARY
-#include "Freelist.h"
+#include "freelist.h"
 
-struct MT_Freelist
-{
-    MT_AtomicInt        ref;
-    MT_CreateCallback   create;
-    MT_FreeCallback     free;
-    MT_AtomicPtr        head;
-};
+/* ------------------------------------------------------------------------- */
 
 void MT_Freelist_Ref(MT_Freelist** s, MT_CreateCallback create, MT_FreeCallback free)
 {
@@ -44,14 +37,16 @@ void MT_Freelist_Ref(MT_Freelist** s, MT_CreateCallback create, MT_FreeCallback 
     MT_AtomicInt_Increment(&(*s)->ref);
 }
 
+/* ------------------------------------------------------------------------- */
+
 void MT_Freelist_Deref(MT_Freelist** s)
 {
-    if (MT_AtomicInt_Increment(&(*s)->ref) == 0) {
-#ifdef MT_FREELIST_ENABLE
-        MT_FreelistHeader *head = (MT_FreelistHeader*) (*s)->head;
+    if (MT_AtomicInt_Decrement(&(*s)->ref) == 0) {
+#ifndef MT_FREELIST_DISABLE
+        MT_Header *head = (*s)->head;
 
         while (head != NULL) {
-            MT_FreelistHeader *next = (MT_FreelistHeader*) head->next;
+            MT_Header *next = head->next;
             if ((*s)->free) {
                 (*s)->free(head);
             }
@@ -64,41 +59,40 @@ void MT_Freelist_Deref(MT_Freelist** s)
     }
 }
 
-MT_FreelistHeader* MT_Freelist_Pop(MT_Freelist* s)
+/* ------------------------------------------------------------------------- */
+
+MT_Header* MT_Freelist_Pop(MT_Freelist* s)
 {
-#ifdef MT_FREELIST_ENABLE
-    MT_FreelistHeader *head, *next;
+#ifndef MT_FREELIST_DISABLE
+    MT_Header *head;
 
-    head = (MT_FreelistHeader*) s->head;
-
-    if (head == NULL) {
-        head = s->create();
-        return head;
-
-    } else {
-        do { 
-            head = (MT_FreelistHeader*) s->head;
-            next = (MT_FreelistHeader*) head->next;
-        } while (!MT_AtomicPtr_SetFrom(&s->head, head, next));
-        return head;
-
+    while ((head = s->head) != NULL) {
+        /* Keep on trying to set the head pointer from head to head->next
+         * until it succeeds.
+         */
+        MT_Header* next = head->next;
+        if (MT_AtomicPtr_SetFrom(&s->head, head, next)) {
+            return head;
+        }
     }
-#else
-	return s->create();
 #endif
+
+    return s->create();
 }
 
-void MT_Freelist_Push(MT_Freelist* s, MT_FreelistHeader* h)
+/* ------------------------------------------------------------------------- */
+
+void MT_Freelist_Push(MT_Freelist* s, MT_Header* h)
 {
-#ifdef MT_FREELIST_ENABLE
-    MT_FreelistHeader *head;
+#ifdef MT_FREELIST_DISABLE
+	s->free(h);
+#else
+    MT_Header *head;
 
     do { 
-        head = (MT_FreelistHeader*) s->head;
+        head = s->head;
         h->next = head;
     } while (!MT_AtomicPtr_SetFrom(&s->head, head, h));
-#else
-	s->free(h);
 #endif
 }
 
