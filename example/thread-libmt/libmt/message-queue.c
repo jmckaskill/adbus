@@ -24,7 +24,7 @@
  */
 
 /* Needed for pipe2 */
-#ifdef __linux__
+#if defined __linux__ && !defined _GNU_SOURCE
 #   define _GNU_SOURCE
 #endif
 
@@ -130,14 +130,15 @@ void MTI_Queue_Dispatch(void* u)
 
         MT_Message* m = (MT_Message*) ((char*) item - offsetof(MT_Message, qitem));
 
+        LOG("Calling %p", m);
         if (m->call) {
-            m->call(m->user);
+            m->call(m);
         }
 
         if (m->target) {
             MTI_Target_FinishMessage(m);
         } else if (m->free) {
-            m->free(m->user);
+            m->free(m);
         }
     }
 }

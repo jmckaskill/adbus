@@ -59,7 +59,7 @@ void MT_Loop_Free(MT_MainLoop* s)
     }
 #endif
 
-    dv_free(Handle, &s->handles);
+    dv_free(LoopHandle, &s->handles);
     dv_free(LoopRegistration, &s->regs);
     dv_free(LoopIdle, &s->idle);
 
@@ -78,25 +78,13 @@ MT_MainLoop* MT_Current(void)
 
 /* ------------------------------------------------------------------------- */
 
-void MT_Loop_Register(MT_MainLoop* s, MT_Handle h, MT_Callback cb, void* user)
-{
-    MT_Handle* ph = dv_push(Handle, &s->handles, 1);
-    MTI_LoopRegistration* r = dv_push(LoopRegistration, &s->regs, 1);
-
-    *ph = h;
-    r->cb = cb;
-    r->user = user;
-}
-
-/* ------------------------------------------------------------------------- */
-
 void MT_Loop_Unregister(MT_MainLoop* s, MT_Handle h)
 {
     size_t i;
     for (i = 0; i < dv_size(&s->handles); i++) {
-        if (dv_a(&s->handles, i) == h) {
+        if (dv_a(&s->regs, i).handle == h) {
             dv_erase(LoopRegistration, &s->regs, i, 1);
-            dv_erase(Handle, &s->handles, i, 1);
+            dv_erase(LoopHandle, &s->handles, i, 1);
             break;
         }
     }

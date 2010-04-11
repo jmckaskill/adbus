@@ -26,7 +26,7 @@
 #pragma once
 
 #ifdef _WIN32
-#	include <winsock2.h>
+#   include <winsock2.h>
 #endif
 
 #include "client.h"
@@ -57,7 +57,7 @@ struct MTI_ClientMessage
     MT_Header           header;
     MT_Message          msgHeader;
     adbus_Connection*   connection;
-	adbus_Buffer*		msgBuffer;
+    adbus_Buffer*       msgBuffer;
     adbus_Message       msg;
     adbus_MsgFactory*   ret;
     void*               user1;

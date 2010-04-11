@@ -26,12 +26,56 @@
 #pragma once
 
 #include "internal.h"
+#include "message-queue.h"
+#include <dmem/vector.h>
 
-struct MT_Freelist
+#ifndef _WIN32
+#   include <poll.h>
+#endif
+
+typedef struct MTI_LoopRegistration MTI_LoopRegistration;
+typedef struct MTI_LoopIdle MTI_LoopIdle;
+
+struct MTI_LoopRegistration
 {
-    MT_AtomicInt            ref;
-    MT_CreateCallback       create;
-    MT_FreeCallback         free;
-    MT_Header* volatile     head;
+    MT_Handle       handle;
+    MT_Callback     cb;
+    void*           user;
 };
+
+struct MTI_LoopIdle
+{
+    MT_Callback cb;
+    void*       user;
+};
+
+#ifdef _WIN32
+typedef MT_Handle MTI_LoopHandle;
+#else
+typedef struct pollfd MTI_LoopHandle;
+#endif
+
+DVECTOR_INIT(LoopHandle, MTI_LoopHandle)
+DVECTOR_INIT(LoopIdle, MTI_LoopIdle)
+DVECTOR_INIT(LoopRegistration, MTI_LoopRegistration)
+
+struct MT_MainLoop
+{
+    int                         exit;
+    int                         exitcode;
+    d_Vector(LoopHandle)        handles;
+    d_Vector(LoopRegistration)  regs;
+    d_Vector(LoopIdle)          idle;
+    MTI_MessageQueue            queue;
+
+#ifdef _WIN32
+    HANDLE                      timer;
+#else
+    MTI_LoopRegistration        tickreg;
+    MT_Time                     tick;
+    MT_Time                     nexttick;
+#endif
+};
+
+void MTI_CallIdle(MT_MainLoop* e);
 

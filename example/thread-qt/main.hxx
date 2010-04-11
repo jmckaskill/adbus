@@ -23,35 +23,61 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "internal.h"
-#include <dmem/string.h>
-#include <stdio.h>
+#include <adbusqt/qdbusclient.hxx>
+#include <QtCore/qobject.h>
+#include <QtCore/qthread.h>
 
-/* ------------------------------------------------------------------------- */
-
-void MT_Log(const char* format, ...)
+class Pinger : public QObject, public adbus::State
 {
-	d_String str;
-	va_list ap;
+    Q_OBJECT
+public:
+    Pinger(const adbus::Connection& c);
 
-	memset(&str, 0, sizeof(str));
+public Q_SLOTS:
+    void start();
 
-#ifdef _WIN32
-    ds_cat_f(&str, "[libmt %d] ", GetCurrentThreadId());
-#elif __linux__
-    ds_cat_f(&str, "[libmt %p] ", (void*) pthread_self());
-#endif
+Q_SIGNALS:
+    void finished();
 
-	va_start(ap, format);
-	ds_cat_vf(&str, format, ap);
-    va_end(ap);
+private:
+    void asyncPing();
+    void response(const char* str);
+    void error(const char* name, const char* msg);
+    void sendingMessage();
+    void haveReply();
 
-	ds_cat(&str, "\n");
+    adbus::Connection   m_Connection;
+    adbus::Proxy        m_Proxy;
+    int                 m_LeftToSend;
+    int                 m_LeftToReceive;
+};
 
-#if defined _WIN32 && !defined NDEBUG
-	_CrtDbgReport(_CRT_WARN, NULL, 0, NULL, "%.*s", (int) ds_size(&str), ds_cstr(&str));
-#else
-	fwrite(ds_cstr(&str), 1, ds_size(&str), stderr);
-#endif
-}
+class PingThread : public QThread
+{
+    Q_OBJECT
+public:
+    PingThread(const adbus::Connection& c)
+        : m_Connection(c)
+    {}
+
+    void run();
+
+private:
+    adbus::Connection m_Connection;
+};
+
+class Main : public QObject
+{
+    Q_OBJECT
+public:
+    Main(const adbus::Connection& c);
+    ~Main();
+
+public Q_SLOTS:
+    void threadFinished();
+
+private:
+    int                 m_ThreadsLeft;
+    QList<PingThread*>  m_Threads;
+};
 

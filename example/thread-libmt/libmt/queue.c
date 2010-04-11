@@ -33,8 +33,9 @@ MT_QueueItem* MT_Queue_Consume(MT_Queue* s)
     MT_QueueItem *first, *next;
 
     first = s->first;
-    if (!first)
+    if (!first) {
         return NULL;
+    }
 
     next = first->next;
 
@@ -45,7 +46,7 @@ MT_QueueItem* MT_Queue_Consume(MT_Queue* s)
 
     } else {
         s->first = NULL;
-        if (MT_AtomicPtr_SetFrom(&s->last, first, NULL)) {
+        if (MT_AtomicPtr_SetFrom(&s->last, first, NULL) == first) {
             /* We had: next == NULL and s->first == s->last (ie no tail). Note
              * checking for s->first == s->last guarantees that next is still NULL
              * as the producers first update s->last and then the next pointer. We
@@ -69,8 +70,11 @@ MT_QueueItem* MT_Queue_Consume(MT_Queue* s)
 
 void MT_Queue_Produce(MT_Queue* s, MT_QueueItem* newval)
 {
+    MT_QueueItem* prevlast;
+    newval->next = NULL;
+
     /* Append a new item to the list */
-    MT_QueueItem* prevlast = MT_AtomicPtr_Set(&s->last, newval);
+    prevlast = MT_AtomicPtr_Set(&s->last, newval);
 
     /* Release the item to the consumer */
     if (prevlast) {

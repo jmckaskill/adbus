@@ -1,0 +1,7 @@
+include_rules
+
+CFLAGS += $(CFLAGS_QT_CORE) $(CFLAGS_QT_NETWORK)
+
+: foreach *.hxx |> !moc |> moc_%B.cpp
+: foreach *.cpp |> !cpp |> %B.o
+

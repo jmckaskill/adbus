@@ -25,6 +25,10 @@
 
 #pragma once
 
+#ifndef __STDC_LIMIT_MACROS
+#   define __STDC_LIMIT_MACROS
+#endif
+
 #include <stdlib.h>
 #include <stdint.h>
 
@@ -75,6 +79,8 @@ typedef struct MT_ThreadStorage MT_ThreadStorage;
 typedef struct MT_Target        MT_Target;
 typedef struct MT_Queue         MT_Queue;
 typedef struct MT_QueueItem     MT_QueueItem;
+typedef struct MT_Signal        MT_Signal;
+typedef struct MT_Subscription  MT_Subscription;
 
 /* MT_Time gives the time in microseconds centered on the unix epoch (midnight
  * Jan 1 1970) */
@@ -84,6 +90,7 @@ typedef long volatile MT_AtomicInt;
 typedef MT_AtomicInt MT_Spinlock;
 
 typedef void        (*MT_Callback)(void*);
+typedef void        (*MT_MessageCallback)(MT_Message*);
 typedef MT_Header*  (*MT_CreateCallback)(void);
 typedef void        (*MT_FreeCallback)(MT_Header*);
 
@@ -116,14 +123,16 @@ struct MT_Queue
     char                    lastPad[16 - sizeof(MT_QueueItem*)];
 };
 
+/* The message given in the callbacks may be a copy of the original message.
+ */
 struct MT_Message
 {
-    MT_Callback             call;
-    MT_Callback             free;
+    MT_MessageCallback      call;
+    MT_MessageCallback      free;
+    MT_Target*              target;
     void*                   user;
 
     /* internal */
-    MT_Target*              target;
     MT_QueueItem            titem;
     MT_QueueItem            qitem;
 };
@@ -134,6 +143,15 @@ struct MT_Target
 
     /* internal */
     MT_Queue                queue;
+    MT_AtomicInt            lock;
+    MT_Subscription*        subscriptions;
+};
+
+struct MT_Signal
+{
+    MT_AtomicInt            lock;
+    int                     count;
+    MT_Subscription*        subscriptions;
 };
 
 
@@ -151,6 +169,7 @@ struct MT_Header
 };
 
 
+void MT_Queue_Init(MT_Queue* s);
 
 /* This should only be called from a single consume thread */
 MT_QueueItem* MT_Queue_Consume(MT_Queue* s);
@@ -168,6 +187,11 @@ MT_API MT_Header* MT_Freelist_Pop(MT_Freelist* s);
 MT_API void MT_Freelist_Push(MT_Freelist* s, MT_Header* h);
 
 
+MT_API void MT_Signal_Init(MT_Signal* s);
+MT_API void MT_Signal_Destroy(MT_Signal* s);
+MT_API void MT_Signal_Emit(MT_Signal* s, MT_Message* m);
+
+MT_API void MT_Connect(MT_Signal* s, MT_Target* t);
 
 
 
@@ -218,18 +242,22 @@ MT_INLINE void MT_Current_RemoveIdle(MT_Callback cb, void* user)
     { LeaveCriticalSection(lock); }
 
 
+    /* Returns previous value */
 #   define MT_AtomicPtr_Set(pval, new_val) \
         InterlockedExchangePointer(pval, new_val)
 
+    /* Returns previous value */
 #   define MT_AtomicPtr_SetFrom(pval, from, to) \
-        (InterlockedCompareExchangePointer(pval, to, from) == from)
+        InterlockedCompareExchangePointer(pval, to, from)
 
 
+    /* Returns previous value */
     MT_INLINE int MT_AtomicInt_Set(MT_AtomicInt* a, int val)
     { return InterlockedExchange(a, val); }
 
+    /* Returns previous value */
     MT_INLINE int MT_AtomicInt_SetFrom(MT_AtomicInt* a, int from, int to)
-    { return InterlockedCompareExchange(a, to, from) == from; }
+    { return InterlockedCompareExchange(a, to, from); }
 
     /* Returns the new value */
     MT_INLINE int MT_AtomicInt_Increment(MT_AtomicInt* a)
@@ -254,19 +282,23 @@ MT_INLINE void MT_Current_RemoveIdle(MT_Callback cb, void* user)
 
 
 
+    /* Returns previous value */
 #   define MT_AtomicPtr_Set(pval, new_val) \
         __sync_lock_test_and_set(pval, new_val)
 
+    /* Returns previous value */
 #   define MT_AtomicPtr_SetFrom(pval, from, to) \
-        __sync_bool_compare_and_swap(pval, from, to)
+        __sync_val_compare_and_swap(pval, from, to)
 
 
 
-    MT_INLINE void MT_AtomicInt_Set(MT_AtomicInt* a, int val)
-    { (void) __sync_lock_test_and_set(a, val); }
+    /* Returns previous value */
+    MT_INLINE int MT_AtomicInt_Set(MT_AtomicInt* a, int val)
+    { return __sync_lock_test_and_set(a, val); }
 
+    /* Returns previous value */
     MT_INLINE int MT_AtomicInt_SetFrom(MT_AtomicInt* a, int from, int to)
-    { return __sync_bool_compare_and_swap(a, from, to); }
+    { return __sync_val_compare_and_swap(a, from, to); }
 
     /* Returns the new value */
     MT_INLINE int MT_AtomicInt_Increment(MT_AtomicInt* a)
@@ -281,7 +313,7 @@ MT_INLINE void MT_Current_RemoveIdle(MT_Callback cb, void* user)
 #endif
 
 MT_INLINE void MT_Spinlock_Enter(MT_Spinlock* lock)
-{ while (!MT_AtomicInt_SetFrom(lock, 0, 1)) {} }
+{ while (MT_AtomicInt_SetFrom(lock, 0, 1) != 0) {} }
 
 MT_INLINE void MT_Spinlock_Exit(MT_Spinlock* lock)
 { MT_AtomicInt_Set(lock, 0); }
@@ -416,22 +448,32 @@ namespace MT
     {
     public:
         virtual void Call() = 0;
-        virtual ~Event() {}
+        virtual ~Message() {}
 
-        void Post(MT_MainLoop* loop)   {Setup(); MT_Message_Post(&m_Header, loop);}
+        void Post(MT_MainLoop* loop)
+        {
+            Setup();
+            MT_Loop_Post(loop, &m_Header);
+        }
 
-        void Ref()                      {MT_Message_Ref(&m_Header);}
-        void Deref()                    {MT_Message_Deref(&m_Header);}
+        void Post(MT_Target* target)
+        {
+            Setup();
+            MT_Target_Post(target, &m_Header);
+        }
 
     private:
-        static void Callback(void* u)   {((Message*) u)->Call();}
-        static void Free(void* u)       {delete (Message*) u;}
+        static void Callback(MT_Message* m)
+        { ((Message*) m->user)->Call(); }
+
+        static void Free(MT_Message* m)
+        { delete (Message*) m->user; }
 
         void Setup()
         {
-            m_Header.callback   = &Callback;
-            m_Header.free       = &Free;
-            m_Header.user       = this;
+            m_Header.call = &Callback;
+            m_Header.free = &Free;
+            m_Header.user = this;
         }
 
         MT_Message m_Header;
@@ -454,11 +496,14 @@ namespace MT
         void Unregister(MT_Handle h)
         { MT_Loop_Unregister(m, h); }
 
-        int Run()
-        { return MT_Loop_Run(m); }
+        void SetCurrent()
+        { MT_SetCurrent(m); }
 
-        void Exit(int code)
-        { MT_Loop_Exit(m, code); }
+        static int Run()
+        { return MT_Current_Run(); }
+
+        static void Exit(int code)
+        { MT_Current_Exit(code); }
 
         operator MT_MainLoop*() {return m;}
 
@@ -484,9 +529,7 @@ namespace MT
     class Spinlock
     {
     public:
-        Spinlock()    {MT_Spinlock_Init(&m_Lock);}
-        ~Spinlock()   {MT_Spinlock_Destroy(&m_Lock);}
-
+        Spinlock()    {m_Lock = 0;}
         void Enter()  {MT_Spinlock_Enter(&m_Lock);}
         void Exit()   {MT_Spinlock_Exit(&m_Lock);}
 

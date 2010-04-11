@@ -25,44 +25,36 @@
 
 #pragma once
 
-#include <libmt.h>
-#include <adbus.h>
+#include "internal.h"
 
+/* Messages can only be sent to a single target, so for subscriptions with
+ * more than one subscriber, we wrap the message with a broadcast message that
+ * has multiple message headers (one for each target).
+ */
 
-typedef struct Pinger Pinger;
-typedef struct PingThread PingThread;
+typedef struct MTI_BroadcastMessage MTI_BroadcastMessage;
 
-struct Pinger
+struct MTI_BroadcastMessage
 {
-    adbus_Connection*   connection;
-    adbus_State*        state;
-    adbus_Proxy*        proxy;
-    int                 asyncPingsLeft;
-    int                 leftToReceive;
+    MT_AtomicInt    ref;
+    MT_Message*     wrappedMessage;
+    MT_Message      headers[1];
 };
 
-struct PingThread
+struct MT_Subscription
 {
-    MT_MainLoop*        loop;
-    adbus_Connection*   connection;
-    MT_Message          finished;
-    MT_Thread           thread;
-    Pinger              pinger;
+    MT_Spinlock         lock;
+
+    MT_Target*          target;
+    MT_Subscription*    tnext;
+    MT_Subscription*    tprev;
+
+    MT_Signal*          signal;
+    MT_Subscription*    snext;
+    MT_Subscription*    sprev;
 };
 
-void Pinger_Init(Pinger* p, adbus_Connection* c);
-int  Pinger_Run(Pinger* p);
-void Pinger_Destroy(Pinger* p);
-void Pinger_AsyncPing(Pinger* p);
-int  Pinger_AsyncReply(adbus_CbData* d);
-int  Pinger_AsyncError(adbus_CbData* d);
-void Pinger_OnSend(Pinger* p);
-void Pinger_OnReceive(Pinger* p);
-
-
-void PingThread_Create(adbus_Connection* c);
-void PingThread_Run(void* u);
-void PingThread_Join(void* u);
-void PingThread_Free(void* u);
+void MTI_Signal_UnsubscribeAll(MT_Signal* s);
+void MTI_Target_UnsubscribeAll(MT_Target* t);
 
 

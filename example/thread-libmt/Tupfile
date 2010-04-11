@@ -1,0 +1,5 @@
+include_rules
+
+CFLAGS += -I`pwd`/libmt
+
+: foreach *.c |> !cpp |> %B.o

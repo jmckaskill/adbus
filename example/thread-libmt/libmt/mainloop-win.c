@@ -23,27 +23,53 @@
  * ----------------------------------------------------------------------------
  */
 
-/* To get timeradd, timersub, and timercmp */
-#define _BSD_SOURCE
-
 #include "mainloop.h"
 
-#ifndef _WIN32
+#ifdef _WIN32
 
-#include <sys/time.h>
-#include <errno.h>
+#ifdef _MSC_VER
+#	pragma warning(disable:4055) /* type cast HANDLE to LPTIMECALLBACK */
+#endif
+
+/* ------------------------------------------------------------------------- */
+
+void MT_Loop_Register(MT_MainLoop* s, MT_Handle h, MT_Callback cb, void* user)
+{
+    MTI_LoopHandle* ph;
+    MTI_LoopRegistration* pr;
+
+    ph          = dv_push(LoopHandle, &s->handles, 1);
+    *ph         = h;
+
+    pr          = dv_push(LoopRegistration, &s->regs, 1);
+    pr->cb      = cb;
+    pr->user    = user;
+    pr->handle  = h;
+}
 
 /* ------------------------------------------------------------------------- */
 
 void MT_Loop_SetTick(MT_MainLoop* e, MT_Time period, MT_Callback cb, void* user)
 {
     if (period != MT_TIME_INVALID && period > 0) {
-        e->tick.tv_sec = period / 1000000;
-        e->tick.tv_usec = period % 1000000;
-        e->tickreg.cb = cb;
-        e->tickreg.user = user;
+
+        if (e->timer == INVALID_HANDLE_VALUE) {
+            e->timer = CreateEvent(NULL, FALSE, FALSE, NULL);
+            timeSetEvent((UINT) (period / 1000), 0, (LPTIMECALLBACK) e->timer, (DWORD_PTR) NULL, TIME_PERIODIC | TIME_CALLBACK_EVENT_SET);
+        } else {
+            MT_Loop_Unregister(e, e->timer);
+        }
+
+        MT_Loop_Register(e, e->timer, cb, user);
+
     } else {
-        e->tickreg.cb = NULL;
+
+        if (e->timer != INVALID_HANDLE_VALUE) {
+            MT_Loop_Unregister(e, e->timer);
+            CloseHandle(e->timer);
+            e->timer = INVALID_HANDLE_VALUE;
+        }
+
     }
 }
 
@@ -52,58 +78,22 @@ void MT_Loop_SetTick(MT_MainLoop* e, MT_Time period, MT_Callback cb, void* user)
 int MT_Current_Step(void)
 {
 	MT_MainLoop* e = MT_Current();
-    struct timeval time, timeout;
-    fd_set fds;
-    int maxfd = 0;
-    size_t i;
-    int ready = 0;
+    struct Registration* r;
+    DWORD ret;
 
+	LOG("Step");
     if (e->exit)
         return e->exitcode;
 
     MTI_CallIdle(e);
-
-    FD_ZERO(&fds);
-    for (i = 0; i < dv_size(&e->handles); i++)
-    {
-        int fd = dv_a(&e->handles, i);
-        if (fd > maxfd)
-            maxfd = fd;
-        FD_SET(fd, &fds);
-    }
-
-    if (e->tickreg.cb) {
-        gettimeofday(&time, NULL);
-        /* Go on to emit tick straight away */
-        if (timercmp(&time, &e->nexttick, <)) {
-            timersub(&e->nexttick, &time, &timeout);
-            ready = select(maxfd + 1, &fds, NULL, NULL, &timeout);
-        }
-    } else {
-        ready = select(maxfd + 1, &fds, NULL, NULL, NULL);
-    }
-
-
-    if (ready == 0) {
-        gettimeofday(&time, NULL);
-        timeradd(&time, &e->tick, &e->nexttick);
-        e->tickreg.cb(e->tickreg.user);
-
-    } else if (ready > 0) {
-        for (i = 0; i < dv_size(&e->regs); i++) {
-            MTI_LoopRegistration* r = &dv_a(&e->regs, i);
-            int fd = dv_a(&e->handles, i);
-            if (FD_ISSET(fd, &fds)) {
-                r->cb(r->user);
-            }
-        }
-
-    } else if (errno != EINTR) {
+    ret = WaitForMultipleObjects((DWORD) dv_size(&e->handles), &dv_a(&e->handles, 0), FALSE, INFINITE);
+    if (ret >= WAIT_OBJECT_0 + dv_size(&e->handles))
         return -1;
 
-    }
+    r = &dv_a(&e->regs, ret);
+    r->cb(r->user);
 
-    return e->exitcode;
+    return 0;
 }
 
 #endif

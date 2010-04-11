@@ -24,6 +24,7 @@
  */
 
 #include "target.h"
+#include "subscriber.h"
 #include <stddef.h>
 
 /* ------------------------------------------------------------------------- */
@@ -46,6 +47,8 @@ void MT_Target_InitToLoop(MT_Target* t, MT_MainLoop* loop)
 
 void MT_Target_Destroy(MT_Target* t)
 {
+    MTI_Target_UnsubscribeAll(t);
+
     while (1) {
         MT_Message* m;
         MT_QueueItem* q = MT_Queue_Consume(&t->queue);
@@ -58,6 +61,7 @@ void MT_Target_Destroy(MT_Target* t)
         m->call = NULL;
     }
 }
+
 
 /* ------------------------------------------------------------------------- */
 
@@ -88,7 +92,7 @@ void MTI_Target_FinishMessage(MT_Message* m)
             break;
 
         if (m->free) {
-            m->free(m->user);
+            m->free(m);
         }
     }
 }

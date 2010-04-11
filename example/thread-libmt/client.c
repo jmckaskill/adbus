@@ -25,6 +25,7 @@
 
 #include "client_p.h"
 #include <limits.h>
+#include <stddef.h>
 
 #ifndef _WIN32
 #   include <sys/types.h>
@@ -43,14 +44,14 @@ MT_Header* MTI_ClientMessage_New(void)
 {
     MTI_ClientMessage* m = NEW(MTI_ClientMessage);
     m->ret = adbus_msg_new();
-	m->msgBuffer = adbus_buf_new();
+    m->msgBuffer = adbus_buf_new();
     return &m->header;
 }
 
 void MTI_ClientMessage_Free(MT_Header* h)
 {
-    MTI_ClientMessage* m = (MTI_ClientMessage*) h;
-	adbus_buf_free(m->msgBuffer);
+    MTI_ClientMessage* m = (MTI_ClientMessage*) ((char*) h - offsetof(MTI_ClientMessage, header));
+    adbus_buf_free(m->msgBuffer);
     adbus_msg_free(m->ret);
     free(m);
 }
@@ -65,7 +66,7 @@ MT_Header* MTI_ProxyMessage_New(void)
 
 void MTI_ProxyMessage_Free(MT_Header* h)
 {
-    MTI_ProxyMessage* m = (MTI_ProxyMessage*) h;
+    MTI_ProxyMessage* m = (MTI_ProxyMessage*) ((char*) h - offsetof(MTI_ProxyMessage, header));
     free(m);
 }
 
@@ -247,51 +248,51 @@ void MTI_Client_Connected(void* u)
 
 /* ------------------------------------------------------------------------- */
 
-static void CallMessage(void* u)
+static void CallMessage(MT_Message* m)
 {
-    MTI_ClientMessage* m = (MTI_ClientMessage*) u;
+    MTI_ClientMessage* cm = (MTI_ClientMessage*) m->user;
     adbus_CbData d;
 
     memset(&d, 0, sizeof(d));
-    d.connection = m->connection;
-    d.msg = &m->msg;
-    d.user1 = m->user1;
-    d.user2 = m->user2;
+    d.connection = cm->connection;
+    d.msg = &cm->msg;
+    d.user1 = cm->user1;
+    d.user2 = cm->user2;
 
-    if (m->hasReturn) {
-        d.ret = m->ret;
+    if (cm->hasReturn) {
+        d.ret = cm->ret;
         adbus_msg_reset(d.ret);
     }
 
-    adbus_dispatch(m->cb, &d);
+    adbus_dispatch(cm->cb, &d);
 }
 
-static void FreeMessage(void* u)
+static void FreeMessage(MT_Message* m)
 {
-    MTI_ClientMessage* m = (MTI_ClientMessage*) u;
-    adbus_conn_deref(m->connection);
-    MT_Freelist_Push(sMsgList, &m->header);
+    MTI_ClientMessage* cm = (MTI_ClientMessage*) m->user;
+    adbus_conn_deref(cm->connection);
+    MT_Freelist_Push(sMsgList, &cm->header);
 }
 
 int MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d)
 {
     MT_MainLoop* s = (MT_MainLoop*) u;
-    MTI_ClientMessage* m = (MTI_ClientMessage*) MT_Freelist_Pop(sMsgList);
+    MTI_ClientMessage* cm = (MTI_ClientMessage*) MT_Freelist_Pop(sMsgList);
 
-    m->user1 = d->user1;
-    m->user2 = d->user2;
-    m->hasReturn = (d->ret != NULL);
-    m->connection = d->connection;
-    m->cb = msgcb;
+    cm->user1 = d->user1;
+    cm->user2 = d->user2;
+    cm->hasReturn = (d->ret != NULL);
+    cm->connection = d->connection;
+    cm->cb = msgcb;
 
-    adbus_clonedata(m->msgBuffer, d->msg, &m->msg);
-    adbus_conn_ref(m->connection);
+    adbus_clonedata(cm->msgBuffer, d->msg, &cm->msg);
+    adbus_conn_ref(cm->connection);
 
-    m->msgHeader.call = &CallMessage;
-    m->msgHeader.free = &FreeMessage;
-    m->msgHeader.user = m;
+    cm->msgHeader.call = &CallMessage;
+    cm->msgHeader.free = &FreeMessage;
+    cm->msgHeader.user = cm;
 
-    MT_Loop_Post(s, &m->msgHeader);
+    MT_Loop_Post(s, &cm->msgHeader);
 
     d->ret = NULL;
     return 0;
@@ -299,43 +300,43 @@ int MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d)
 
 /* ------------------------------------------------------------------------- */
 
-static void CallProxy(void* u)
+static void CallProxy(MT_Message* m)
 {
-    MTI_ProxyMessage* m = (MTI_ProxyMessage*) u;
-    m->releaseCalled = 1;
-    if (m->callback) {
-        m->callback(m->user);
+    MTI_ProxyMessage* cm = (MTI_ProxyMessage*) m->user;
+    cm->releaseCalled = 1;
+    if (cm->callback) {
+        cm->callback(cm->user);
     }
-    if (m->release) {
-        m->release(m->user);
+    if (cm->release) {
+        cm->release(cm->user);
     }
 }
 
-static void FreeProxy(void* u)
+static void FreeProxy(MT_Message* m)
 {
-    MTI_ProxyMessage* m = (MTI_ProxyMessage*) u;
-    if (!m->releaseCalled && m->release) {
-        m->release(m->user);
+    MTI_ProxyMessage* cm = (MTI_ProxyMessage*) m->user;
+    if (!cm->releaseCalled && cm->release) {
+        cm->release(cm->user);
     }
 
-    MT_Freelist_Push(sProxyList, &m->header);
+    MT_Freelist_Push(sProxyList, &cm->header);
 }
 
 void MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser)
 { 
     MT_MainLoop* s = (MT_MainLoop*) u;
-    MTI_ProxyMessage* m = (MTI_ProxyMessage*) MT_Freelist_Pop(sProxyList);
+    MTI_ProxyMessage* cm = (MTI_ProxyMessage*) MT_Freelist_Pop(sProxyList);
 
-    m->callback = cb;
-    m->release = release;
-    m->user = cbuser;
-    m->releaseCalled = 0;
+    cm->callback = cb;
+    cm->release = release;
+    cm->user = cbuser;
+    cm->releaseCalled = 0;
 
-    m->msgHeader.call = &CallProxy;
-    m->msgHeader.free = &FreeProxy;
-    m->msgHeader.user = m;
+    cm->msgHeader.call = &CallProxy;
+    cm->msgHeader.free = &FreeProxy;
+    cm->msgHeader.user = cm;
 
-    MT_Loop_Post(s, &m->msgHeader);
+    MT_Loop_Post(s, &cm->msgHeader);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -452,7 +453,7 @@ adbus_Connection* MT_CreateDBusConnection(adbus_BusType type)
         goto err;
 
 #ifdef _WIN32
-	WSAEventSelect(s->sock, s->handle, FD_READ);
+    WSAEventSelect(s->sock, s->handle, FD_READ);
     MT_Current_Register(s->handle, &MTI_Client_OnReceive, s);
 #else
     MT_Current_Register(s->sock, &MTI_Client_OnReceive, s);

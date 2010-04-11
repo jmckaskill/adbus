@@ -29,7 +29,7 @@
 #include <stdio.h>
 
 #if defined _WIN32 && !defined NDEBUG
-#	include <crtdbg.h>
+#   include <crtdbg.h>
 #endif
 
 
@@ -37,6 +37,7 @@
 
 static MT_MainLoop* sMainLoop;
 static int sPingersLeft;
+static MT_AtomicInt sCount;
 
 static void PingerFinished();
 
@@ -48,6 +49,7 @@ void Pinger_Init(Pinger* p, adbus_Connection* c)
     p->state = adbus_state_new();
     p->proxy = adbus_proxy_new(p->state);
     p->leftToReceive = 0;
+    p->asyncPingsLeft = 10000;
 
     adbus_conn_ref(c);
     adbus_proxy_init(
@@ -68,7 +70,10 @@ void Pinger_Destroy(Pinger* p)
 
 int Pinger_Run(Pinger* p)
 {
-    Pinger_AsyncPing(p);
+    int i;
+    for (i = 0; i < 1000; i++) {
+        Pinger_AsyncPing(p);
+    }
     return p->leftToReceive > 0;
 }
 
@@ -77,6 +82,7 @@ void Pinger_OnSend(Pinger* p)
 
 void Pinger_OnReceive(Pinger* p)
 {
+    MT_AtomicInt_Increment(&sCount);
     if (--p->leftToReceive == 0) {
         if (MT_Current() == sMainLoop) {
             PingerFinished();
@@ -88,26 +94,31 @@ void Pinger_OnReceive(Pinger* p)
 
 void Pinger_AsyncPing(Pinger* p)
 {
-    adbus_Call f;
-    adbus_proxy_method(p->proxy, &f, "Ping", -1);
+    if (p->asyncPingsLeft-- > 0) {
+        adbus_Call f;
+        adbus_proxy_method(p->proxy, &f, "Ping", -1);
 
-    adbus_msg_appendsig(f.msg, "s", -1);
-    adbus_msg_string(f.msg, "str", -1);
+        adbus_msg_appendsig(f.msg, "s", -1);
+        adbus_msg_string(f.msg, "str", -1);
 
-    f.callback  = &Pinger_AsyncReply;
-    f.cuser     = p;
-    f.error     = &Pinger_AsyncError;
-    f.euser     = p;
+        f.callback  = &Pinger_AsyncReply;
+        f.cuser     = p;
+        f.error     = &Pinger_AsyncError;
+        f.euser     = p;
 
-    Pinger_OnSend(p);
-    adbus_call_send(&f);
+        Pinger_OnSend(p);
+        adbus_call_send(&f);
+    }
 }
 
 int Pinger_AsyncReply(adbus_CbData* d)
 {
-    /*Pinger* p = (Pinger*) d->user1; */
-    const char* str = adbus_check_string(d, NULL);
-    fprintf(stderr, "Reply %s\n", str);
+    Pinger* p = (Pinger*) d->user1;
+    adbus_check_string(d, NULL);
+    adbus_check_end(d);
+
+    Pinger_AsyncPing(p);
+    Pinger_OnReceive(p);
     return 0;
 }
 
@@ -125,7 +136,7 @@ void PingThread_Create(adbus_Connection* c)
 {
     PingThread* s = NEW(PingThread);
     s->connection = c;
-	s->loop = MT_Loop_New();
+    s->loop = MT_Loop_New();
 
     adbus_conn_ref(c);
 
@@ -135,7 +146,7 @@ void PingThread_Create(adbus_Connection* c)
 void PingThread_Run(void* u)
 {
     PingThread* s = (PingThread*) u;
-	MT_SetCurrent(s->loop);
+    MT_SetCurrent(s->loop);
 
     Pinger_Init(&s->pinger, s->connection);
     if (Pinger_Run(&s->pinger)) {
@@ -148,20 +159,20 @@ void PingThread_Run(void* u)
     s->finished.free = &PingThread_Free;
     s->finished.user = s;
 
-	MT_Loop_Post(sMainLoop, &s->finished);
+    MT_Loop_Post(sMainLoop, &s->finished);
 }
 
-void PingThread_Join(void* u)
+void PingThread_Join(MT_Message* m)
 {
-    PingThread* s = (PingThread*) u;
+    PingThread* s = (PingThread*) m->user;
     MT_Thread_Join(s->thread);
     PingerFinished();
 }
 
-void PingThread_Free(void* u)
+void PingThread_Free(MT_Message* m)
 {
-    PingThread* s = (PingThread*) u;
-	MT_Loop_Free(s->loop);
+    PingThread* s = (PingThread*) m->user;
+    MT_Loop_Free(s->loop);
     adbus_conn_deref(s->connection);
     free(s);
 }
@@ -177,10 +188,10 @@ static void PingerFinished()
 
 int main(void)
 {
-	adbus_Connection* c;
+    adbus_Connection* c;
 
     sMainLoop = MT_Loop_New();
-	MT_SetCurrent(sMainLoop);
+    MT_SetCurrent(sMainLoop);
 
     c = MT_CreateDBusConnection(ADBUS_DEFAULT_BUS);
     if (c == NULL) {
@@ -197,6 +208,7 @@ int main(void)
 
     adbus_conn_deref(c);
     MT_Loop_Free(sMainLoop);
+    fprintf(stderr, "%d\n", (int) sCount);
     return 0;
 }
 
