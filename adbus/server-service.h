@@ -35,13 +35,13 @@ struct adbusI_ServiceOwner
 
 DVECTOR_INIT(ServiceOwner, adbusI_ServiceOwner)
 
-DHASH_MAP_INIT_STR(ServiceQueue, adbusI_ServiceQueue*)
+DHASH_MAP_INIT_STRSZ(ServiceQueue, adbusI_ServiceQueue*)
 
 struct adbusI_ServiceQueue
 {
     /* The owner is the head [0] of the queue */
     d_Vector(ServiceOwner)  v;
-    char*                   name;
+    dh_strsz_t              name;
 };
 
 struct adbusI_ServiceQueueSet
@@ -50,8 +50,23 @@ struct adbusI_ServiceQueueSet
 };
 
 ADBUSI_FUNC void adbusI_freeServiceQueue(adbus_Server* s);
-ADBUSI_FUNC int adbusI_requestService(adbus_Server* s, adbus_Remote* r, const char* name, uint32_t flags);
-ADBUSI_FUNC int adbusI_releaseService(adbus_Server* s, adbus_Remote* r, const char* name);
-ADBUSI_FUNC adbus_Remote* adbusI_lookupRemote(adbus_Server* s, const char* name);
+
+ADBUSI_FUNC int adbusI_requestService(
+        adbus_Server* s,
+        adbus_Remote* r,
+        const char* name,
+        size_t size,
+        uint32_t flags);
+
+ADBUSI_FUNC int adbusI_releaseService(
+        adbus_Server* s,
+        adbus_Remote* r,
+        const char* name,
+        size_t size);
+
+ADBUSI_FUNC adbus_Remote* adbusI_lookupRemote(
+        adbus_Server* s,
+        const char* name,
+        size_t size);
 
 

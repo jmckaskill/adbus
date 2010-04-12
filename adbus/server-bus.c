@@ -40,7 +40,7 @@ static int Hello(adbus_CbData* d)
     }
 
     r->haveHello = 1;
-    adbusI_requestService(s, r, ds_cstr(&r->unique), 0);
+    adbusI_requestService(s, r, ds_cstr(&r->unique), ds_size(&r->unique), 0);
 
     if (d->ret) {
         adbus_msg_string(d->ret, ds_cstr(&r->unique), ds_size(&r->unique));
@@ -56,15 +56,16 @@ static int RequestName(adbus_CbData* d)
     adbus_Server* s = (adbus_Server*) d->user2;
     adbus_Remote* r = adbus_serv_caller(s);
 
-    const char* name = adbus_check_string(d, NULL);
+    size_t namesz;
+    const char* name = adbus_check_string(d, &namesz);
     uint32_t flags   = adbus_check_u32(d);
     adbus_check_end(d);
 
-    if (name[0] == ':' || !adbusI_isValidBusName(name, strlen(name))) {
+    if (name[0] == ':' || !adbusI_isValidBusName(name, namesz)) {
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    ret = adbusI_requestService(s, r, name, flags);
+    ret = adbusI_requestService(s, r, name, namesz, flags);
     if (d->ret) {
         adbus_msg_u32(d->ret, ret);
     }
@@ -79,14 +80,15 @@ static int ReleaseName(adbus_CbData* d)
     adbus_Server* s = (adbus_Server*) d->user2;
     adbus_Remote* r = adbus_serv_caller(s);
 
-    const char* name = adbus_check_string(d, NULL);
+    size_t namesz;
+    const char* name = adbus_check_string(d, &namesz);
     adbus_check_end(d);
 
-    if (name[0] == ':' || !adbusI_isValidBusName(name, strlen(name))) {
+    if (name[0] == ':' || !adbusI_isValidBusName(name, namesz)) {
         return adbus_errorf(d, "TODO", "TODO");
     }
 
-    ret = adbusI_releaseService(s, r, name);
+    ret = adbusI_releaseService(s, r, name, namesz);
     if (d->ret) {
         adbus_msg_u32(d->ret, ret);
     }
@@ -111,7 +113,7 @@ static int ListNames(adbus_CbData* d)
             if (dh_exist(h, ii)) {
                 adbusI_ServiceQueue* queue = dh_val(h, ii);
                 adbus_msg_arrayentry(d->ret, &a);
-                adbus_msg_string(d->ret, queue->name, -1);
+                adbus_msg_string(d->ret, queue->name.str, queue->name.sz);
             }
         }
         adbus_msg_endarray(d->ret, &a);
@@ -126,10 +128,11 @@ static int NameHasOwner(adbus_CbData* d)
     adbus_Server* s = (adbus_Server*) d->user2;
     adbus_Remote* r;
 
-    const char* name = adbus_check_string(d, NULL);
+    size_t namesz;
+    const char* name = adbus_check_string(d, &namesz);
     adbus_check_end(d);
 
-    r = adbusI_lookupRemote(s, name);
+    r = adbusI_lookupRemote(s, name, namesz);
 
     if (d->ret) {
         adbus_msg_bool(d->ret, r != NULL);
@@ -144,10 +147,11 @@ static int GetNameOwner(adbus_CbData* d)
     adbus_Server* s = (adbus_Server*) d->user2;
     adbus_Remote* r;
 
-    const char* name = adbus_check_string(d, NULL);
+    size_t namesz;
+    const char* name = adbus_check_string(d, &namesz);
     adbus_check_end(d);
 
-    r = adbusI_lookupRemote(s, name);
+    r = adbusI_lookupRemote(s, name, namesz);
 
     if (r == NULL) {
         return adbus_errorf(d, "org.freedesktop.DBus.Error.NameHasNoOwner", "TODO");
@@ -221,6 +225,9 @@ static adbus_ConnVTable sBusVTable = {
     NULL,               /* get_proxy */
     NULL,               /* block */
 };
+
+#define BUS_SERVICE "org.freedesktop.DBus"
+#define BUS_PATH    "/org/freedesktop/DBus"
 
 void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
 {
@@ -301,18 +308,18 @@ void adbusI_serv_initBus(adbus_Server* s, adbus_Interface* i)
         b.path      = "/";
         adbus_conn_bind(s->bus.connection, &b);
         
-        b.path      = "/org/freedesktop/DBus";
+        b.path      = BUS_PATH;
         adbus_conn_bind(s->bus.connection, &b);
     }
 
-    adbus_sig_bind(s->bus.nameOwnerChanged, s->bus.connection, "/org/freedesktop/DBus", -1);
-    adbus_sig_bind(s->bus.nameAcquired, s->bus.connection, "/org/freedesktop/DBus", -1);
-    adbus_sig_bind(s->bus.nameLost, s->bus.connection, "/org/freedesktop/DBus", -1);
+    adbus_sig_bind(s->bus.nameOwnerChanged, s->bus.connection, BUS_PATH, -1);
+    adbus_sig_bind(s->bus.nameAcquired, s->bus.connection, BUS_PATH, -1);
+    adbus_sig_bind(s->bus.nameLost, s->bus.connection, BUS_PATH, -1);
 
     /* Hook up to the server */
-    s->bus.remote = adbusI_serv_createRemote(s, &SendToBus, s, "org.freedesktop.DBus", 0);
-    adbusI_requestService(s, s->bus.remote, "org.freedesktop.DBus", 0);
-	s->bus.connection->connect.unique = adbusI_strdup("org.freedesktop.DBus");
+    s->bus.remote = adbusI_serv_createRemote(s, &SendToBus, s, BUS_SERVICE, 0);
+    adbusI_requestService(s, s->bus.remote, BUS_SERVICE, strlen(BUS_SERVICE), 0);
+	s->bus.connection->connect.unique = adbusI_strdup(BUS_SERVICE);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -191,7 +191,7 @@ int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg)
     QByteArray sig;
     adbus_Iterator i;
     adbus_iter_args(&i, msg);
-    while (i.size > 0) {
+    while (i.data < i.end) {
         const char* sigend = adbus_nextarg(i.sig);
         if (!sigend) {
             goto err;
@@ -241,7 +241,7 @@ int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg, const 
             QDBusArgumentType* type = types.m_Args[i].type;
 
             /* Check that we aren't expecting more types than provided */
-            if (iter.size == 0) {
+            if (iter.data >= iter.end) {
                 goto argument_error;
             }
 
@@ -316,11 +316,6 @@ bool QDBusMessagePrivate::GetMessage(const QDBusMessage& q, adbus_MsgFactory* ms
     if (!d->error.isEmpty()) {
         QByteArray error8 = d->error.toAscii();
         adbus_msg_seterror(msg, error8.constData(), error8.size());
-    }
-
-    if (!d->sender.isEmpty()) {
-        QByteArray sender8 = d->sender.toAscii();
-        adbus_msg_setsender(msg, sender8.constData(), sender8.size());
     }
 
     if (!d->destination.isEmpty()) {

@@ -249,9 +249,8 @@ int adbus_parse_size(const char* data, size_t size)
 int adbus_parse(adbus_Message* m, char* data, size_t size)
 {
     adbusI_ExtendedHeader* h = (adbusI_ExtendedHeader*) data;
-    adbus_Bool native = (h->endianness == adbusI_nativeEndianness());
+    adbus_Bool native = (h->endianness == ADBUSI_NATIVE_ENDIANNESS);
     adbus_Iterator i;
-    adbus_IterArray a;
 
     assert((int) size == adbus_parse_size(data, size));
     assert((char*) ADBUS_ALIGN(data, 8) == data);
@@ -263,10 +262,10 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
         return 0;
     }
 
-    if (!native && adbus_flip_data(data, size, "yyyyuua(yv)"))
+    if (!native && adbus_flip_data(data, data + size, "yyyyuua(yv)"))
         return -1;
 
-    h->endianness = adbusI_nativeEndianness();
+    h->endianness = ADBUSI_NATIVE_ENDIANNESS;
 
     memset(m, 0, sizeof(adbus_Message));
     m->replySerial = -1;
@@ -279,106 +278,92 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     m->flags    = h->flags;
     m->serial   = h->serial;
 
-    i.data = data + sizeof(adbusI_Header);
-    i.size = size - sizeof(adbusI_Header);
-    i.sig  = "a(yv)";
-    if (adbus_iter_beginarray(&i, &a))
-        return -1;
+    i.data = data + sizeof(adbusI_ExtendedHeader);
+    i.end  = m->argdata;
 
-    while (adbus_iter_inarray(&i, &a)) {
-        uint8_t code;
-        uint32_t replySerial;
-        adbus_IterVariant v;
-        const char** pstr;
-        size_t* psize;
+    /* i.end is the 8 byte aligned end of the headers */
+    assert((char*) ADBUS_ALIGN(i.end, 8) == i.end);
 
-        if (    adbus_iter_beginstruct(&i) 
-            ||  adbus_iter_u8(&i, &code)
-            ||  adbus_iter_beginvariant(&i, &v))
-        {
-            return -1;
+    while (i.data < i.end) {
+        uint32_t u32[2];
+
+        /* Since i.end is 8 byte aligned and so is each field, the min size
+         * for a field is 8.
+         */
+        assert((char*) ADBUS_ALIGN(i.data, 8) == i.data);
+        assert(i.data + 8 <= i.end);
+
+        u32[0] = ((const uint32_t*) i.data)[0];
+        u32[1] = ((const uint32_t*) i.data)[1];
+
+#define GET_STRING(str, size)                                               \
+        size    = u32[1];                                                   \
+        str     = i.data + 8;                                               \
+        i.data  = str + size + 1;                                           \
+        i.data  = (char*) ADBUS_ALIGN(i.data, 8);                           \
+        if (i.data > i.end || str[size] != '\0') {                          \
+            return -1;                                                      \
         }
 
-        switch (code) {
-            case ADBUSI_HEADER_INVALID:
-                return -1;
-
-            case ADBUSI_HEADER_INTERFACE:
-                pstr  = &m->interface;
-                psize = &m->interfaceSize;
-                goto string;
-
-            case ADBUSI_HEADER_MEMBER:
-                pstr  = &m->member;
-                psize = &m->memberSize;
-                goto string;
-
-            case ADBUSI_HEADER_ERROR_NAME:
-                pstr  = &m->error;
-                psize = &m->errorSize;
-                goto string;
-
-            case ADBUSI_HEADER_DESTINATION:
-                pstr  = &m->destination;
-                psize = &m->destinationSize;
-                goto string;
-
-            case ADBUSI_HEADER_SENDER:
-                pstr  = &m->sender;
-                psize = &m->senderSize;
-                goto string;
-
-            string:
-                if (    i.sig[0] != 's'
-                    ||  i.sig[1] != '\0'
-                    ||  adbus_iter_string(&i, pstr, psize))
-                {
-                    return -1;
-                }
+        switch (u32[0]) {
+            case ADBUSI_HEADER_OBJECT_PATH_LONG:
+                GET_STRING(m->path, m->pathSize);
                 break;
 
-            case ADBUSI_HEADER_OBJECT_PATH:
-                if (    i.sig[0] != 'o' 
-                    ||  i.sig[1] != '\0'
-                    ||  adbus_iter_objectpath(&i, &m->path, &m->pathSize))
-                {
-                    return -1;
-                }
+            case ADBUSI_HEADER_INTERFACE_LONG:
+                GET_STRING(m->interface, m->interfaceSize);
                 break;
 
-            case ADBUSI_HEADER_SIGNATURE:
-                if (    i.sig[0] != 'g' 
-                    ||  i.sig[1] != '\0'
-                    ||  adbus_iter_signature(&i, &m->signature, &m->signatureSize))
-                {
-                    return -1;
-                }
+            case ADBUSI_HEADER_MEMBER_LONG:
+                GET_STRING(m->member, m->memberSize);
                 break;
 
-            case ADBUSI_HEADER_REPLY_SERIAL:
-                if (    i.sig[0] != 'u' 
-                    ||  i.sig[1] != '\0'
-                    ||  adbus_iter_u32(&i, &replySerial))
-                {
+            case ADBUSI_HEADER_ERROR_NAME_LONG:
+                GET_STRING(m->error, m->errorSize);
+                break;
+
+            case ADBUSI_HEADER_DESTINATION_LONG:
+                GET_STRING(m->destination, m->destinationSize);
+                break;
+
+            case ADBUSI_HEADER_SENDER_LONG:
+                GET_STRING(m->sender, m->senderSize);
+                break;
+
+            case ADBUSI_HEADER_REPLY_SERIAL_LONG:
+                m->replySerial = u32[1];
+                i.data += 8;
+                break;
+
+            case ADBUSI_HEADER_SIGNATURE_LONG:
+                m->signatureSize = ((const uint8_t*) i.data)[4];
+                m->signature = i.data + 5;
+                i.data = m->signature + m->signatureSize + 1;
+                i.data = (char*) ADBUS_ALIGN(i.data, 8);
+                if (i.data > i.end || m->signature[m->signatureSize] != '\0') {
                     return -1;
                 }
-                m->replySerial = replySerial;
                 break;
 
             default:
+                /* If the code is a well known one, but it didn't match the
+                 * long code, we have a field with an invalid signature. The
+                 * size has already been checked, so this is safe.
+                 */
+                if (*(uint8_t*) i.data++ <= ADBUSI_HEADER_MAX) {
+                    return -1;
+                }
+                i.sig = "v";
                 if (adbus_iter_value(&i)) {
+                    return -1;
+                }
+                i.data = (char*) ADBUS_ALIGN(i.data, 8);
+                if (i.data > i.end) {
                     return -1;
                 }
                 break;
         }
-
-        if (adbus_iter_endvariant(&i, &v) || adbus_iter_endstruct(&i))
-            return -1;
-
     }
-
-    if (adbus_iter_endarray(&i, &a))
-        return -1;
 
     /* Check that we have the required fields */
     if (m->type == ADBUS_MSG_METHOD && (!m->path || !m->member)) {
@@ -393,7 +378,7 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
         return -1;
     }
 
-    if (!native && m->signature && adbus_flip_data((char*) m->argdata, m->argsize, m->signature))
+    if (!native && m->signature && adbus_flip_data((char*) m->argdata, m->argdata + m->argsize, m->signature))
         return -1;
 
     return 0;
@@ -425,7 +410,7 @@ int adbus_parseargs(adbus_Message* m)
 
     ZERO(args);
     i.data = m->argdata;
-    i.size = m->argsize;
+    i.end  = m->argdata + m->argsize;
     i.sig  = m->signature;
 
     assert(m->signature != NULL);

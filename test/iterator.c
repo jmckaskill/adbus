@@ -44,6 +44,7 @@ char* ReadData(const char* filename, size_t* sz)
 
     char* buf = NULL;
     size_t bufsize = 64 * 1024;
+    *sz = 0;
     while (!feof(f)) {
         buf = (char*) realloc(buf, bufsize);
         *sz += fread(buf + *sz, 1, bufsize - *sz, f);
@@ -64,7 +65,7 @@ void print_iter(adbus_Iterator* i)
     printf("ITER '%s' %d/%d\n",
             i->sig,
             DIFF(i->data, begin),
-            (int) i->size);
+            DIFF(i->end, begin));
 }
 
 void print_array(adbus_IterArray* a)
@@ -90,16 +91,20 @@ DVECTOR_INIT(Variant, adbus_IterVariant);
 
 int main(int argc, char* argv[])
 {
+    adbus_Iterator i;
+    size_t read;
+
     if (argc != 4)
         abort();
 
-    adbus_Iterator i = {};
-    begin = ReadData(argv[1], &i.size);
+    begin = ReadData(argv[1], &read);
+
     i.data = begin;
-    i.sig = argv[2];
+    i.end  = begin + read;
+    i.sig  = argv[2];
 
     char* cmd = argv[3];
-    printf("DATA '%s' %d\n", i.sig, (int) i.size);
+    printf("DATA '%s' %d\n", i.sig, (int) read);
     print_iter(&i);
     while (*cmd) {
         switch (*cmd++) 

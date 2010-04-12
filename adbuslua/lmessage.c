@@ -359,7 +359,6 @@ static const char* kMessageFields[] = {
     "error_name",
     "reply_serial",
     "destination",
-    "sender",
     "signature",
     NULL,
 };
@@ -375,7 +374,7 @@ int adbuslua_to_message(
                 "Invalid field in the msg table. Valid fields are 'type', "
                 "'no_reply', 'no_autostart', 'serial', 'interface', "
                 "'path', 'member', 'error_name', 'reply_serial', 'destination', "
-                "'sender', and 'signature'.");
+                "and 'signature'.");
     }
 
     // Type
@@ -408,9 +407,8 @@ int adbuslua_to_message(
     const char* mbr = NULL;
     const char* errname = NULL;
     const char* dest = NULL;
-    const char* sender = NULL;
     const char* sig = NULL;
-    int pathsz, ifacesz, mbrsz, errsz, destsz, sendersz, sigsz;
+    int pathsz, ifacesz, mbrsz, errsz, destsz, sigsz;
     if (    adbusluaI_boolField(L, index, "no_reply", &noreply)
         ||  adbusluaI_boolField(L, index, "no_autostart", &noautostart)
         ||  adbusluaI_intField(L, index, "serial", &serial)
@@ -420,7 +418,6 @@ int adbuslua_to_message(
         ||  adbusluaI_stringField(L, index, "member", &mbr, &mbrsz)
         ||  adbusluaI_stringField(L, index, "error_name", &errname, &errsz)
         ||  adbusluaI_stringField(L, index, "destination", &dest, &destsz)
-        ||  adbusluaI_stringField(L, index, "sender", &sender, &sendersz)
         ||  adbusluaI_stringField(L, index, "signature", &sig, &sigsz))
     {
         return -1;
@@ -447,8 +444,6 @@ int adbuslua_to_message(
         adbus_msg_seterror(msg, errname, errsz);
     if (dest)
         adbus_msg_setdestination(msg, dest, destsz);
-    if (sender)
-        adbus_msg_setsender(msg, sender, sendersz);
 
 
     adbus_Buffer* b = adbus_msg_argbuffer(msg);

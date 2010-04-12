@@ -31,6 +31,7 @@ struct adbus_Buffer
 {
     /** \privatesection */
     d_Vector(char)  b;
+    size_t          sigsz;
     char            sig[256];
     const char*     sigp;
 };

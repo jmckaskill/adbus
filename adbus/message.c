@@ -130,7 +130,6 @@ void adbus_msg_free(adbus_MsgFactory* m)
     ds_free(&m->member);
     ds_free(&m->error);
     ds_free(&m->destination);
-    ds_free(&m->sender);
     free(m);
 }
 
@@ -153,7 +152,6 @@ void adbus_msg_reset(adbus_MsgFactory* m)
     ds_clear(&m->member);
     ds_clear(&m->error);
     ds_clear(&m->destination);
-    ds_clear(&m->sender);
 }
 
 /* -------------------------------------------------------------------------
@@ -161,84 +159,103 @@ void adbus_msg_reset(adbus_MsgFactory* m)
  * -------------------------------------------------------------------------
  */
 
-static void AppendString(
-        adbus_MsgFactory*   m,
-        adbus_BufArray*     a,
-        uint8_t             code,
-        d_String*           field,
-        const char**        msgstr,
-        size_t*             msgsz)
+static void SignatureField(char** dest, uint32_t code, const char* source, size_t sz, const char** pstr, const char** pend)
 {
-    *msgsz = ds_size(field);
-    if (ds_size(field) > 0) {
-        adbus_BufVariant v;
-        adbus_buf_arrayentry(m->buf, a);
-        adbus_buf_beginstruct(m->buf);
-        adbus_buf_u8(m->buf, code);
-        adbus_buf_beginvariant(m->buf, &v, "s", 1);
-        adbus_buf_align(m->buf, 4);
-        *msgstr = (char*) 0 + adbus_buf_size(m->buf) + 4;
-        adbus_buf_string(m->buf, ds_cstr(field), ds_size(field));
-        adbus_buf_endvariant(m->buf, &v);
-        adbus_buf_endstruct(m->buf);
-    }
+    /* Find where stuff is, zero the padding, and then set stuff.
+     * p32[0] is code
+     * p8[0] is string size
+     * p8[1] and on is string
+     *
+     * p64 is the last 8 bytes of the field used to set the padding. Set
+     * this first as this will overlap with the other fields.
+     *
+     * pend is the unaligned end of the field.
+     */
+
+    char* str = NULL;
+    uint8_t* p8;
+    uint64_t* p64;
+    uint32_t* p32 = (uint32_t*) *dest;
+
+    /* Find the string */
+    p8 = (uint8_t*) &p32[1];
+    str = (char*) &p8[1];
+    *pend = str + sz + 1;
+
+    /* Find the padding */
+    p64 = (uint64_t*) (str + sz);
+    p64 = (uint64_t*) (((uintptr_t) p64) & ~0x07);
+
+    /* Set *dest to the 8 byte aligned end of the field */
+    *dest = (char*) &p64[1];
+
+    /* Zero the padding */
+    p64[0] = UINT64_C(0);
+
+    /* Code includes u8 code, variant sigsz, sig, and signull */
+    p32[0] = code;
+
+    /* Size of string */
+    p8[0] = (uint8_t) sz;
+
+    /* Copy over the string */
+    memcpy(str, source, sz);
+
+    *pstr = str;
 }
 
-static void AppendSignature(
-        adbus_MsgFactory*   m,
-        adbus_BufArray*     a,
-        uint8_t             code,
-        const char*         field,
-        const char**        msgstr,
-        size_t*             msgsz)
+static void StringField(char** dest, uint32_t code, d_String* field, const char** pstr, size_t* psz)
 {
-    *msgsz = strlen(field);
-    if (field) {
-        adbus_BufVariant v;
-        adbus_buf_arrayentry(m->buf, a);
-        adbus_buf_beginstruct(m->buf);
-        adbus_buf_u8(m->buf, code);
-        adbus_buf_beginvariant(m->buf, &v, "g", 1);
-        *msgstr = (char*) 0 + adbus_buf_size(m->buf) + 1;
-        adbus_buf_signature(m->buf, field, *msgsz);
-        adbus_buf_endvariant(m->buf, &v);
-        adbus_buf_endstruct(m->buf);
+    char* str = NULL;
+    size_t sz = ds_size(field);
+    if (sz > 0) {
+
+        /* Find where stuff is, zero the padding, and then set stuff.
+         * p32[0] is code
+         * p32[1] is string size
+         * p32[2] and on is string
+         *
+         * p64 is the last 8 bytes of the field used to set the padding. Set
+         * this first as this will overlap with the other fields.
+         */
+
+        uint64_t* p64;
+        uint32_t* p32 = (uint32_t*) *dest;
+
+        /* Find the string */
+        str = (char*) &p32[2];
+
+        /* Find the padding */
+        p64 = (uint64_t*) (str + sz);
+        p64 = (uint64_t*) (((uintptr_t) p64) & ~0x07);
+
+        /* Set *dest to the 8 byte aligned end of the field */
+        *dest = (char*) &p64[1];
+
+        /* Zero the padding */
+        p64[0] = UINT64_C(0);
+
+        /* Code includes u8 code, variant sigsz, sig, and signull */
+        p32[0] = code;
+
+        /* Size of string */
+        p32[1] = (uint32_t) sz;
+
+        /* Copy over the string */
+        memcpy(str, ds_cstr(field), sz);
     }
+    *pstr = str;
+    *psz = sz;
 }
 
-static void AppendObjectPath(
-        adbus_MsgFactory*   m,
-        adbus_BufArray*     a,
-        uint8_t             code,
-        d_String*           field,
-        const char**        msgstr,
-        size_t*             msgsz)
+static void ReplySerialField(char** dest, uint32_t code, int64_t value)
 {
-    *msgsz = ds_size(field);
-    if (ds_size(field) > 0) {
-        adbus_BufVariant v;
-        adbus_buf_arrayentry(m->buf, a);
-        adbus_buf_beginstruct(m->buf);
-        adbus_buf_u8(m->buf, code);
-        adbus_buf_beginvariant(m->buf, &v, "o", 1);
-        adbus_buf_align(m->buf, 4);
-        *msgstr = (char*) 0 + adbus_buf_size(m->buf) + 4;
-        adbus_buf_objectpath(m->buf, ds_cstr(field), ds_size(field));
-        adbus_buf_endvariant(m->buf, &v);
-        adbus_buf_endstruct(m->buf);
+    if (value >= 0) {
+        uint32_t* p32 = (uint32_t*) *dest;
+        p32[0] = code;
+        p32[1] = (uint32_t) value;
+        *dest += 8;
     }
-}
-
-static void AppendUInt32(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, uint32_t field)
-{
-    adbus_BufVariant v;
-    adbus_buf_arrayentry(m->buf, a);
-    adbus_buf_beginstruct(m->buf);
-    adbus_buf_u8(m->buf, code);
-    adbus_buf_beginvariant(m->buf, &v, "u", 1);
-    adbus_buf_u32(m->buf, field);
-    adbus_buf_endvariant(m->buf, &v);
-    adbus_buf_endstruct(m->buf);
 }
 
 /** Builds the message and sets the fields in the message struct.
@@ -263,13 +280,12 @@ static void AppendUInt32(adbus_MsgFactory* m, adbus_BufArray* a, uint8_t code, u
  */
 int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
 {
-    adbusI_Header header;
-    adbus_BufArray a;
+    adbusI_ExtendedHeader* header;
+    const char *sig, *argdata, *unalignedHeaderEnd;
+    size_t alloc;
+    char* dest;
 
-    adbus_buf_reset(m->buf);
-    memset(msg, 0, sizeof(adbus_Message));
-
-    /* Check that we have required fields */
+    /* Check that we have the required fields */
     if (m->serial < 0) {
         assert(0);
         return -1;
@@ -303,76 +319,86 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
         return -1;
     }
 
-    header.endianness   = adbusI_nativeEndianness();
-    header.type         = (uint8_t) m->messageType;
-    header.flags        = (uint8_t) m->flags;
-    header.version      = adbusI_majorProtocolVersion;
-    header.length       = adbus_buf_size(m->argbuf);
-    header.serial       = (uint32_t) m->serial;
-    adbus_buf_append(m->buf, (const char*) &header, sizeof(struct adbusI_Header));
+    /* We don't zero the message as we should set every value. Shred in on
+     * debug to check that we've got everything.
+     */
+#ifndef NDEBUG
+    memset(msg, 0xAD, sizeof(adbus_Message));
+#endif
 
-    adbus_buf_appendsig(m->buf, "a(yv)", 5);
-    adbus_buf_beginarray(m->buf, &a);
-    AppendString(m, &a, ADBUSI_HEADER_INTERFACE, &m->interface, &msg->interface, &msg->interfaceSize);
-    AppendString(m, &a, ADBUSI_HEADER_MEMBER, &m->member, &msg->member, &msg->memberSize);
-    AppendString(m, &a, ADBUSI_HEADER_ERROR_NAME, &m->error, &msg->error, &msg->errorSize);
-    AppendString(m, &a, ADBUSI_HEADER_DESTINATION, &m->destination, &msg->destination, &msg->destinationSize);
-    AppendString(m, &a, ADBUSI_HEADER_SENDER, &m->sender, &msg->sender, &msg->senderSize);
-    AppendObjectPath(m, &a, ADBUSI_HEADER_OBJECT_PATH, &m->path, &msg->path, &msg->pathSize);
+    /* We don't fill these fields out */
+    msg->arguments = NULL;
+    msg->argumentsSize = 0;
+    msg->sender = NULL;
+    msg->senderSize = 0;
 
-    if (m->replySerial >= 0) {
-        AppendUInt32(m, &a, ADBUSI_HEADER_REPLY_SERIAL, (uint32_t) m->replySerial);
-    }
+    argdata = adbus_buf_data(m->argbuf);
+    msg->argsize = adbus_buf_size(m->argbuf);
 
-    if (adbus_buf_size(m->argbuf) > 0) {
-        const char* sig = adbus_buf_sig(m->argbuf, NULL);
-        AppendSignature(m, &a, ADBUSI_HEADER_SIGNATURE, sig, &msg->signature, &msg->signatureSize);
-    }
+    sig = adbus_buf_sig(m->argbuf, &msg->signatureSize);
 
-    adbus_buf_endarray(m->buf, &a);
-    adbus_buf_align(m->buf, 8);
-    adbus_buf_end(m->argbuf);
+    alloc = ds_size(&m->path)
+          + ds_size(&m->interface)
+          + ds_size(&m->member)
+          + ds_size(&m->error)
+          + ds_size(&m->destination)
+          + msg->argsize
+          + sizeof(adbusI_ExtendedHeader)
+          + 8       /* for reply_serial */
+          + 6 * 16; /* for each string field: 4 for code, 4 for string size, 8 for padding */
 
-    if (adbus_buf_size(m->argbuf) > 0) {
-        adbus_buf_append(m->buf, adbus_buf_data(m->argbuf), adbus_buf_size(m->argbuf));
-    }
+    adbus_buf_resize(m->buf, alloc);
+    dest = adbus_buf_data(m->buf);
+    msg->data = dest;
 
-    msg->data               = adbus_buf_data(m->buf);
-    msg->size               = adbus_buf_size(m->buf);
-    msg->argsize            = adbus_buf_size(m->argbuf);
-    msg->argdata            = msg->data + msg->size - msg->argsize;
-    msg->type               = m->messageType;
-    msg->flags              = m->flags;
-    msg->serial             = (uint32_t) m->serial;
-    msg->replySerial        = m->replySerial;
+    /* Shred to make sure we zero the padding correctly */
+#ifndef NDEBUG
+    memset(dest, '?', alloc);
+#endif
 
-    if (msg->path) {
-        msg->path += (uintptr_t) msg->data;
-    }
+    header = (adbusI_ExtendedHeader*) dest;
 
-    if (msg->interface) {
-        msg->interface += (uintptr_t) msg->data;
-    }
+    header->endianness  = ADBUSI_NATIVE_ENDIANNESS;
+    header->type        = (uint8_t) m->messageType;
+    header->flags       = (uint8_t) m->flags;
+    header->version     = ADBUSI_MAJOR_PROTOCOL_VERSION;
+    header->length      = (uint32_t) msg->argsize;
+    header->serial      = (uint32_t) m->serial;
 
-    if (msg->member) {
-        msg->member += (uintptr_t) msg->data;
-    }
+    msg->type           = m->messageType;
+    msg->flags          = m->flags;
+    msg->serial         = (uint32_t) m->serial;
+    msg->replySerial    = m->replySerial;
 
-    if (msg->error) {
-        msg->error += (uintptr_t) msg->data;
-    }
+    dest += sizeof(adbusI_ExtendedHeader);
 
-    if (msg->destination) {
-        msg->destination += (uintptr_t) msg->data;
-    }
+    /* Add the headers manually. This could be done using the adbus_buf methods
+     * but it gets hit a lot and we already know that the alignment is going to be
+     * correct for many of the fields. Also we need pointers into the data
+     * structure to fill out the adbus_Message fields, which is otherwise
+     * tricky.
+     */
+    ReplySerialField(&dest, ADBUSI_HEADER_REPLY_SERIAL_LONG, m->replySerial);
+    StringField(&dest, ADBUSI_HEADER_OBJECT_PATH_LONG, &m->path, &msg->path, &msg->pathSize); 
+    StringField(&dest, ADBUSI_HEADER_INTERFACE_LONG, &m->interface, &msg->interface, &msg->interfaceSize); 
+    StringField(&dest, ADBUSI_HEADER_MEMBER_LONG, &m->member, &msg->member, &msg->memberSize); 
+    StringField(&dest, ADBUSI_HEADER_ERROR_NAME_LONG, &m->error, &msg->error, &msg->errorSize); 
+    StringField(&dest, ADBUSI_HEADER_DESTINATION_LONG, &m->destination, &msg->destination, &msg->destinationSize); 
 
-    if (msg->sender) {
-        msg->sender += (uintptr_t) msg->data;
-    }
+    /* Always append the signature field even though we may not need it. This
+     * way we only have to figure out the non-aligned end of the header array
+     * for one field.
+     */
+    SignatureField(&dest, ADBUSI_HEADER_SIGNATURE_LONG, sig, msg->signatureSize, &msg->signature, &unalignedHeaderEnd);
 
-    if (msg->signature) {
-        msg->signature += (uintptr_t) msg->data;
-    }
+    assert((char*) ADBUS_ALIGN(dest, 8) == dest);
+    assert(dest - 8 < unalignedHeaderEnd && unalignedHeaderEnd <= dest);
+
+    header->headerFieldLength = unalignedHeaderEnd - (char*) &header[1];
+
+    memcpy(dest, argdata, msg->argsize);
+    msg->argdata = dest;
+    msg->size = dest + msg->argsize - msg->data;
 
     return 0;
 }
@@ -386,7 +412,7 @@ int adbus_msg_send(adbus_MsgFactory* m, adbus_Connection* c)
 {
     int ret;
     adbus_Message msg;
-    ZERO(msg);
+
     if (adbus_msg_serial(m) < 0) {
         adbus_msg_setserial(m, adbus_conn_serial(c));
     }
@@ -431,24 +457,6 @@ const char* adbus_msg_interface(const adbus_MsgFactory* m, size_t* len)
         *len = ds_size(&m->interface);
     if (ds_size(&m->interface) > 0)
         return ds_cstr(&m->interface);
-    else
-        return NULL;
-}
-
-/* ------------------------------------------------------------------------- */
-
-/** Returns the current value of the sender header field.
- *
- *  \relates adbus_MsgFactory
- *
- *  \return NULL if the field is not set
- */
-const char* adbus_msg_sender(const adbus_MsgFactory* m, size_t* len)
-{
-    if (len)
-        *len = ds_size(&m->sender);
-    if (ds_size(&m->sender) > 0)
-        return ds_cstr(&m->sender);
     else
         return NULL;
 }
@@ -660,18 +668,6 @@ void adbus_msg_setdestination(adbus_MsgFactory* m, const char* destination, int 
     if (size < 0)
         size = strlen(destination);
     ds_set_n(&m->destination, destination, size);
-}
-
-/* ------------------------------------------------------------------------- */
-
-/** Sets the message sender field
- *  \relates adbus_MsgFactory
- */
-void adbus_msg_setsender(adbus_MsgFactory* m, const char* sender, int size)
-{
-    if (size < 0)
-        size = strlen(sender);
-    ds_set_n(&m->sender, sender, size);
 }
 
 /* ------------------------------------------------------------------------- */

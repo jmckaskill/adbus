@@ -257,7 +257,7 @@
 struct adbus_Iterator
 {
     const char*     data;   /**< Current data pointer */
-    size_t          size;   /**< Data left */
+    const char*     end;
     const char*     sig;    /**< Current signature pointer */
 };
 
@@ -272,33 +272,28 @@ struct adbus_Iterator
  *    ~(boundary - 1)
  */
 
+#if 1
 #define ADBUS_ALIGN(PTR, BOUNDARY) \
   ((((uintptr_t) (PTR)) + (((uintptr_t) (BOUNDARY)) - 1)) & (~(((uintptr_t)(BOUNDARY))-1)))
 
+#else
+#define ADBUS_ALIGN(PTR, BOUNDARY) \
+    (((uintptr_t) PTR & BOUNDARY) ? (PTR + BOUNDARY - ((uintptr_t) PTR & BOUNDARY)) : PTR)
+#endif
 
-ADBUS_INLINE int adbus_iter_align(adbus_Iterator* i, int alignment)
+ADBUS_INLINE int adbus_iter_align(adbus_Iterator* i, const char* sig)
 {
-    size_t diff = (char*) ADBUS_ALIGN(i->data, alignment) - i->data;
-    if (i->size < diff)
-        return -1;
-
-    i->data += diff;
-    i->size -= diff;
-    return 0;
-}
-
-ADBUS_INLINE int adbus_iter_alignfield(adbus_Iterator* i, char field)
-{
-    switch (field)
+    switch (*sig)
     {
         case 'y': /* u8 */
         case 'g': /* signature */
         case 'v': /* variant */
-            return 0;
+            break;
 
         case 'n': /* i16 */
         case 'q': /* u16 */
-            return adbus_iter_align(i,2);
+            i->data = (char*) ADBUS_ALIGN(i->data, 2);
+            break;
 
         case 'b': /* bool */
         case 'i': /* i32 */
@@ -306,75 +301,91 @@ ADBUS_INLINE int adbus_iter_alignfield(adbus_Iterator* i, char field)
         case 's': /* string */
         case 'o': /* object path */
         case 'a': /* array */
-            return adbus_iter_align(i,4);
+            i->data = (char*) ADBUS_ALIGN(i->data, 4);
+            break;
 
         case 'x': /* i64 */
         case 't': /* u64 */
         case 'd': /* double */
         case '(': /* struct */
         case '{': /* dict entry */
-            return adbus_iter_align(i,8);
+            i->data = (char*) ADBUS_ALIGN(i->data, 8);
+            break;
 
         default:
             assert(0);
-            return -1;
+            break;
     }
+
+    return (i->data > i->end);
 }
 
-ADBUS_INLINE int adbusI_iter_sig(adbus_Iterator* i, char field)
+ADBUS_INLINE void adbusI_iter_sig(adbus_Iterator* i, char field)
 {
-    if (*i->sig++ != field) {
-        assert(0);
-        return -1;
-    }
-    return 0;
+    assert(*i->sig == field);
+    i->sig++;
 }
 
 ADBUS_INLINE int adbusI_iter_get8(adbus_Iterator* i, uint8_t* v)
 {
-    if (i->size < 1)
+    if (i->data >= i->end) {
         return -1;
+    }
 
-    if (v)
+    if (v) {
         *v = *(const uint8_t*) i->data;
-    i->data += 1;
-    i->size -= 1;
+    }
+
+    i->data++;
+
     return 0;
 }
 
 ADBUS_INLINE int adbusI_iter_get16(adbus_Iterator* i, uint16_t* v)
 {
-    if (adbus_iter_align(i, 2) || i->size < 2)
-        return -1;
+    const char* data = (char*) ADBUS_ALIGN(i->data, 2);
 
-    if (v)
-        *v = *(const uint16_t*) i->data;
-    i->data += 2;
-    i->size -= 2;
+    i->data = data + 2;
+    if (i->data > i->end) {
+        return -1;
+    }
+
+    if (v) {
+        *v = *(const uint16_t*) data;
+    }
+
     return 0;
 }
 
 ADBUS_INLINE int adbusI_iter_get32(adbus_Iterator* i, uint32_t* v)
 {
-    if (adbus_iter_align(i, 4) || i->size < 4)
-        return -1;
+    const char* data = (char*) ADBUS_ALIGN(i->data, 4);
 
-    if (v)
-        *v = *(const uint32_t*) i->data;
-    i->data += 4;
-    i->size -= 4;
+    i->data = data + 4;
+    if (i->data > i->end) {
+        return -1;
+    }
+
+    if (v) {
+        *v = *(const uint32_t*) data;
+    }
+
     return 0;
 }
 
 ADBUS_INLINE int adbusI_iter_get64(adbus_Iterator* i, uint64_t* v)
 {
-    if (adbus_iter_align(i, 8) || i->size < 8)
-        return -1;
+    const char* data = (char*) ADBUS_ALIGN(i->data, 8);
 
-    if (v)
-        *v = *(const uint64_t*) i->data;
-    i->data += 8;
-    i->size -= 8;
+    i->data = data + 8;
+    if (i->data > i->end) {
+        return -1;
+    }
+
+    if (v) {
+        *v = *(const uint64_t*) data;
+    }
+
     return 0;
 }
 
@@ -384,7 +395,8 @@ ADBUS_INLINE int adbusI_iter_get64(adbus_Iterator* i, uint64_t* v)
 ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, adbus_Bool* v)
 { 
     uint32_t u32;
-    if (adbusI_iter_sig(i, 'b') || adbusI_iter_get32(i, &u32))
+    adbusI_iter_sig(i, 'b');
+    if (adbusI_iter_get32(i, &u32))
         return -1;
     *v = (u32 != 0);
     return 0;
@@ -394,63 +406,105 @@ ADBUS_INLINE int adbus_iter_bool(adbus_Iterator* i, adbus_Bool* v)
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_u8(adbus_Iterator* i, uint8_t* v)
-{ return adbusI_iter_sig(i, 'y') || adbusI_iter_get8(i, v); }
+{ adbusI_iter_sig(i, 'y'); return adbusI_iter_get8(i, v); }
 
 /** Pulls out a int16_t (dbus sig "n").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_i16(adbus_Iterator* i, int16_t* v)
-{ return adbusI_iter_sig(i, 'n') || adbusI_iter_get16(i, (uint16_t*) v); }
+{ adbusI_iter_sig(i, 'n'); return adbusI_iter_get16(i, (uint16_t*) v); }
 
 /** Pulls out a uint16_t (dbus sig "q").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_u16(adbus_Iterator* i, uint16_t* v)
-{ return adbusI_iter_sig(i, 'q') || adbusI_iter_get16(i, v); }
+{ adbusI_iter_sig(i, 'q'); return adbusI_iter_get16(i, v); }
 
 /** Pulls out a int32_t (dbus sig "i").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_i32(adbus_Iterator* i, int32_t* v)
-{ return adbusI_iter_sig(i, 'i') || adbusI_iter_get32(i, (uint32_t*) v); }
+{ adbusI_iter_sig(i, 'i'); return adbusI_iter_get32(i, (uint32_t*) v); }
 
 /** Pulls out a uint32_t (dbus sig "u").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_u32(adbus_Iterator* i, uint32_t* v)
-{ return adbusI_iter_sig(i, 'u') || adbusI_iter_get32(i, v); }
+{ adbusI_iter_sig(i, 'u'); return adbusI_iter_get32(i, v); }
 
 /** Pulls out a int64_t (dbus sig "x").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_i64(adbus_Iterator* i, int64_t* v)
-{ return adbusI_iter_sig(i, 'x') || adbusI_iter_get64(i, (uint64_t*) v); }
+{ adbusI_iter_sig(i, 'x'); return adbusI_iter_get64(i, (uint64_t*) v); }
 
 /** Pulls out a uint64_t (dbus sig "t").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_u64(adbus_Iterator* i, uint64_t* v)
-{ return adbusI_iter_sig(i, 't') || adbusI_iter_get64(i, v); }
+{ adbusI_iter_sig(i, 't'); return adbusI_iter_get64(i, v); }
 
 /** Pulls out a double (dbus sig "d").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_double(adbus_Iterator* i, double* v)
-{ return adbusI_iter_sig(i, 'd') || adbusI_iter_get64(i, (uint64_t*) v); }
+{ adbusI_iter_sig(i, 'd'); return adbusI_iter_get64(i, (uint64_t*) v); }
 
-ADBUS_INLINE int adbusI_iter_getstring(adbus_Iterator* i, size_t strsz, const char** pstr, size_t* pstrsz)
+ADBUS_INLINE int adbusI_iter_getstring_1(adbus_Iterator* i, const char** pstr, size_t* psz)
 {
-    const char* str = i->data;
-    if (i->size < (size_t) (strsz + 1))
+    uint8_t sz;
+
+    const char* dsz = i->data;
+    const char* str = dsz + 1;
+
+    if (str > i->end) {
         return -1;
-    if (memchr(str, '\0', strsz + 1) != str + strsz)
+    }
+
+    sz      = *(const uint8_t*) dsz;
+    i->data = str + sz + 1;
+
+    if (i->data > i->end || str[sz] != '\0') {
         return -1;
-    i->data += strsz + 1;
-    i->size -= strsz + 1;
-    if (pstr)
+    }
+
+    if (pstr) {
         *pstr = str;
-    if (pstrsz)
-        *pstrsz = strsz;
+    }
+
+    if (psz) {
+        *psz = sz;
+    }
+
+    return 0;
+}
+
+ADBUS_INLINE int adbusI_iter_getstring_4(adbus_Iterator* i, const char** pstr, size_t* psz)
+{
+    uint32_t sz;
+
+    const char* dsz = (char*) ADBUS_ALIGN(i->data, 4);
+    const char* str = dsz + 4;
+
+    if (str > i->end) {
+        return -1;
+    }
+
+    sz      = *(const uint32_t*) dsz;
+    i->data = str + sz + 1;
+
+    if (i->data > i->end || str[sz] != '\0') {
+        return -1;
+    }
+
+    if (pstr) {
+        *pstr = str;
+    }
+
+    if (psz) {
+        *psz = sz;
+    }
+
     return 0;
 }
 
@@ -459,10 +513,8 @@ ADBUS_INLINE int adbusI_iter_getstring(adbus_Iterator* i, size_t strsz, const ch
  */
 ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** str, size_t* strsz)
 {
-    uint32_t len;
-    return adbusI_iter_sig(i, 's')
-        || adbusI_iter_get32(i, &len)
-        || adbusI_iter_getstring(i, len, str, strsz);
+    adbusI_iter_sig(i, 's');
+    return adbusI_iter_getstring_4(i, str, strsz);
 }
 
 /** Pulls out a object path (dbus sig "o").
@@ -470,10 +522,8 @@ ADBUS_INLINE int adbus_iter_string(adbus_Iterator* i, const char** str, size_t* 
  */
 ADBUS_INLINE int adbus_iter_objectpath(adbus_Iterator* i, const char** str, size_t* strsz)
 {
-    uint32_t len;
-    return adbusI_iter_sig(i, 'o')
-        || adbusI_iter_get32(i, &len)
-        || adbusI_iter_getstring(i, len, str, strsz);
+    adbusI_iter_sig(i, 'o');
+    return adbusI_iter_getstring_4(i, str, strsz);
 }
 
 /** Pulls out a signature (dbus sig "g").
@@ -481,10 +531,8 @@ ADBUS_INLINE int adbus_iter_objectpath(adbus_Iterator* i, const char** str, size
  */
 ADBUS_INLINE int adbus_iter_signature(adbus_Iterator* i, const char** str, size_t* strsz)
 {
-    uint8_t len;
-    return adbusI_iter_sig(i, 'g')
-        || adbusI_iter_get8(i, &len)
-        || adbusI_iter_getstring(i, len, str, strsz);
+    adbusI_iter_sig(i, 'g');
+    return adbusI_iter_getstring_1(i, str, strsz);
 }
 
 /** Data structure used by the array iterate functions.
@@ -510,17 +558,21 @@ ADBUS_INLINE int adbus_iter_beginarray(adbus_Iterator* i, adbus_IterArray* a)
 {
     uint32_t len;
     const char* sigend;
-    if (adbusI_iter_sig(i, 'a') || adbusI_iter_get32(i, &len))
+    adbusI_iter_sig(i, 'a');
+    if (adbusI_iter_get32(i, &len))
         return -1;
 
     if (len > ADBUS_MAXIMUM_ARRAY_LENGTH)
         return -1;
 
-    if (adbus_iter_alignfield(i, *i->sig))
+    if (adbus_iter_align(i, i->sig))
         return -1;
 
     sigend = adbus_nextarg(i->sig);
     if (sigend == NULL)
+        return -1;
+
+    if (i->data + len > i->end)
         return -1;
 
     a->data  = i->data;
@@ -557,25 +609,33 @@ ADBUS_INLINE int adbus_iter_endarray(adbus_Iterator* i, adbus_IterArray* a)
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_begindictentry(adbus_Iterator* i)
-{ return adbusI_iter_sig(i, '{') || adbus_iter_align(i, 8); }
+{ 
+    adbusI_iter_sig(i, '{');
+    i->data = (char*) ADBUS_ALIGN(i->data, 8);
+    return i->data > i->end;
+}
 
 /** Ends a dict entry scope (dbus sig "}").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_enddictentry(adbus_Iterator* i)
-{ return adbusI_iter_sig(i, '}'); }
+{ adbusI_iter_sig(i, '}'); return 0; }
 
 /** Begins a struct scope (dbus sig "(").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_beginstruct(adbus_Iterator* i)
-{ return adbusI_iter_sig(i, '(') || adbus_iter_align(i, 8); }
+{ 
+    adbusI_iter_sig(i, '(');
+    i->data = (char*) ADBUS_ALIGN(i->data, 8);
+    return i->data > i->end;
+}
 
 /** Ends a struct scope (dbus sig ")").
  *  \relates adbus_Iterator
  */
 ADBUS_INLINE int adbus_iter_endstruct(adbus_Iterator* i)
-{ return adbusI_iter_sig(i, ')'); }
+{ adbusI_iter_sig(i, ')'); return 0; }
 
 /** Data structure used by the variant iterator functions.
  *  \sa adbus_Iterator, adbus_iter_beginvariant(), adbus_iter_endvariant()
@@ -593,12 +653,11 @@ struct adbus_IterVariant
  */
 ADBUS_INLINE int adbus_iter_beginvariant(adbus_Iterator* i, adbus_IterVariant* v)
 { 
-    uint8_t len;
     const char* vsig;
-    if (    adbusI_iter_sig(i, 'v')
-        ||  adbusI_iter_get8(i, &len)
-        ||  adbusI_iter_getstring(i, len, &vsig, NULL)
-        ||  adbus_iter_alignfield(i, *vsig))
+    adbusI_iter_sig(i, 'v');
+
+    if (    adbusI_iter_getstring_1(i, &vsig, NULL)
+        ||  adbus_iter_align(i, vsig))
     {
         return -1;
     }

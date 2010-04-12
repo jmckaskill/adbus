@@ -74,13 +74,15 @@ adbus_Server* adbus_serv_new(adbus_Interface* bus)
     return s;
 }
 
+#define BUS_SERVICE "org.freedesktop.DBus"
+
 /** Frees the server
  *  \relates adbus_Server
  */
 void adbus_serv_free(adbus_Server* s)
 {
     if (s) {
-        adbusI_releaseService(s, s->bus.remote, "org.freedesktop.DBus");
+        adbusI_releaseService(s, s->bus.remote, BUS_SERVICE, strlen(BUS_SERVICE));
         adbusI_freeServiceQueue(s);
         adbusI_serv_freeBus(s);
         assert(dl_isempty(&s->remotes.async));
@@ -101,14 +103,21 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
     adbus_Remote* r;
     adbus_Remote* direct = NULL;
 
+    ADBUSI_LOG_DATA_3(
+            m->data,
+            m->size,
+            "bus dispatch data from (remote %s, %p)",
+            ds_cstr(&from->unique),
+            (void*) from);
+
     ADBUSI_LOG_MSG_2(
-			m,
-			"bus dispatch from (remote %s, %p)",
-			ds_cstr(&from->unique),
-			(void*) from);
+            m,
+            "bus dispatch from (remote %s, %p)",
+            ds_cstr(&from->unique),
+            (void*) from);
 
     if (m->destination) {
-        direct = adbusI_lookupRemote(s, m->destination);
+        direct = adbusI_lookupRemote(s, m->destination, m->destinationSize);
     } else if (m->type == ADBUS_MSG_METHOD) {
         direct = s->bus.remote;
     }
@@ -120,10 +129,10 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
     DL_FOREACH(Remote, r, &s->remotes.async, hl) {
         s->caller = from;
         if (r == direct || adbusI_serv_matches(&r->matches, m))
-		{
-			ADBUSI_LOG_MSG_2(m, "bus send to (remote %s, %p)",
-					ds_cstr(&r->unique),
-					(void*) r);
+        {
+            ADBUSI_LOG_MSG_2(m, "bus send to (remote %s, %p)",
+                    ds_cstr(&r->unique),
+                    (void*) r);
 
             ADBUSI_LOG_DATA_3(
                     m->data,
@@ -132,17 +141,17 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
                     ds_cstr(&r->unique),
                     (void*) r);
 
-			r->send(r->user, m);
-		}
+            r->send(r->user, m);
+        }
     }
 
     DL_FOREACH(Remote, r, &s->remotes.sync, hl) {
         s->caller = from;
         if (r == direct || adbusI_serv_matches(&r->matches, m))
         {
-			ADBUSI_LOG_MSG_2(m, "bus send to (sync remote %s, %p)",
-					ds_cstr(&r->unique),
-					(void*) r);
+            ADBUSI_LOG_MSG_2(m, "bus send to (sync remote %s, %p)",
+                    ds_cstr(&r->unique),
+                    (void*) r);
 
             ADBUSI_LOG_DATA_3(
                     m->data,
@@ -151,8 +160,8 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
                     ds_cstr(&r->unique),
                     (void*) r);
 
-			/* Ignore errors from the send */
-			r->send(r->user, m);
+            /* Ignore errors from the send */
+            r->send(r->user, m);
         }
     }
 

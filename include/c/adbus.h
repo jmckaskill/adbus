@@ -802,8 +802,8 @@ ADBUS_API void adbus_buf_endstruct(adbus_Buffer* b);
 ADBUS_API void adbus_buf_beginvariant(adbus_Buffer* b, adbus_BufVariant* v, const char* sig, int sigsize);
 ADBUS_API void adbus_buf_endvariant(adbus_Buffer* b, adbus_BufVariant* v);
 
-ADBUS_API int adbus_flip_value(char** data, size_t* size, const char** sig);
-ADBUS_API int adbus_flip_data(char* data, size_t size, const char* sig);
+ADBUS_API int adbus_flip_value(char** data, const char* end, const char** sig);
+ADBUS_API int adbus_flip_data(char* data, const char* end, const char* sig);
 
 
 
@@ -827,7 +827,6 @@ ADBUS_API void adbus_msg_iterator(const adbus_Message* m, adbus_Iterator* iterat
 
 ADBUS_API const char* adbus_msg_path(const adbus_MsgFactory* m, size_t* len);
 ADBUS_API const char* adbus_msg_interface(const adbus_MsgFactory* m, size_t* len);
-ADBUS_API const char* adbus_msg_sender(const adbus_MsgFactory* m, size_t* len);
 ADBUS_API const char* adbus_msg_destination(const adbus_MsgFactory* m, size_t* len);
 ADBUS_API const char* adbus_msg_member(const adbus_MsgFactory* m, size_t* len);
 ADBUS_API const char* adbus_msg_error(const adbus_MsgFactory* m, size_t* len);
@@ -848,7 +847,6 @@ ADBUS_API void adbus_msg_setinterface(adbus_MsgFactory* m, const char* str, int 
 ADBUS_API void adbus_msg_setmember(adbus_MsgFactory* m, const char* str, int size);
 ADBUS_API void adbus_msg_seterror(adbus_MsgFactory* m, const char* str, int size);
 ADBUS_API void adbus_msg_setdestination(adbus_MsgFactory* m, const char* str, int size);
-ADBUS_API void adbus_msg_setsender(adbus_MsgFactory* m, const char* str, int size);
 
 ADBUS_API int adbus_msg_send(adbus_MsgFactory* m, adbus_Connection* c);
 ADBUS_API adbus_Buffer* adbus_msg_argbuffer(adbus_MsgFactory* m);

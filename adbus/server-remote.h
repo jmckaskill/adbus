@@ -38,6 +38,8 @@ struct adbus_Remote
 
     adbus_Server*           server;
     d_String                unique;
+    size_t                  senderPadding;
+    d_String                sender;
 
     adbus_SendMsgCallback   send;
     void*                   user;

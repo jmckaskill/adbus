@@ -31,7 +31,7 @@ test {
     "DATA 'y' 1",
     "ITER 'y' 0/1",
     "U8 2",
-    "ITER '' 1/0",
+    "ITER '' 1/1",
 }
 
 test {
@@ -41,7 +41,7 @@ test {
     "DATA 'q' 2",
     "ITER 'q' 0/2",
     "U16 258",
-    "ITER '' 2/0"
+    "ITER '' 2/2"
 }
 
 test {
@@ -51,7 +51,7 @@ test {
     "DATA 'n' 2",
     "ITER 'n' 0/2",
     "I16 258",
-    "ITER '' 2/0"
+    "ITER '' 2/2"
 }
 
 test {
@@ -61,6 +61,6 @@ test {
     "DATA 'n' 2",
     "ITER 'n' 0/2",
     "I16 -258",
-    "ITER '' 2/0"
+    "ITER '' 2/2"
 }
 

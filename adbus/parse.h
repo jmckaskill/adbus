@@ -25,6 +25,14 @@
 
 #include "internal.h"
 
+#if defined LITTLE_ENDIAN
+#   define ADBUSI_NATIVE_ENDIANNESS 'l'
+#elif defined BIG_ENDIAN
+#   define ADBUSI_NATIVE_ENDIANNESS 'B'
+#else
+#   error "Please define one of LITTLE_ENDIAN or BIG_ENDIAN"
+#endif
+
 enum
 {
     ADBUSI_MAXIMUM_ARRAY_LENGTH = 67108864,
@@ -41,8 +49,45 @@ enum
     ADBUSI_HEADER_REPLY_SERIAL = 5,
     ADBUSI_HEADER_DESTINATION  = 6,
     ADBUSI_HEADER_SENDER       = 7,
-    ADBUSI_HEADER_SIGNATURE    = 8
+    ADBUSI_HEADER_SIGNATURE    = 8,
+    ADBUSI_HEADER_MAX          = 8
 };
+
+enum
+{
+    /* The long values encode the code and signature into a single 32 bit
+     * value. These are used to speed up header parsing and creation.
+     *
+     * first byte:  code as above
+     * second byte: size of signature (1 for all of these)
+     * third byte:  value of signature ('s', 'o', or 'g')
+     * fourth byte: null byte terminating the signature
+     */
+
+#if defined LITTLE_ENDIAN
+#   define ENCODE(first, second, third, fourth) ADBUSI_MAKE32(fourth, third, second, first)
+#elif defined BIG_ENDIAN
+#   define ENCODE(first, second, third, fourth) ADBUSI_MAKE32(first, second, third, fourth)
+#endif
+
+    ADBUSI_HEADER_OBJECT_PATH_LONG  = ENCODE(ADBUSI_HEADER_OBJECT_PATH, 1, 'o', 0),
+    ADBUSI_HEADER_INTERFACE_LONG    = ENCODE(ADBUSI_HEADER_INTERFACE,   1, 's', 0),
+    ADBUSI_HEADER_MEMBER_LONG       = ENCODE(ADBUSI_HEADER_MEMBER,      1, 's', 0),
+    ADBUSI_HEADER_ERROR_NAME_LONG   = ENCODE(ADBUSI_HEADER_ERROR_NAME,  1, 's', 0),
+    ADBUSI_HEADER_REPLY_SERIAL_LONG = ENCODE(ADBUSI_HEADER_REPLY_SERIAL,1, 'u', 0),
+    ADBUSI_HEADER_DESTINATION_LONG  = ENCODE(ADBUSI_HEADER_DESTINATION, 1, 's', 0),
+    ADBUSI_HEADER_SENDER_LONG       = ENCODE(ADBUSI_HEADER_SENDER,      1, 's', 0),
+    ADBUSI_HEADER_SIGNATURE_LONG    = ENCODE(ADBUSI_HEADER_SIGNATURE,   1, 'g', 0)
+
+#undef ENCODE
+};
+
+enum
+{
+    ADBUSI_MAJOR_PROTOCOL_VERSION   = 1
+};
+
+/* -------------------------------------------------------------------------- */
 
 #pragma pack(push)
 #pragma pack(1)

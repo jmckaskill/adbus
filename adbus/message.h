@@ -46,7 +46,6 @@ struct adbus_MsgFactory
     d_String              member;
     d_String              error;
     d_String              destination;
-    d_String              sender;
 };
 
 

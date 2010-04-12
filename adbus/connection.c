@@ -524,7 +524,6 @@ static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c)
         return m;
     } else {
         adbusI_ConnMsg* m = NEW(adbusI_ConnMsg);
-        m->ret = adbus_msg_new();
         m->buf = adbus_buf_new();
         return m;
     }
@@ -700,6 +699,10 @@ int adbus_conn_continue(adbus_Connection* c)
             }
 
         } else if (d.msg->type == ADBUS_MSG_METHOD) {
+
+            if (!msg->ret) {
+                msg->ret = adbus_msg_new();
+            }
 
             d.ret = msg->ret;
 

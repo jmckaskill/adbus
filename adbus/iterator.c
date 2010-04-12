@@ -112,7 +112,7 @@ int adbus_iter_value(adbus_Iterator* i)
 void adbus_iter_buffer(adbus_Iterator* i, const adbus_Buffer* buf)
 {
     i->data = adbus_buf_data(buf);
-    i->size = adbus_buf_size(buf);
+    i->end  = i->data + adbus_buf_size(buf);
     i->sig  = adbus_buf_sig(buf, NULL);
 }
 
@@ -122,7 +122,7 @@ void adbus_iter_buffer(adbus_Iterator* i, const adbus_Buffer* buf)
 void adbus_iter_args(adbus_Iterator* i, const adbus_Message* msg)
 {
     i->data = msg->argdata;
-    i->size = msg->argsize;
+    i->end  = msg->argdata + msg->argsize;
     i->sig  = msg->signature;
 }
 
@@ -132,17 +132,14 @@ static int Flip16(adbus_Iterator* i)
 {
     uint16_t* p;
 
-    if (adbus_iter_align(i, 2))
-        return -1;
-    if (i->size < 2)
+    p       = (uint16_t*) ADBUS_ALIGN(i->data, 2);
+    i->data = (char*) (p + 1);
+
+    if (i->data > i->end)
         return -1;
 
-    p = (uint16_t*) i->data;
     *p =  ((*p & UINT16_C(0xFF00)) >> 8)
         | ((*p & UINT16_C(0x00FF)) << 8);
-
-    i->data += 2;
-    i->size -= 2;
 
     return 0;
 }
@@ -151,20 +148,19 @@ static int Flip32(adbus_Iterator* i, adbus_Bool consume)
 {
     uint32_t* p;
 
-    if (adbus_iter_align(i, 4))
-        return -1;
-    if (i->size < 4)
+    p       = (uint32_t*) ADBUS_ALIGN(i->data, 4);
+    i->data = (char*) (p + 1);
+
+    if (i->data > i->end)
         return -1;
 
-    p = (uint32_t*) i->data;
     *p =  ((*p & UINT32_C(0xFF000000)) >> 24)
         | ((*p & UINT32_C(0x00FF0000)) >> 8)
         | ((*p & UINT32_C(0x0000FF00)) << 8)
         | ((*p & UINT32_C(0x000000FF)) << 24);
 
-    if (consume) {
-        i->data += 4;
-        i->size -= 4;
+    if (!consume) {
+        i->data -= 4;
     }
 
     return 0;
@@ -174,12 +170,12 @@ static int Flip64(adbus_Iterator* i)
 {
     uint64_t* p;
 
-    if (adbus_iter_align(i, 8))
-        return -1;
-    if (i->size < 8)
+    p       = (uint64_t*) ADBUS_ALIGN(i->data, 8);
+    i->data = (char*) (p + 1);
+
+    if (i->data > i->end)
         return -1;
 
-    p = (uint64_t*) i->data;
     *p =  ((*p & UINT64_C(0xFF00000000000000)) >> 56)
         | ((*p & UINT64_C(0x00FF000000000000)) >> 40)
         | ((*p & UINT64_C(0x0000FF0000000000)) >> 24)
@@ -188,9 +184,6 @@ static int Flip64(adbus_Iterator* i)
         | ((*p & UINT64_C(0x0000000000FF0000)) << 16)
         | ((*p & UINT64_C(0x000000000000FF00)) << 40)
         | ((*p & UINT64_C(0x00000000000000FF)) << 56);
-
-    i->data += 8;
-    i->size -= 8;
 
     return 0;
 }
@@ -202,7 +195,7 @@ static int FlipArray(adbus_Iterator* i)
         return -1;
 
     while (adbus_iter_inarray(i, &a)) {
-        if (adbus_flip_value((char**) &i->data, &i->size, &i->sig)) {
+        if (adbus_flip_value((char**) &i->data, i->end, &i->sig)) {
             return -1;
         }
     }
@@ -216,7 +209,7 @@ static int FlipVariant(adbus_Iterator* i)
     if (adbus_iter_beginvariant(i, &v))
         return -1;
 
-    adbus_flip_value((char**) &i->data, &i->size, &i->sig);
+    adbus_flip_value((char**) &i->data, i->end, &i->sig);
 
     return adbus_iter_endvariant(i, &v);
 }
@@ -225,13 +218,13 @@ static int FlipVariant(adbus_Iterator* i)
 /** Endian flips a single complete type.
  * \relates adbus_Buffer
  */
-int adbus_flip_value(char** data, size_t* size, const char** sig)
+int adbus_flip_value(char** data, const char* end, const char** sig)
 {
     int ret = 0;
     adbus_Iterator i;
     
     i.data = *data;
-    i.size = *size;
+    i.end  = end;
     i.sig  = *sig;
 
     switch (*(i.sig)++) 
@@ -281,15 +274,15 @@ int adbus_flip_value(char** data, size_t* size, const char** sig)
         case '(':
             ret = adbus_iter_beginstruct(&i);
             while (!ret && *i.sig && *i.sig != ')') {
-                ret = adbus_flip_value((char**) &i.data, &i.size, &i.sig);
+                ret = adbus_flip_value((char**) &i.data, i.end, &i.sig);
             }
             ret = ret || adbus_iter_endstruct(&i);
             break;
 
         case '{':
             ret = adbus_iter_begindictentry(&i);
-            ret = ret || adbus_flip_value((char**) &i.data, &i.size, &i.sig);
-            ret = ret || adbus_flip_value((char**) &i.data, &i.size, &i.sig);
+            ret = ret || adbus_flip_value((char**) &i.data, i.end, &i.sig);
+            ret = ret || adbus_flip_value((char**) &i.data, i.end, &i.sig);
             ret = ret || adbus_iter_enddictentry(&i);
             break;
 
@@ -300,7 +293,6 @@ int adbus_flip_value(char** data, size_t* size, const char** sig)
     }
 
     *data = (char*) i.data;
-    *size = i.size;
     *sig  = i.sig;
     return ret;
 }
@@ -308,10 +300,10 @@ int adbus_flip_value(char** data, size_t* size, const char** sig)
 /** Endian flips the entire buffer.
  * \relates adbus_Buffer
  */
-int adbus_flip_data(char* data, size_t size, const char* sig)
+int adbus_flip_data(char* data, const char* end, const char* sig)
 {
-    while (size > 0) {
-        if (adbus_flip_value(&data, &size, &sig)) {
+    while (data < end) {
+        if (adbus_flip_value(&data, end, &sig)) {
             return -1;
         }
     }

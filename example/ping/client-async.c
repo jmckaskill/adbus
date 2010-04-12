@@ -94,9 +94,10 @@ int main()
     state = adbus_state_new();
     proxy = adbus_proxy_new(state);
     adbus_proxy_init(proxy, connection, "nz.co.foobar.adbus.PingServer", -1, "/", -1);
+    adbus_proxy_setinterface(proxy, "nz.co.foobar.adbus.PingTest", -1);
 
-    /* Limit ourselves to 10000 pings at a time */
-    for (i = 0; i < 10000; ++i) {
+    /* Limit ourselves to 100000 pings at a time */
+    for (i = 0; i < 100000; ++i) {
         SendPing();
     }
 

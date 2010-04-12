@@ -2,6 +2,7 @@ include_rules
 
 CFLAGS += -fvisibility=hidden
 CFLAGS += -ansi -pedantic
+CFLAGS += -DLITTLE_ENDIAN
 
 : foreach *.c |> !cc |> %B.o
 

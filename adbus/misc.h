@@ -58,7 +58,7 @@
     { return __sync_lock_test_and_set(xch, new_value); }
 
     ADBUS_INLINE void* adbusI_InterlockedExchangePointer(void* volatile* xch, void* new_value)
-    { return __sync_lock_test_and_set(xch, new_value); }
+    { return (void*) __sync_lock_test_and_set(xch, new_value); }
 
 #elif defined _WIN32
 
@@ -95,9 +95,6 @@
 
 /* -------------------------------------------------------------------------- */
 
-ADBUSI_DATA const uint8_t adbusI_majorProtocolVersion;
-
-ADBUSI_FUNC char adbusI_nativeEndianness(void);
 ADBUSI_FUNC int  adbusI_alignment(char type);
 
 /* -------------------------------------------------------------------------- */

@@ -25,6 +25,7 @@
 
 #include "server-remote.h"
 #include "server.h"
+#include "parse.h"
 
 adbus_Remote* adbusI_serv_createRemote(
         adbus_Server*           s,
@@ -45,6 +46,20 @@ adbus_Remote* adbusI_serv_createRemote(
         ds_set(&r->unique, unique);
     } else {
         ds_set_f(&r->unique, ":1.%u", s->remotes.nextRemote++);
+    }
+
+    {
+        uint32_t uniqsz = ds_size(&r->unique);
+        ds_cat_char(&r->sender, ADBUSI_HEADER_SENDER);
+        ds_cat_char(&r->sender, 1);
+        ds_cat_char(&r->sender, 's');
+        ds_cat_char(&r->sender, '\0');
+        ds_cat_n(&r->sender, (char*) &uniqsz, 4);
+        ds_cat_s(&r->sender, &r->unique);
+        ds_cat_char(&r->sender, '\0');
+
+        r->senderPadding = ADBUS_ALIGN(ds_size(&r->sender), 8) - ds_size(&r->sender);
+        ds_cat_char_n(&r->sender, '\0', r->senderPadding);
     }
 
     dl_insert_after(Remote, &s->remotes.async, r, &r->hl);
@@ -79,7 +94,8 @@ void adbus_remote_disconnect(adbus_Remote* r)
         adbusI_remote_freeParser(r);
 
         while (dv_size(&r->services) > 0) {
-            adbusI_releaseService(s, r, dv_a(&r->services, 0)->name);
+            adbusI_ServiceQueue* q = dv_a(&r->services, 0);
+            adbusI_releaseService(s, r, q->name.str, q->name.sz);
         }
         dv_free(ServiceQueue, &r->services);
 

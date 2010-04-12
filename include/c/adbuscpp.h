@@ -137,7 +137,7 @@ namespace adbus
     {
     public:
         Iterator()
-        { i.data = i.sig = NULL; i.size = 0; }
+        { i.data = i.end = i.sig = NULL; }
 
         Iterator(adbus_Message* msg)
         { adbus_iter_args(&i, msg); }
@@ -299,7 +299,7 @@ namespace adbus
         {
             Iterator i;
             i.i.data = m_V.data;
-            i.i.size = m_V.size;
+            i.i.end  = m_V.data + m_V.size;
             i.i.sig  = m_V.sig;
             return i;
         }
@@ -377,7 +377,7 @@ namespace adbus
             const char* bsig  = i.i.sig;
             if (!bdata || !bsig)
                 return -1;
-            if (adbus_iter_align(i, *bsig))
+            if (adbus_iter_align(i, bsig))
                 return -1;
             if (adbus_iter_value(i))
                 return -1;

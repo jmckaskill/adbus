@@ -170,6 +170,9 @@ adbus_Buffer* adbus_buf_new()
 {
     adbus_Buffer* b = NEW(adbus_Buffer);
     b->sigp = b->sig;
+#ifndef NDEBUG
+    memset(b->sig + 1, '?', sizeof(b->sig) - 1);
+#endif
     return b;
 }
 
@@ -242,7 +245,11 @@ void adbus_buf_reset(adbus_Buffer* b)
 { 
     dv_clear(char, &b->b); 
     b->sig[0] = '\0';
+    b->sigsz  = 0;
     b->sigp   = b->sig;
+#ifndef NDEBUG
+    memset(b->sig + 1, '?', sizeof(b->sig) - 1);
+#endif
 }
 
 /** Returns the current signature.
@@ -250,8 +257,9 @@ void adbus_buf_reset(adbus_Buffer* b)
  */
 const char* adbus_buf_sig(const adbus_Buffer* b, size_t* size)
 { 
+    assert(b->sigsz == strlen(b->sig));
     if (size)
-        *size = strlen(b->sig);
+        *size = b->sigsz;
     return b->sig; 
 }
 
@@ -280,14 +288,10 @@ const char* adbus_buf_signext(const adbus_Buffer* b, size_t* size)
  */
 void adbus_buf_setsig(adbus_Buffer* b, const char* sig, int size)
 {
-    if (size < 0)
-        size = strlen(sig);
-
-    if ((size_t) (size + 1) > sizeof(b->sig)) {
-        assert(0);
-        return;
-    }
-    memcpy(b->sig, sig, size + 1);
+    b->sigsz = (size >= 0) ? size : strlen(sig);
+    assert(b->sigsz < sizeof(b->sig));
+    memcpy(b->sig, sig, b->sigsz);
+    b->sig[b->sigsz] = '\0';
 }
 
 /** Appends to the buffer signature.
@@ -295,16 +299,11 @@ void adbus_buf_setsig(adbus_Buffer* b, const char* sig, int size)
  */
 void adbus_buf_appendsig(adbus_Buffer* b, const char* sig, int size)
 {
-    size_t existing = strlen(b->sig);
-
-    if (size < 0)
-        size = strlen(sig);
-
-    if (existing + size + 1 > sizeof(b->sig)) {
-        assert(0);
-        return;
-    }
-    memcpy(&b->sig[existing], sig, size + 1);
+    size_t append = (size >= 0) ? size : strlen(sig);
+    assert(b->sigsz + append < sizeof(b->sig));
+    memcpy(&b->sig[b->sigsz], sig, append);
+    b->sigsz += append;
+    b->sig[b->sigsz] = '\0';
 }
 
 /** Removes a chunk of data from the buffer
