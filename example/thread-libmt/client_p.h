@@ -40,40 +40,37 @@ typedef struct MTI_ProxyMessage MTI_ProxyMessage;
 
 struct MTI_Client
 {
-#ifdef _WIN32
-    WSAEVENT            handle;
-#endif
-
-    adbus_Socket        sock;
-    adbus_Connection*   connection;
-    MT_AtomicInt        connected;
-    adbus_Buffer*       txbuf;
-    MT_MainLoop*        loop;
+    MT_LoopRegistration*    reg;
+    MT_LoopRegistration*    idlereg;
+    adbus_Socket            sock;
+    adbus_Connection*       connection;
+    MT_AtomicInt            connected;
+    adbus_Buffer*           txbuf;
+    MT_MainLoop*            loop;
 };
 
 
 struct MTI_ClientMessage
 {
-    MT_Header           header;
-    MT_Message          msgHeader;
-    adbus_Connection*   connection;
-    adbus_Buffer*       msgBuffer;
-    adbus_Message       msg;
-    adbus_MsgFactory*   ret;
-    void*               user1;
-    void*               user2;
-    adbus_Bool          hasReturn;
-    adbus_MsgCallback   cb;
+    MT_Header               header;
+    MT_Message              msgHeader;
+    adbus_Connection*       connection;
+    adbus_Buffer*           msgBuffer;
+    adbus_Message           msg;
+    adbus_MsgFactory*       ret;
+    void*                   user1;
+    void*                   user2;
+    adbus_Bool              hasReturn;
+    adbus_MsgCallback       cb;
 };
 
 struct MTI_ProxyMessage
 {
-    MT_Header           header;
-    MT_Message          msgHeader;
-    adbus_Callback      callback;
-    adbus_Callback      release;
-    adbus_Bool          releaseCalled;
-    void*               user;
+    MT_Header               header;
+    MT_Message              msgHeader;
+    adbus_Callback          callback;
+    adbus_Callback          release;
+    void*                   user;
 };
 
 MT_Header* MTI_ClientMessage_New(void);
@@ -88,7 +85,7 @@ int     MTI_Client_SendMsg(void* u, adbus_Message* m);
 int     MTI_Client_Send(void* u, const char* buf, size_t sz);
 int     MTI_Client_Recv(void* u, char* buf, size_t sz);
 uint8_t MTI_Client_Rand(void* u);
-void    MTI_Client_Disconnect(MTI_Client* s);
+void    MTI_Client_Disconnect(void* u);
 int     MTI_Client_DispatchExisting(MTI_Client* s);
 void    MTI_Client_OnReceive(void* u);
 int     MTI_Client_Block(void* u, adbus_BlockType type, uintptr_t* block, int timeoutms);

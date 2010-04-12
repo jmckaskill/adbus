@@ -2,7 +2,7 @@ include_rules
 
 CFLAGS += -DMT_SHARED_LIBRARY
 CFLAGS += -fvisibility=hidden
-#CFLAGS += -ansi -pedantic
+CFLAGS += -ansi -pedantic
 
-: foreach *.c |> !cpp |> %B.o
+: foreach *.c |> !cc |> %B.o
 

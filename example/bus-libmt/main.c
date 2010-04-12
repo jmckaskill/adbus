@@ -23,23 +23,41 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
 
-#include "internal.h"
+#include "server.h"
+#include <libmt.h>
+#include <stdio.h>
 
-/*#define MT_FREELIST_THREAD*/
-#define MT_FREELIST_GLOBAL
-
-struct MT_Freelist
-{
-    MT_AtomicInt            ref;
-    MT_CreateCallback       create;
-    MT_FreeCallback         free;
-#if defined MT_FREELIST_GLOBAL
-    MT_Header* volatile     list;
-#elif defined MT_FREELIST_THREAD
-    MT_ThreadStorage        tls;
-    MT_Header* volatile     list;
+#ifndef _WIN32
+#   include <sys/types.h>
+#   include <sys/socket.h>
 #endif
-};
+
+
+int main()
+{
+    Server* server;
+    adbus_Socket sock;
+    MT_MainLoop* loop;
+   
+    loop = MT_Loop_New();
+    MT_SetCurrent(loop);
+
+    remove("/tmp/test");
+
+    sock = adbus_sock_bind(ADBUS_DEFAULT_BUS);
+    if (sock == ADBUS_SOCK_INVALID)
+        abort();
+
+    server = Server_New(sock);
+    if (listen(sock, SOMAXCONN))
+        abort();
+
+    MT_Current_Run();
+
+    Server_Free(server);
+    MT_Loop_Free(loop);
+
+    return 0;
+}
 

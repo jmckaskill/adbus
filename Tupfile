@@ -6,15 +6,16 @@ LD_QT = $(LDFLAGS_QT_CORE) $(LDFLAGS_QT_NETWORK) $(LDFLAGS_QT_XML)
 
 # Libraries
 
-LDFLAGS_lua5.1.so    += -lm -lreadline
-LDFLAGS_libQtDBus.so += $(LD_QT)
-
+LDFLAGS_lua5.1.so       += -lm -lreadline
+LDFLAGS_libQtDBus.so    += $(LD_QT)
+LDFLAGS_libmt.so        += -lpthread
 
 : deps/lua/src/lib_*.o |> !ld-so |> lua5.1.so
 : deps/LuaXML/*.o |> !ld-so |> LuaXML_lib.so
 : adbus/*.o dmem/lib.a |> !ld-so |> adbus.so
 : adbuslua/*.o adbus.so lua5.1.so |> !ld-so |> adbuslua_core.so
 : adbusqt/*.o adbus.so |> !ldpp-so |> libQtDBus.so
+: libmt/*.o |> !ld-so |> libmt.so
 
 
 
@@ -31,6 +32,7 @@ LDFLAGS_lua += -lm -lreadline
 
 LDFLAGS_ex_bus_qt               += $(LD_QT)
 LDFLAGS_ex_client_qt            += $(LD_QT)
+LDFLAGS_ex_thread_qt            += $(LD_QT)
 LDFLAGS_ex_simpleqt             += $(LD_QT)
 LDFLAGS_ex_client_qt            += $(LD_QT)
 LDFLAGS_ex_simpleqt             += $(LD_QT)
@@ -47,6 +49,7 @@ LDFLAGS_ex_qtdbus_remotecar     += $(LD_QT) $(LDFLAGS_QT_GUI)
 : example/ping/client-async.o adbus.so |> !ld |> ex_ping_client_async
 : example/ping/server.o adbus.so |> !ld |> ex_ping_server
 
+: example/bus-libmt/*.o adbus.so libmt.so |> !ld |> ex_bus_libmt
 : example/bus-epoll/*.o adbus.so |> !ld |> ex_bus_epoll
 
 : example/bus-qt/*.o adbus.so |> !ldpp |> ex_bus_qt
@@ -66,8 +69,6 @@ LDFLAGS_ex_qtdbus_remotecar     += $(LD_QT) $(LDFLAGS_QT_GUI)
 : example/qt-dbus/remotecontrolledcar/controller/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_remotecontroller
 : example/qt-dbus/remotecontrolledcar/car/*.o libQtDBus.so adbus.so |> !ldpp |> ex_qtdbus_remotecar
 
-LDFLAGS_libmt.so += -lpthread
 
-: example/thread-libmt/libmt/*.o |> !ldpp-so |> libmt.so
-: example/thread-libmt/*.o adbus.so libmt.so |> !ldpp |> ex_thread_libmt
+: example/thread-libmt/*.o adbus.so libmt.so |> !ld |> ex_thread_libmt
 

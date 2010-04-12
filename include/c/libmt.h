@@ -70,17 +70,18 @@ extern "C" {
 #   define MT_API extern
 #endif
 
-typedef struct MT_MainLoop      MT_MainLoop;
-typedef struct MT_Lock          MT_Lock;
-typedef struct MT_Message       MT_Message;
-typedef struct MT_Freelist      MT_Freelist;
-typedef struct MT_Header        MT_Header;
-typedef struct MT_ThreadStorage MT_ThreadStorage;
-typedef struct MT_Target        MT_Target;
-typedef struct MT_Queue         MT_Queue;
-typedef struct MT_QueueItem     MT_QueueItem;
-typedef struct MT_Signal        MT_Signal;
-typedef struct MT_Subscription  MT_Subscription;
+typedef struct MT_MainLoop          MT_MainLoop;
+typedef struct MT_LoopRegistration  MT_LoopRegistration;
+typedef struct MT_Lock              MT_Lock;
+typedef struct MT_Message           MT_Message;
+typedef struct MT_Freelist          MT_Freelist;
+typedef struct MT_Header            MT_Header;
+typedef struct MT_ThreadStorage     MT_ThreadStorage;
+typedef struct MT_Target            MT_Target;
+typedef struct MT_Queue             MT_Queue;
+typedef struct MT_QueueItem         MT_QueueItem;
+typedef struct MT_Signal            MT_Signal;
+typedef struct MT_Subscription      MT_Subscription;
 
 /* MT_Time gives the time in microseconds centered on the unix epoch (midnight
  * Jan 1 1970) */
@@ -96,11 +97,19 @@ typedef void        (*MT_FreeCallback)(MT_Header*);
 
 #ifdef _WIN32
     typedef void* MT_Handle; /* HANDLE */
+    typedef void* MT_Socket; /* SOCKET */
     typedef CRITICAL_SECTION MT_Mutex;
     typedef MT_Handle MT_Thread;
     typedef uint32_t MT_ThreadStorageKey;
 #else
+    /* Handles on unix are file descriptors where we only care about read
+     * being signalled. File descriptors that aren't actually files, pipes,
+     * sockets etc normally fall in this category. This includes epoll
+     * handles, thread wake up pipes (pipes that are just used to kick us out
+     * out of poll), bound sockets, etc.
+     */
     typedef int MT_Handle;   /* fd_t */
+    typedef int MT_Socket;   /* fd_t */
     typedef pthread_mutex_t MT_Mutex;
     typedef pthread_t MT_Thread;
     typedef pthread_key_t MT_ThreadStorageKey;
@@ -193,15 +202,25 @@ MT_API void MT_Signal_Emit(MT_Signal* s, MT_Message* m);
 
 MT_API void MT_Connect(MT_Signal* s, MT_Target* t);
 
-
-
 MT_API MT_MainLoop* MT_Loop_New(void);
 MT_API void MT_Loop_Free(MT_MainLoop* e);
-MT_API void MT_Loop_SetTick(MT_MainLoop* e, MT_Time period, MT_Callback cb, void* user);
-MT_API void MT_Loop_Register(MT_MainLoop* e, MT_Handle h, MT_Callback cb, void* user);
-MT_API void MT_Loop_Unregister(MT_MainLoop* e, MT_Handle h);
-MT_API void MT_Loop_AddIdle(MT_MainLoop* e, MT_Callback cb, void* user);
-MT_API void MT_Loop_RemoveIdle(MT_MainLoop* e, MT_Callback cb, void* user);
+
+MT_API MT_LoopRegistration* MT_Loop_RegisterSocket(MT_MainLoop* e, MT_Socket fd, MT_Callback read, MT_Callback write, MT_Callback close, void* user);
+MT_API MT_LoopRegistration* MT_Loop_RegisterHandle(MT_MainLoop* e, MT_Handle h, MT_Callback cb, void* user);
+MT_API MT_LoopRegistration* MT_Loop_RegisterIdle(MT_MainLoop* e, MT_Callback cb, void* user);
+MT_API MT_LoopRegistration* MT_Loop_RegisterTick(MT_MainLoop* e, MT_Time period, MT_Callback cb, void* user);
+
+#define MT_LOOP_READ    0x01
+#define MT_LOOP_WRITE   0x02
+#define MT_LOOP_CLOSE   0x04
+#define MT_LOOP_IDLE    0x08
+#define MT_LOOP_TICK    0x10
+#define MT_LOOP_HANDLE  0x20
+
+MT_API void MT_Loop_Enable(MT_MainLoop* e, MT_LoopRegistration* r, int flags);
+MT_API void MT_Loop_Disable(MT_MainLoop* e, MT_LoopRegistration* r, int flags);
+
+MT_API void MT_Loop_Unregister(MT_MainLoop* e, MT_LoopRegistration* r);
 MT_API void MT_Loop_Post(MT_MainLoop* e, MT_Message* m);
 
 MT_API MT_MainLoop* MT_Current(void);
@@ -210,21 +229,26 @@ MT_API int  MT_Current_Step(void);
 MT_API int  MT_Current_Run(void);
 MT_API void MT_Current_Exit(int code);
 
+#define MT_Current_RegisterSocket(fd, read, write, close, user)    \
+    MT_Loop_RegisterSocket(MT_Current(), fd, read, write, close, user)
 
-MT_INLINE void MT_Current_SetTick(MT_Time period, MT_Callback cb, void* user)
-{ MT_Loop_SetTick(MT_Current(), period, cb, user); }
+#define MT_Current_RegisterHandle(h, cb, user)    \
+    MT_Loop_RegisterHandle(MT_Current(), h, cb, user)
 
-MT_INLINE void MT_Current_Register(MT_Handle h, MT_Callback cb, void* user)
-{ MT_Loop_Register(MT_Current(), h, cb, user); }
+#define MT_Current_RegisterIdle(cb, user) \
+    MT_Loop_RegisterIdle(MT_Current(), cb, user)
 
-MT_INLINE void MT_Current_Unregister(MT_Handle h)
-{ MT_Loop_Unregister(MT_Current(), h); }
+#define MT_Current_RegisterTick(period, cb, user) \
+    MT_Loop_RegisterTick(MT_Current(), period, cb, user)
 
-MT_INLINE void MT_Current_AddIdle(MT_Callback cb, void* user)
-{ MT_Loop_AddIdle(MT_Current(), cb, user); }
+#define MT_Current_Enable(reg, flags) \
+    MT_Loop_Enable(MT_Current(), reg, flags)
 
-MT_INLINE void MT_Current_RemoveIdle(MT_Callback cb, void* user)
-{ MT_Loop_RemoveIdle(MT_Current(), cb, user); }
+#define MT_Current_Disable(reg, flags) \
+    MT_Loop_Disable(MT_Current(), reg, flags)
+
+#define MT_Current_Unregister(reg) \
+    MT_Loop_Unregister(MT_Current(), reg)
 
 
 
@@ -283,12 +307,18 @@ MT_INLINE void MT_Current_RemoveIdle(MT_Callback cb, void* user)
 
 
     /* Returns previous value */
-#   define MT_AtomicPtr_Set(pval, new_val) \
-        __sync_lock_test_and_set(pval, new_val)
+#ifdef __llvm__
+#   define MT_AtomicPtr_Set(pval, new_val) ((void*) __sync_lock_test_and_set(pval, new_val))
+#else
+#   define MT_AtomicPtr_Set(pval, new_val) __sync_lock_test_and_set(pval, new_val)
+#endif
 
     /* Returns previous value */
-#   define MT_AtomicPtr_SetFrom(pval, from, to) \
-        __sync_val_compare_and_swap(pval, from, to)
+#ifdef __llvm__
+#   define MT_AtomicPtr_SetFrom(pval, from, to) ((void*) __sync_val_compare_and_swap(pval, from, to))
+#else
+#   define MT_AtomicPtr_SetFrom(pval, from, to)  __sync_val_compare_and_swap(pval, from, to)
+#endif
 
 
 

@@ -25,6 +25,7 @@
 
 #include "Server.hxx"
 #include <QtCore/QCoreApplication>
+#include <QtCore/QFile>
 #include <stdio.h>
 
 static void Log(const char* str, size_t sz)
@@ -39,6 +40,7 @@ int main(int argc, char* argv[])
     if (!s->listen(QHostAddress::LocalHost, 12345))
         qFatal("Could not listen on socket");
 #else
+    QFile::remove("/tmp/test");
     LocalServer* s = new LocalServer;
     if (!s->listen("/tmp/test"))
         qFatal("Could not listen on socket");

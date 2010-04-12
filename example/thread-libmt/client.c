@@ -127,25 +127,20 @@ uint8_t MTI_Client_Rand(void* u)
 
 /* ------------------------------------------------------------------------- */
 
-void MTI_Client_Disconnect(MTI_Client* s)
-{
-#ifdef _WIN32
-    if (s->loop) {
-        MT_Current_Unregister(s->handle);
-        MT_Current_RemoveIdle(&MTI_Client_OnIdle, s);
-    }
-    CloseHandle(s->handle);
-    closesocket(s->sock); 
-    s->handle = INVALID_HANDLE_VALUE;
-#else
-    if (s->loop) {
-        MT_Current_Unregister(s->sock);
-        MT_Current_RemoveIdle(&MTI_Client_OnIdle, s);
-    }
-    close(s->sock); 
+#ifndef _WIN32
+#   define closesocket(x) close(x)
 #endif
 
+void MTI_Client_Disconnect(void* u)
+{
+    MTI_Client* s = (MTI_Client*) u;
+    MT_Current_Unregister(s->reg);
+    MT_Current_Unregister(s->idlereg);
+
+    closesocket(s->sock); 
     s->sock = ADBUS_SOCK_INVALID;
+
+    adbus_conn_close(s->connection);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -303,19 +298,13 @@ int MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d)
 static void CallProxy(MT_Message* m)
 {
     MTI_ProxyMessage* cm = (MTI_ProxyMessage*) m->user;
-    cm->releaseCalled = 1;
-    if (cm->callback) {
-        cm->callback(cm->user);
-    }
-    if (cm->release) {
-        cm->release(cm->user);
-    }
+    cm->callback(cm->user);
 }
 
 static void FreeProxy(MT_Message* m)
 {
     MTI_ProxyMessage* cm = (MTI_ProxyMessage*) m->user;
-    if (!cm->releaseCalled && cm->release) {
+    if (cm->release) {
         cm->release(cm->user);
     }
 
@@ -330,9 +319,8 @@ void MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* 
     cm->callback = cb;
     cm->release = release;
     cm->user = cbuser;
-    cm->releaseCalled = 0;
 
-    cm->msgHeader.call = &CallProxy;
+    cm->msgHeader.call = cb ? &CallProxy : NULL;
     cm->msgHeader.free = &FreeProxy;
     cm->msgHeader.user = cm;
 
@@ -452,14 +440,8 @@ adbus_Connection* MT_CreateDBusConnection(adbus_BusType type)
     if (adbus_conn_parse(s->connection, buf + used, recvd - used))
         goto err;
 
-#ifdef _WIN32
-    WSAEventSelect(s->sock, s->handle, FD_READ);
-    MT_Current_Register(s->handle, &MTI_Client_OnReceive, s);
-#else
-    MT_Current_Register(s->sock, &MTI_Client_OnReceive, s);
-#endif
-
-    MT_Current_AddIdle(&MTI_Client_OnIdle, s);
+    s->reg = MT_Current_RegisterSocket(s->sock, &MTI_Client_OnReceive, NULL, &MTI_Client_Disconnect, s);
+    s->idlereg = MT_Current_RegisterIdle(&MTI_Client_OnIdle, s);
 
     if (adbus_conn_block(s->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1))
         goto err;
