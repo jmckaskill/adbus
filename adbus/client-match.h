@@ -52,8 +52,11 @@ ADBUS_API void adbus_arg_init(adbus_Argument* args, size_t num);
 ADBUS_API void adbus_match_init(adbus_Match* match);
 
 ADBUSI_FUNC void adbusI_freeMatches(adbus_Connection* c);
-ADBUSI_FUNC int  adbusI_dispatchMatch(adbus_ConnMatch* match, adbus_CbData* d);
-ADBUSI_FUNC adbus_ConnMatch* adbusI_getNextMatch(adbus_Connection* c, adbus_CbData* d);
+
+ADBUSI_FUNC int adbusI_dispatchMatch(
+        adbus_ConnMatch*        match,
+        adbus_CbData*           d,
+        d_Vector(Argument)*     args);
 
 ADBUS_API adbus_ConnMatch* adbus_conn_addmatch(
         adbus_Connection*       connection,

@@ -45,5 +45,5 @@ struct adbusI_ServerMatchList
 ADBUSI_FUNC int adbusI_serv_addMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);
 ADBUSI_FUNC int adbusI_serv_removeMatch(adbusI_ServerMatchList* list, const char* mstr, size_t len);
 ADBUSI_FUNC void adbusI_serv_freeMatches(adbusI_ServerMatchList* list);
-ADBUSI_FUNC adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, adbus_Message* msg);
+ADBUSI_FUNC adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, const adbus_Message* msg, d_Vector(Argument)* args);
 

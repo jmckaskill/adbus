@@ -28,6 +28,7 @@
 #include "message.h"
 #include "state.h"
 #include "proxy.h"
+#include "parse.h"
 
 #include <inttypes.h>
 #include <assert.h>
@@ -418,7 +419,6 @@ void adbus_conn_deref(adbus_Connection* c)
 struct Message
 {
     adbus_Connection*   c;
-	adbus_Buffer*		buf;
     adbus_Message       msg;
 };
 
@@ -442,8 +442,8 @@ static void ProxyMessage(void* d)
 static void FreeProxiedMessage(void* d)
 {
     struct Message* m = (struct Message*) d;
-	adbus_buf_free(m->buf);
 	adbus_conn_deref(m->c);
+    free((char*) m->msg.data);
     free(m);
 }
 
@@ -457,8 +457,8 @@ static void FreeProxiedMessage(void* d)
  *  setup your response in the provided msg factory (adbus_CbData::ret).
  */
 int adbus_conn_send(
-        adbus_Connection* c,
-        adbus_Message*    m)
+        adbus_Connection*       c,
+        const adbus_Message*    m)
 {
     ADBUSI_LOG_MSG_2(
 			m,
@@ -468,10 +468,9 @@ int adbus_conn_send(
 
     if (adbus_conn_shouldproxy(c)) {
         struct Message* msg = NEW(struct Message);
-		msg->buf = adbus_buf_new();
         msg->c = c;
 		adbus_conn_ref(c);
-        adbus_clonedata(msg->buf, m, &msg->msg);
+        adbusI_clonedata(m, &msg->msg);
         adbus_conn_proxy(c, &ProxyMessage, &FreeProxiedMessage, msg); 
         return 0;
 
@@ -517,6 +516,7 @@ static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c)
         m->matchStarted = 0;
         m->matchFinished = 0;
         m->msgFinished = 0;
+        dv_clear(Argument, &m->arguments);
 
         /* Remove it from the free list */
         c->freelist = m->next;
@@ -531,78 +531,89 @@ static adbusI_ConnMsg* GetNewMessage(adbus_Connection* c)
 
 static void AppendMessageToProcess(adbus_Connection* c, adbusI_ConnMsg* m)
 {
-    assert(m->next == NULL && m->prev == NULL);
+    assert(m->next == NULL);
     
     /* Append the msg to the end of the to process list */
     if (c->processEnd) {
         assert(c->processEnd->next == NULL);
-        m->prev = c->processEnd;
         c->processEnd->next = m;
         c->processEnd = m;
     } else {
         c->processBegin = c->processEnd = m;
     }
-
-    /* If processCurrent has run off the end of the list set it to our new
-     * message. Note processCurrent can be NULL even with items in the list
-     * since we keep the items in the list around until the outer call frames
-     * exit.
-     */
-    if (!c->processCurrent) {
-        c->processCurrent = m;
-    }
 }
 
 static void FreeMessage(adbusI_ConnMsg* m)
 {
-    adbus_freeargs(&m->msg);
+    dv_free(Argument, &m->arguments);
     adbus_buf_free(m->buf);
     adbus_msg_free(m->ret);
     free(m);
 }
 
-static void FinishMessage(adbus_Connection* c, adbusI_ConnMsg* m)
+static void DerefMessage(adbus_Connection* c, adbusI_ConnMsg* m)
 { 
-    /* Remove message from the to process list */
-    assert(m->next || m == c->processEnd);
-    assert(m->prev || m == c->processBegin);
-    if (m->next) {
-        m->next->prev = m->prev;
-    }
-    if (m->prev) {
-        m->prev->next = m->next;
-    }
-    if (m == c->processBegin) {
-        c->processBegin = m->next;
-    }
-    if (m == c->processEnd) {
-        c->processEnd = m->prev;
-    }
+    if (--m->ref == 0) {
+        assert(!m->next);
 
-    /* Add it to the head of the free list */
-    m->next = c->freelist;
-    m->prev = NULL;
-    c->freelist = m;
+        /* Add it to the head of the free list */
+        m->next = c->freelist;
+        c->freelist = m;
 
-    /* Free data in the msg we don't want to keep */
-    adbus_freeargs(&m->msg);
-    if (adbus_buf_reserved(m->buf) > 1024) {
-        free(adbus_buf_release(m->buf));
+        /* Free data in the msg we don't want to keep */
+        if (adbus_buf_reserved(m->buf) > 1024) {
+            free(adbus_buf_release(m->buf));
+        }
     }
 }
 
 /* -------------------------------------------------------------------------- */
 
-int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
+static int SendReply(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
+{
+    int err = 0;
+
+    if (ret && msg->type == ADBUS_MSG_METHOD) {
+        if (adbus_msg_type(ret) == ADBUS_MSG_INVALID) {
+            adbus_msg_settype(ret, ADBUS_MSG_RETURN);
+        }
+
+        adbus_msg_setdestination(ret, msg->sender, msg->senderSize);
+        adbus_msg_setreply(ret, msg->serial);
+        adbus_msg_setflags(ret, adbus_msg_flags(ret) | ADBUS_MSG_NO_REPLY);
+        err = adbus_msg_send(ret, c);
+    }
+
+    return err;
+}
+
+int adbus_finish_message(adbus_Connection* c, adbus_Message* msg, adbus_MsgFactory* ret)
+{
+    int err = 0;
+    adbusI_ConnMsg* m = (adbusI_ConnMsg*) msg;
+
+    ADBUSI_ASSERT_CONN_THREAD(c);
+
+    err = SendReply(c, msg, ret);
+    DerefMessage(c, m);
+    adbus_conn_deref(c);
+
+    return err;
+}
+
+/* -------------------------------------------------------------------------- */
+
+int adbus_conn_dispatch(adbus_Connection* c, const adbus_Message* m)
 {
     adbus_CbData d;
     adbus_ConnMatch* match;
+    d_Vector(Argument) args;
 
     /* adbus_conn_dispatch doesn't support reentrancy and can't be used in
      * concurrence with adbus_conn_parse or adbus_conn_parsecb
      */
     assert(!c->closed);
-    assert(!c->processBegin && !c->processEnd && !c->processCurrent);
+    assert(!c->processBegin && !c->processEnd);
     assert(!c->freelist);
     assert(adbus_buf_size(c->parseMsg->buf) == 0);
 
@@ -612,20 +623,21 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
 			adbus_conn_uniquename(c, NULL),
 			(void*) c);
 
+    ZERO(args);
     ZERO(d);
     d.connection = c;
     d.msg = m;
 
     DIL_FOREACH (ConnMatch, match, &c->matches.list, hl) {
-        if (adbusI_dispatchMatch(match, &d)) {
-            return -1;
+        if (adbusI_dispatchMatch(match, &d, &args)) {
+            goto err;
         }
     }
 
     if (d.msg->type == ADBUS_MSG_ERROR || d.msg->type == ADBUS_MSG_RETURN) {
 
         if (adbusI_dispatchReply(c, &d)) {
-            return -1;
+            goto err;
         }
 
     } else if (d.msg->type == ADBUS_MSG_METHOD) {
@@ -633,15 +645,22 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
         d.ret = c->dispatchReturn;
 
         if (adbusI_dispatchMethod(c, &d)) {
-            return -1;
+            goto err;
         }
 
-        if (adbus_send_reply(&d)) {
-            return -1;
+        /* Delayed replies are not supported with adbus_conn_dispatch */
+        assert(d.delay);
+
+        if (SendReply(c, d.msg, d.ret)) {
+            goto err;
         }
     }
 
     return 0;
+
+err:
+    dv_free(Argument, &args);
+    return -1;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -654,7 +673,7 @@ int adbus_conn_dispatch(adbus_Connection* c, adbus_Message* m)
 int adbus_conn_continue(adbus_Connection* c)
 {
     adbus_CbData d;
-    adbusI_ConnMsg* msg = c->processCurrent;
+    adbusI_ConnMsg* msg = c->processBegin;
 
     if (!msg)
         return 1;
@@ -685,17 +704,40 @@ int adbus_conn_continue(adbus_Connection* c)
          * matchFinished is not set).
          */
         dil_setiter(&c->matches.list, match->hl.next);
-        if (adbusI_dispatchMatch(match, &d))
-            return -1;
+        if (adbusI_dispatchMatch(match, &d, &msg->arguments)) {
+            goto err;
+        }
+
+        if (d.delay) {
+            d.delay = 0;
+            msg->ref++;
+            adbus_conn_ref(c);
+        }
     }
 
     msg->matchFinished = 1;
     
     if (!msg->msgFinished) {
+
+        /* We have finished processing this message - the message will be moved
+         * into the freelist once its refcount goes back down to 0.
+         */
+        assert(msg == c->processBegin);
+        c->processBegin = msg->next;
+        msg->next = NULL;
+
+        msg->msgFinished = 1;
+
         if (d.msg->type == ADBUS_MSG_ERROR || d.msg->type == ADBUS_MSG_RETURN) {
 
             if (adbusI_dispatchReply(c, &d)) {
-                return -1;
+                goto err;
+            }
+
+            if (d.delay) {
+                d.delay = 0;
+                msg->ref++;
+                adbus_conn_ref(c);
             }
 
         } else if (d.msg->type == ADBUS_MSG_METHOD) {
@@ -707,34 +749,28 @@ int adbus_conn_continue(adbus_Connection* c)
             d.ret = msg->ret;
 
             if (adbusI_dispatchMethod(c, &d)) {
-                return -1;
+                goto err;
             }
 
-            if (adbus_send_reply(&d)) {
-                return -1;
+            if (d.delay) {
+                d.delay = 0;
+                msg->ref++;
+                adbus_conn_ref(c);
+            } else if (SendReply(c, d.msg, d.ret)) {
+                goto err;
             }
 
         }
-
-        msg->msgFinished = 1;
     }
 
-    /* We have finished processing this message - kick processCurrent along so
-     * the next call starts processing the next message.
-     */
-    if (msg == c->processCurrent) {
-        c->processCurrent = msg->next;
-    }
-
-    /* Don't actually remove the message from the process list until all call
-     * frames that reference the message have completed.
-     */
-    if (--msg->ref == 0) {
-        FinishMessage(c, msg);
-    }
-
+    DerefMessage(c, msg);
     return 0;
+
+err:
+    DerefMessage(c, msg);
+    return -1;
 }
+
 
 /* -------------------------------------------------------------------------- */
 

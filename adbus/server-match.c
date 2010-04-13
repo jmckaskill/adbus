@@ -25,8 +25,6 @@
 
 #include "server.h"
 
-DVECTOR_INIT(Argument, adbus_Argument)
-
 /* -------------------------------------------------------------------------- */
 
 static int IsArgKey(const char* beg, const char* end, int* num)
@@ -184,11 +182,11 @@ void adbusI_serv_freeMatches(adbusI_ServerMatchList* list)
 
 /* -------------------------------------------------------------------------- */
 
-adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, adbus_Message* msg)
+adbus_Bool adbusI_serv_matches(adbusI_ServerMatchList* list, const adbus_Message* msg, d_Vector(Argument)* args)
 {
     adbusI_ServerMatch* match;
     DIL_FOREACH (ServerMatch, match, &list->list, hl) {
-        if (adbusI_matchesMessage(&match->m, msg)) {
+        if (adbusI_matchesMessage(&match->m, msg, args)) {
             return 1;
         }
     }

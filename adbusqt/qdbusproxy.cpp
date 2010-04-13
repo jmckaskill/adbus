@@ -154,7 +154,7 @@ int QDBusProxy::ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData*
         QCoreApplication::postEvent(s, e);
 
         // We will send the return on the other thread
-        d->ret = NULL;
+        d->delay = 1;
         return 0;
     }
 }

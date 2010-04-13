@@ -25,6 +25,7 @@
 
 #define ADBUS_LIBRARY
 #include "misc.h"
+#include "parse.h"
 
 #include <assert.h>
 #include <stdarg.h>
@@ -450,22 +451,22 @@ static adbus_Bool StringMatches(
 }
 
 
-static adbus_Bool ArgsMatch(const adbus_Match* match, adbus_Message* msg)
+static adbus_Bool ArgsMatch(const adbus_Match* match, const adbus_Message* msg, d_Vector(Argument)* args)
 {
     size_t i;
 
     if (match->argumentsSize == 0)
         return 1;
 
-    if (adbus_parseargs(msg))
+    if (adbusI_parseargs(msg, args))
         return 0;
 
-    if (msg->argumentsSize < match->argumentsSize)
+    if (dv_size(args) < match->argumentsSize)
         return 0;
 
     for (i = 0; i < match->argumentsSize; i++) {
         adbus_Argument* matcharg = &match->arguments[i];
-        adbus_Argument* msgarg = &msg->arguments[i];
+        adbus_Argument* msgarg = &dv_a(args, i);
 
         if (!matcharg->value)
             continue;
@@ -483,7 +484,7 @@ static adbus_Bool ArgsMatch(const adbus_Match* match, adbus_Message* msg)
     return 1;
 }
 
-adbus_Bool adbusI_matchesMessage(const adbus_Match* match, adbus_Message* msg)
+adbus_Bool adbusI_matchesMessage(const adbus_Match* match, const adbus_Message* msg, d_Vector(Argument)* args)
 {
     if (match->type == ADBUS_MSG_INVALID && match->type != msg->type) {
         return 0;
@@ -501,7 +502,7 @@ adbus_Bool adbusI_matchesMessage(const adbus_Match* match, adbus_Message* msg)
         return 0;
     } else if (!StringMatches(match->sender, match->senderSize, msg->sender, msg->senderSize)) {
         return 0;
-    } else if (!ArgsMatch(match, msg)) {
+    } else if (!ArgsMatch(match, msg, args)) {
         return 0;
     } else {
         return 1;

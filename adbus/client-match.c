@@ -396,9 +396,9 @@ static adbus_Bool TrackedMatches(adbusI_TrackedRemote* r, const char* msg, size_
     return memcmp(msg, r->unique.str, msgsz) == 0;
 }
 
-int adbusI_dispatchMatch(adbus_ConnMatch* m, adbus_CbData* d)
+int adbusI_dispatchMatch(adbus_ConnMatch* m, adbus_CbData* d, d_Vector(Argument)* args)
 {
-    if (!adbusI_matchesMessage(&m->m, d->msg))
+    if (!adbusI_matchesMessage(&m->m, d->msg, args))
         return 0;
 
     if (!TrackedMatches(m->sender, d->msg->sender, d->msg->senderSize))

@@ -75,7 +75,7 @@ private Q_SLOTS:
 
 private:
     /* Called on the local thread */
-    static int          SendMsg(void* u, adbus_Message* m);
+    static int          SendMsg(void* u, const adbus_Message* m);
     static int          Send(void* u, const char* b, size_t sz);
     static int          Recv(void* u, char* buf, size_t sz);
     static uint8_t      Rand(void* u);

@@ -36,10 +36,13 @@ DLIST_INIT(ConnMsg, adbusI_ConnMsg)
 
 struct adbusI_ConnMsg
 {
-    adbusI_ConnMsg*             next;
-    adbusI_ConnMsg*             prev;
-    int                         ref;
+    /* Header field */
     adbus_Message               msg;
+
+    d_Vector(Argument)          arguments;
+
+    adbusI_ConnMsg*             next;
+    int                         ref;
     adbus_Buffer*               buf;
     adbus_MsgFactory*           ret;
     adbus_Bool                  matchStarted;
@@ -69,21 +72,14 @@ struct adbus_Connection
 
     adbus_MsgFactory*           dispatchReturn;
 
-    /* The toprocess list is a doubly linked list where we track the
-     * beginning, end, and the next message to process. In reentrant cases the
-     * current message may not be the first message as the first message is
-     * required to hang around until the outer call finishes.
+    /* Singly linked freelist stack */
+    adbusI_ConnMsg*             freelist;
+
+    /* Singly linked list of messages to process.
      */
     adbusI_ConnMsg*             processBegin;
     adbusI_ConnMsg*             processEnd;
-    adbusI_ConnMsg*             processCurrent;
 
-    /* The freelist is a message stack implemented using a singly linked list.
-     * Messages are pushed onto it after we have finished with them (and all
-     * call frames that reference it have completed) and then popped out when
-     * we need a new message.
-     */
-    adbusI_ConnMsg*             freelist;
 
     /* We keep one message seperate from the two lists. The buffer in this is
      * used to append the next chunk of data. When we have enough data to

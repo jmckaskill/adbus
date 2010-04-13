@@ -30,5 +30,3 @@
 ADBUSI_FUNC void adbusI_remote_initParser(adbus_Remote* r);
 ADBUSI_FUNC void adbusI_remote_freeParser(adbus_Remote* r);
 
-ADBUS_API int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m);
-ADBUS_API int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* buf);

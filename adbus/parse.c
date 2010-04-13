@@ -384,8 +384,6 @@ int adbus_parse(adbus_Message* m, char* data, size_t size)
     return 0;
 }
 
-DVECTOR_INIT(Argument, adbus_Argument)
-
 /** Parse the arguments in a message.
  *  
  *  \relates adbus_Message
@@ -400,15 +398,13 @@ DVECTOR_INIT(Argument, adbus_Argument)
  *  message to free this.
  *
  */
-int adbus_parseargs(adbus_Message* m)
+int adbusI_parseargs(const adbus_Message* m, d_Vector(Argument)* args)
 {
-    d_Vector(Argument) args;
     adbus_Iterator i;
 
-    if (m->arguments)
+    if (dv_size(args) > 0)
         return 0;
 
-    ZERO(args);
     i.data = m->argdata;
     i.end  = m->argdata + m->argsize;
     i.sig  = m->signature;
@@ -416,47 +412,41 @@ int adbus_parseargs(adbus_Message* m)
     assert(m->signature != NULL);
 
     while (*i.sig) {
-        adbus_Argument* arg = dv_push(Argument, &args, 1);
+        adbus_Argument* arg = dv_push(Argument, args, 1);
         arg->value = NULL;
         arg->size  = 0;
 
         if (*i.sig == 's') {
             size_t sz;
-            if (adbus_iter_string(&i, &arg->value, &sz))
+            if (adbus_iter_string(&i, &arg->value, &sz)) {
                 goto err;
+            }
             arg->size = sz;
 
         } else {
-            if (adbus_iter_value(&i))
+            if (adbus_iter_value(&i)) {
                 goto err;
-
+            }
         }
     }
 
-    m->argumentsSize = dv_size(&args);
-    m->arguments = dv_release(Argument, &args);
     return 0;
 
 err:
-    dv_free(Argument, &args);
+    dv_clear(Argument, args);
     return -1;
 }
 
 /** Clones the message data in \a from into \a to.
  *  \relates adbus_Message
  */
-void adbus_clonedata(adbus_Buffer* buf, adbus_Message* from, adbus_Message* to)
+void adbusI_clonedata(const adbus_Message* from, adbus_Message* to)
 {
     ptrdiff_t off;
 	size_t alloc;
 
 	memcpy(to, from, sizeof(adbus_Message));
-
-	alloc = ADBUS_ALIGN(from->size, 8) + sizeof(adbus_Argument) * from->argumentsSize;
-	adbus_buf_resize(buf, alloc);
-
-	to->data = adbus_buf_data(buf);
-
+    to->data = malloc(from->size);
     memcpy((char*) to->data, from->data, from->size);
 
     off = to->data - from->data;
@@ -491,21 +481,6 @@ void adbus_clonedata(adbus_Buffer* buf, adbus_Message* from, adbus_Message* to)
 	if (to->sender) {
 	    to->sender += off;
 	}
-
-    if (from->arguments) {
-        size_t i;
-		to->arguments = (adbus_Argument*) ADBUS_ALIGN(to->data + to->size, 8);
-		memcpy(to->arguments, from->arguments, sizeof(adbus_Argument) * from->argumentsSize);
-
-        for (i = 0; i < to->argumentsSize; i++) {
-            if (to->arguments[i].value) {
-                to->arguments[i].value += off;
-            }
-        }
-    }
-
 }
 
-void adbus_freeargs(adbus_Message* m)
-{ free(m->arguments); }
 

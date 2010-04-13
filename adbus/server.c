@@ -98,7 +98,7 @@ adbus_Remote* adbus_serv_caller(adbus_Server* s)
 
 /* -------------------------------------------------------------------------- */
 
-int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
+int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, const adbus_Message* m, d_Vector(Argument)* args)
 {
     adbus_Remote* r;
     adbus_Remote* direct = NULL;
@@ -128,7 +128,7 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
 
     DL_FOREACH(Remote, r, &s->remotes.async, hl) {
         s->caller = from;
-        if (r == direct || adbusI_serv_matches(&r->matches, m))
+        if (r == direct || adbusI_serv_matches(&r->matches, m, args))
         {
             ADBUSI_LOG_MSG_2(m, "bus send to (remote %s, %p)",
                     ds_cstr(&r->unique),
@@ -147,7 +147,7 @@ int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m)
 
     DL_FOREACH(Remote, r, &s->remotes.sync, hl) {
         s->caller = from;
-        if (r == direct || adbusI_serv_matches(&r->matches, m))
+        if (r == direct || adbusI_serv_matches(&r->matches, m, args))
         {
             ADBUSI_LOG_MSG_2(m, "bus send to (sync remote %s, %p)",
                     ds_cstr(&r->unique),

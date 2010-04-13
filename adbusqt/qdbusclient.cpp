@@ -139,7 +139,7 @@ void QDBusClient::close()
 
 /* ------------------------------------------------------------------------- */
 
-int QDBusClient::SendMsg(void* u, adbus_Message* m)
+int QDBusClient::SendMsg(void* u, const adbus_Message* m)
 {
     QDBusClient* d = (QDBusClient*) u;
     if (!d->m_IODevice)

@@ -151,11 +151,12 @@ ADBUSI_FUNC int adbusI_dispatch(adbus_MsgCallback cb, adbus_CbData* details);
 
 /* -------------------------------------------------------------------------- */
 
+DVECTOR_INIT(Argument, adbus_Argument)
 
 ADBUSI_FUNC void adbusI_relativePath(d_String* out, const char* path1, int size1, const char* path2, int size2);
 ADBUSI_FUNC void adbusI_sanitisePath(d_String* out, const char* path, int sz);
 ADBUSI_FUNC void adbusI_parentPath(dh_strsz_t path, dh_strsz_t* parent);
 
 ADBUSI_FUNC void adbusI_matchString(d_String* out, const adbus_Match* match);
-ADBUSI_FUNC adbus_Bool adbusI_matchesMessage(const adbus_Match* match, adbus_Message* msg);
+ADBUSI_FUNC adbus_Bool adbusI_matchesMessage(const adbus_Match* match, const adbus_Message* msg, d_Vector(Argument)* args);
 

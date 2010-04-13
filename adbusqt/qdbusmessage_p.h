@@ -64,8 +64,8 @@ public:
 class QDBusMessagePrivate : public QSharedData
 {
 public:
-    static int          FromMessage(QDBusMessage& q, adbus_Message* msg);
-    static int          FromMessage(QDBusMessage& q, adbus_Message* msg, const QDBusArgumentList& types);
+    static int          FromMessage(QDBusMessage& q, const adbus_Message* msg);
+    static int          FromMessage(QDBusMessage& q, const adbus_Message* msg, const QDBusArgumentList& types);
     static bool         GetMessage(const QDBusMessage& q, adbus_MsgFactory* ret);
     static void         GetReply(const QDBusMessage& q, adbus_MsgFactory** ret, const QDBusArgumentList& types);
     static const QVariant& Argument(const QDBusMessage& q, int argi);

@@ -124,3 +124,6 @@ struct adbusI_ExtendedHeader
 };
 #pragma pack(pop)
 
+ADBUSI_FUNC void adbusI_clonedata(const adbus_Message* from, adbus_Message* to);
+ADBUSI_FUNC int adbusI_parseargs(const adbus_Message* m, d_Vector(Argument)* args);
+

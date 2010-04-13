@@ -139,7 +139,7 @@ namespace adbus
         Iterator()
         { i.data = i.end = i.sig = NULL; }
 
-        Iterator(adbus_Message* msg)
+        Iterator(const adbus_Message* msg)
         { adbus_iter_args(&i, msg); }
 
         operator adbus_Iterator*() {return &i;}

@@ -180,7 +180,7 @@ void QDBusArgumentList::bufferSignalArguments(adbus_MsgFactory* msg, void** args
 
 /* ------------------------------------------------------------------------- */
 
-int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg)
+int QDBusMessagePrivate::FromMessage(QDBusMessage& q, const adbus_Message* msg)
 {
     qDetachSharedData(q.d_ptr);
     QDBusMessagePrivate* d = q.d_ptr;
@@ -224,7 +224,7 @@ err:
 
 /* ------------------------------------------------------------------------- */
 
-int QDBusMessagePrivate::FromMessage(QDBusMessage& q, adbus_Message* msg, const QDBusArgumentList& types)
+int QDBusMessagePrivate::FromMessage(QDBusMessage& q, const adbus_Message* msg, const QDBusArgumentList& types)
 {
     qDetachSharedData(q.d_ptr);
     QDBusMessagePrivate* d = q.d_ptr;

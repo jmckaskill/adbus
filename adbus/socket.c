@@ -679,7 +679,7 @@ static void FlushTxBuffer(struct SocketData* s)
     }
 }
 
-static int SendMsg(void* d, adbus_Message* m)
+static int SendMsg(void* d, const adbus_Message* m)
 { 
     struct SocketData* s = (struct SocketData*) d;
     adbus_buf_append(s->txbuf, m->data, m->size);

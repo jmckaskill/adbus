@@ -277,6 +277,9 @@ int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
     adbus_Message m;
     const char* data = adbus_buf_data(b);
     size_t size = adbus_buf_size(b);
+    d_Vector(Argument) args;
+
+    ZERO(args);
 
 	ADBUSI_LOG_DATA_3(
 			data,
@@ -297,10 +300,10 @@ int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
         if (ret < 0)
             return -1;
 
-        if (!ret)
-            ret = adbusI_serv_dispatch(r->server, r, &m);
-
-        adbus_freeargs(&m);
+        if (!ret) {
+            dv_clear(Argument, &args);
+            ret = adbusI_serv_dispatch(r->server, r, &m, &args);
+        }
 
         if (ret < 0)
             return -1;
@@ -310,6 +313,7 @@ int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
 
     }
 
+    dv_free(Argument, &args);
     adbus_buf_remove(b, 0, adbus_buf_size(b) - size);
     return 0;
 }
@@ -321,21 +325,29 @@ int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* b)
  *
  *  \return non-zero on error at which point the remote should be kicked
  */
-int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m)
+int adbus_remote_dispatch(adbus_Remote* r, const adbus_Message* m)
 {
     int ret;
     adbus_Message m2;
+    d_Vector(Argument) args;
+
+    ZERO(args);
     assert(adbus_parse_size(m->data, m->size) == (int) m->size);
 
     ret = ServerParse(r, r->parseBuffer, &m2, m->data, m->size);
 
+    /* Invalid message */
     if (ret < 0)
         return -1;
 
-    if (!ret && adbusI_serv_dispatch(r->server, r, &m2))
-        return -1;
+    /* Ignored message */
+    if (ret == 1)
+        return 0;
 
-    return 0;
+    ret = adbusI_serv_dispatch(r->server, r, &m2, &args);
+    dv_free(Argument, &args);
+
+    return ret;
 }
 
 

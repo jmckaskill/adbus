@@ -45,5 +45,9 @@ ADBUS_API adbus_Remote* adbus_serv_caller(adbus_Server* s);
 /* Message must have gone through the server parse functions to ensure it has
  * the correct sender field before calling this.
  */
-ADBUSI_FUNC int adbusI_serv_dispatch(adbus_Server* s, adbus_Remote* from, adbus_Message* m);
+ADBUSI_FUNC int adbusI_serv_dispatch(
+        adbus_Server*           s,
+        adbus_Remote*           from,
+        const adbus_Message*    m,
+        d_Vector(Argument)*     args);
 

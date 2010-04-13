@@ -212,9 +212,10 @@ struct adbus_CbData
 {
     adbus_Connection*       connection;
 
-    adbus_Message*          msg;
+    const adbus_Message*    msg;
     adbus_MsgFactory*       ret;
-    adbus_Bool              noreturn;
+
+    adbus_Bool              delay;
 
     adbus_Iterator          setprop;
     adbus_Buffer*           getprop;
@@ -269,16 +270,10 @@ struct adbus_Message
     size_t                  destinationSize;
     const char*             sender;
     size_t                  senderSize;
-
-    adbus_Argument*         arguments;
-    size_t                  argumentsSize;
 };
 
 ADBUS_API int adbus_parse(adbus_Message* m, char* data, size_t size);
-ADBUS_API int adbus_parseargs(adbus_Message* m);
-ADBUS_API void adbus_freeargs(adbus_Message* m);
 ADBUS_API int adbus_parse_size(const char* data, size_t size);
-ADBUS_API void adbus_clonedata(adbus_Buffer* buf, adbus_Message* from, adbus_Message* to);
 
 
 ADBUS_API int adbus_connect_address(
@@ -376,7 +371,7 @@ ADBUS_API int adbus_error_argument(
 
 
 
-typedef int  (*adbus_SendMsgCallback)(void*, adbus_Message*);
+typedef int  (*adbus_SendMsgCallback)(void*, const adbus_Message*);
 typedef void (*adbus_GetProxyCallback)(void*, adbus_ProxyMsgCallback*, void**, adbus_ProxyCallback*, void**);
 typedef int  (*adbus_BlockCallback)(void*, adbus_BlockType type, uintptr_t* handle, int timeoutms);
 
@@ -407,7 +402,7 @@ ADBUS_API void adbus_conn_setsender(
 
 ADBUS_API int adbus_conn_send(
         adbus_Connection*       connection,
-        adbus_Message*          message);
+        const adbus_Message*    message);
 
 ADBUS_API adbus_Bool adbus_conn_shouldproxy(
         adbus_Connection*   connection);
@@ -437,7 +432,7 @@ ADBUS_API uint32_t adbus_conn_serial(
 
 ADBUS_API int adbus_conn_dispatch(
         adbus_Connection*       connection,
-        adbus_Message*          message);
+        const adbus_Message*    message);
 
 /* returns 0 on continue, 1 on finish, -1 on error */
 ADBUS_API int adbus_conn_continue(
@@ -1097,7 +1092,7 @@ ADBUS_API adbus_Remote* adbus_serv_connect(
         void*                   data);
 
 ADBUS_API void adbus_remote_disconnect(adbus_Remote* r);
-ADBUS_API int adbus_remote_dispatch(adbus_Remote* r, adbus_Message* m);
+ADBUS_API int adbus_remote_dispatch(adbus_Remote* r, const adbus_Message* m);
 ADBUS_API int adbus_remote_parse(adbus_Remote* r, adbus_Buffer* buf);
 
 

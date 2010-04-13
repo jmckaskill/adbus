@@ -199,7 +199,7 @@ static int RemoveMatch(adbus_CbData* d)
 }
 
 /* -------------------------------------------------------------------------- */
-static int SendToBus(void* d, adbus_Message* m)
+static int SendToBus(void* d, const adbus_Message* m)
 {
     adbus_Server* s = (adbus_Server*) d;
     if (adbus_conn_dispatch(s->bus.connection, m))
@@ -208,7 +208,7 @@ static int SendToBus(void* d, adbus_Message* m)
     return (int) m->size;
 }
 
-static int SendToServer(void* d, adbus_Message* m)
+static int SendToServer(void* d, const adbus_Message* m)
 {
     adbus_Server* s = (adbus_Server*) d;
     if (adbus_remote_dispatch(s->bus.remote, m))
