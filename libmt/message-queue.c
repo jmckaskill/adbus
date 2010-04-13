@@ -43,19 +43,19 @@
 /* Platform specific stuff */
 #ifdef _WIN32
 static void CreateHandle(MTI_MessageQueue* q)
-{ q->handle[0] = CreateEvent(NULL, FALSE, FALSE, NULL); }
+{ q->handles[0] = CreateEvent(NULL, FALSE, FALSE, NULL); }
 
 static void FreeHandle(MTI_MessageQueue* q)
-{ CloseHandle(q->handle[0]); }
+{ CloseHandle(q->handles[0]); }
 
 MT_Handle GetHandle(MTI_MessageQueue* q)
-{ return q->handle[0]; }
+{ return q->handles[0]; }
 
 static void ResetHandle(MTI_MessageQueue* q)
 { (void) q; }
 
 static void WakeUp(MTI_MessageQueue* q)
-{ SetEvent(q->handle[0]); }
+{ SetEvent(q->handles[0]); }
 
 
 /* ------------------------------------------------------------------------- */

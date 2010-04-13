@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="ex_thread"
-	ProjectGUID="{328CFA09-92FF-4D12-92C4-2B52A7975EDD}"
-	RootNamespace="ex_thread"
+	Name="bus-libmt"
+	ProjectGUID="{74B7893B-6796-4462-93B8-F0FA8CCD0CC5}"
+	RootNamespace="bus"
 	TargetFrameworkVersion="196613"
 	>
 	<Platforms>
@@ -41,11 +41,11 @@
 				Name="VCCLCompilerTool"
 				Optimization="0"
 				AdditionalIncludeDirectories="../../include/c;../../deps/msvc"
+				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY;MT_SHARED_LIBRARY"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
-				WarningLevel="4"
-				WarnAsError="true"
+				WarningLevel="3"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -59,7 +59,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="ws2_32.lib winmm.lib"
+				AdditionalDependencies="ws2_32.lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
 			/>
@@ -112,9 +112,12 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
+				AdditionalIncludeDirectories="../../include/c;../../deps/msvc"
+				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY;MT_SHARED_LIBRARY;NDEBUG"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
-				WarningLevel="3"
+				WarningLevel="4"
+				WarnAsError="true"
 				DebugInformationFormat="3"
 			/>
 			<Tool
@@ -128,6 +131,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				AdditionalDependencies="ws2_32.lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
@@ -159,96 +163,20 @@
 	<References>
 	</References>
 	<Files>
-		<Filter
-			Name="MT"
-			>
-			<File
-				RelativePath=".\MT\Common.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventLoop.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventLoop_Unix.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventLoop_Win.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventQueue.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventQueue_p.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Freelist.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Freelist.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Lock.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Target.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Target.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Thread.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Thread_Unix.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Thread_Win.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time_Unix.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time_Win.c"
-				>
-			</File>
-		</Filter>
-		<File
-			RelativePath=".\client.c"
-			>
-		</File>
-		<File
-			RelativePath=".\client.h"
-			>
-		</File>
-		<File
-			RelativePath=".\client_p.h"
-			>
-		</File>
 		<File
 			RelativePath=".\main.c"
+			>
+		</File>
+		<File
+			RelativePath=".\server.c"
+			>
+		</File>
+		<File
+			RelativePath=".\server.h"
+			>
+		</File>
+		<File
+			RelativePath=".\Tupfile"
 			>
 		</File>
 	</Files>

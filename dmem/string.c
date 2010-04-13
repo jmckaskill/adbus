@@ -1,5 +1,9 @@
 /* vim: et sts=4 ts=4 sw=4: */
 
+#ifdef _MSC_VER
+#   define _CRT_SECURE_NO_DEPRECATE
+#endif
+
 #include "dmem/string.h"
 
 #include <stdarg.h>

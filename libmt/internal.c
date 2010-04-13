@@ -27,6 +27,10 @@
 #include <dmem/string.h>
 #include <stdio.h>
 
+#if defined _WIN32 && !defined NDEBUG
+#   include <crtdbg.h>
+#endif
+
 /* ------------------------------------------------------------------------- */
 
 void MT_Log(const char* format, ...)

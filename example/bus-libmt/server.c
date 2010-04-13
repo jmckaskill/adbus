@@ -23,18 +23,16 @@
  * ----------------------------------------------------------------------------
  */
 
-#ifdef __linux__
-#   define _GNU_SOURCE
-#endif
-
 #include "server.h"
-#include <sys/epoll.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
+
+#ifndef _WIN32
+#   include <sys/types.h>
+#   include <sys/socket.h>
+#   include <unistd.h>
+#   include <errno.h>
+#   include <fcntl.h>
+#endif
 
 #define NEW(t) (t*) calloc(1, sizeof(t))
 #define ZERO(v) memset(&v, 0, sizeof(v))
@@ -50,7 +48,7 @@ Server* Server_New(adbus_Socket sock)
     Server* s   = NEW(Server);
     s->sock     = sock;
     s->bus      = adbus_serv_new(adbus_iface_new("org.freedesktop.DBus", -1));
-    s->reg      = MT_Current_RegisterHandle(sock, &Server_OnConnect, s);
+    s->reg      = MT_Current_AddServerSocket(sock, &Server_OnConnect, s);
 
 #if !defined _WIN32
     fcntl(sock, F_SETFL, O_CLOEXEC);
@@ -69,7 +67,7 @@ void Server_Free(struct Server* s)
         DIL_FOREACH (Remote, r, &s->remotes, hl) {
             Remote_Free(r);
         }
-        MT_Current_Unregister(s->reg);
+        MT_Current_Remove(s->reg);
         adbus_serv_free(s->bus);
         closesocket(s->sock);
         free(s);
@@ -85,7 +83,7 @@ void Server_OnConnect(void* u)
     adbus_Socket sock;
 
     /* Accept connections until it starts to fail (with EWOULDBLOCK) */
-    while (1) {
+    for (;;) {
         sock = accept(s->sock, NULL, NULL);
 
         if (sock == ADBUS_SOCK_INVALID)
@@ -126,9 +124,9 @@ Remote* Remote_New(adbus_Socket sock, adbus_Server* s)
     r->txfull   = 0;
     r->bus      = s;
     r->sock     = sock;
-    r->idle     = MT_Current_RegisterIdle(&Remote_OnIdle, r);
+    r->idle     = MT_Current_AddIdle(&Remote_OnIdle, r);
 
-    r->reg = MT_Current_RegisterSocket(
+    r->reg = MT_Current_AddClientSocket(
             sock,
             &Remote_ReadyRecv,
             &Remote_ReadySend,
@@ -153,8 +151,8 @@ void Remote_Free(Remote* r)
         adbus_buf_free(r->txbuf);
         adbus_buf_free(r->rxbuf);
 
-        MT_Current_Unregister(r->reg);
-        MT_Current_Unregister(r->idle);
+        MT_Current_Remove(r->reg);
+        MT_Current_Remove(r->idle);
 
         closesocket(r->sock);
 
@@ -198,13 +196,13 @@ void Remote_FlushTxBuffer(Remote* r)
     if (sz != 0) {
         int sent = send(r->sock, adbus_buf_data(r->txbuf), sz, 0);
 
-        if (sent == sz) {
+        if (sent == (int) sz) {
             adbus_buf_reset(r->txbuf);
         } else if (sent > 0) {
             adbus_buf_remove(r->txbuf, 0, sent);
         }
 
-        r->txfull = (sent != sz);
+        r->txfull = (sent != (int) sz);
 
         if (!r->txfull && r->readySendEnabled) {
             r->readySendEnabled = 0;

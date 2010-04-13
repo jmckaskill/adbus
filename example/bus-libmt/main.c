@@ -33,17 +33,21 @@
 #   include <sys/socket.h>
 #endif
 
+#ifdef _MSC_VER
+#   define putenv _putenv
+#endif
+
 
 int main()
 {
     Server* server;
     adbus_Socket sock;
     MT_MainLoop* loop;
+
+    putenv((char*) "DBUS_SESSION_BUS_ADDRESS=tcp:host=localhost,port=12345");
    
     loop = MT_Loop_New();
     MT_SetCurrent(loop);
-
-    remove("/tmp/test");
 
     sock = adbus_sock_bind(ADBUS_DEFAULT_BUS);
     if (sock == ADBUS_SOCK_INVALID)

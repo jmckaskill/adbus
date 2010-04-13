@@ -322,6 +322,7 @@ ADBUS_INLINE int adbus_iter_align(adbus_Iterator* i, const char* sig)
 
 ADBUS_INLINE void adbusI_iter_sig(adbus_Iterator* i, char field)
 {
+    (void) field;
     assert(*i->sig == field);
     i->sig++;
 }

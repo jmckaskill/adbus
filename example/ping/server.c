@@ -61,11 +61,15 @@ static adbus_Interface* CreateInterface()
     return iface;
 }
 
+void __declspec(dllimport) __stdcall Sleep(unsigned long dwMilliseconds);
+
 int main()
 {
     adbus_Connection* connection;
     adbus_State* state;
     adbus_Proxy* bus;
+
+    Sleep(200);
 
     connection = adbus_sock_busconnect(ADBUS_DEFAULT_BUS, NULL);
     if (!connection)

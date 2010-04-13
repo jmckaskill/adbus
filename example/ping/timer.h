@@ -43,12 +43,15 @@ void StartTimer(struct Timer* t)
     QueryPerformanceCounter(&t->start);
 }
 
-int StopTimer(struct Timer* t, int repeat)
+double StopTimer(struct Timer* t, int repeat)
 {
     uint64_t ns;
     QueryPerformanceCounter(&t->end);
-    ns = ((t->end.QuadPart - t->start.QuadPart) * 1000000000 / repeat) / t->freq.QuadPart;
-    return (int) ns;
+    ns = t->end.QuadPart - t->start.QuadPart;
+    ns *= 1000000000;
+    ns /= t->freq.QuadPart;
+    ns /= repeat;
+    return (double) ns;
 }
 
 #else
@@ -66,13 +69,13 @@ void StartTimer(struct Timer* t)
     gettimeofday(&t->start, NULL);
 }
 
-int StopTimer(struct Timer* t, int repeat)
+double StopTimer(struct Timer* t, int repeat)
 {
     uint64_t ns;
     gettimeofday(&t->end, NULL);
     timersub(&t->end, &t->start, &t->diff);
     ns = (t->diff.tv_sec * 1000000 + t->diff.tv_usec) * 1000 / repeat;
-    return (int) ns;
+    return (double) ns;
 }
 
 #endif

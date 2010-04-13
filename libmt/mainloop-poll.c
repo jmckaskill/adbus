@@ -259,7 +259,7 @@ void MT_Loop_Unregister(MT_MainLoop* s, MT_LoopRegistration* r)
 
 /* ------------------------------------------------------------------------- */
 
-static int ProcessEvent(MT_MainLoop* e)
+static int ProcessEvent(MT_MainLoop* s)
 {
     /* Process the next event from e->events */
     while (e->currentEvent < dv_size(&e->events)) {
@@ -295,7 +295,7 @@ static int ProcessEvent(MT_MainLoop* e)
     return -1;
 }
 
-static void CallIdle(MT_MainLoop* e)
+static void CallIdle(MT_MainLoop* s)
 {
     while (e->currentIdle < dv_size(&e->idle)) {
         MT_LoopRegistration* r = dv_a(&e->idle, e->currentIdle);
@@ -307,7 +307,7 @@ static void CallIdle(MT_MainLoop* e)
 
 int MT_Current_Step(void)
 {
-	MT_MainLoop* e = MT_Current();
+	MT_MainLoop* s = MT_Current();
     int ready;
 
     if (e->exit) {

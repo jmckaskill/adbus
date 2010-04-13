@@ -2,10 +2,10 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="ex_ping_client"
-	ProjectGUID="{D7A44358-5A68-4338-B026-A642F6B5B1AD}"
-	RootNamespace="ex_ping_client"
-	TargetFrameworkVersion="131072"
+	Name="libmt"
+	ProjectGUID="{709B7EA5-3AFE-4C08-8393-DF0001619061}"
+	RootNamespace="libmt"
+	TargetFrameworkVersion="196613"
 	>
 	<Platforms>
 		<Platform
@@ -18,8 +18,8 @@
 		<Configuration
 			Name="Debug|Win32"
 			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ProjectName)_$(ConfigurationName)"
-			ConfigurationType="1"
+			IntermediateDirectory="$(ConfigurationName)"
+			ConfigurationType="2"
 			CharacterSet="2"
 			>
 			<Tool
@@ -40,13 +40,12 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="../../include/c;../../deps/msvc"
-				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY;_CRT_SECURE_NO_DEPRECATE"
+				AdditionalIncludeDirectories="../include/c;../deps/msvc"
+				PreprocessorDefinitions="MT_SHARED_LIBRARY"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
-				WarningLevel="4"
-				WarnAsError="true"
+				WarningLevel="3"
 				DebugInformationFormat="4"
 			/>
 			<Tool
@@ -60,10 +59,8 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="WS2_32.lib"
+				AdditionalDependencies="ws2_32.lib"
 				GenerateDebugInformation="true"
-				RandomizedBaseAddress="1"
-				DataExecutionPrevention="0"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -91,8 +88,8 @@
 		<Configuration
 			Name="Release|Win32"
 			OutputDirectory="$(SolutionDir)$(ConfigurationName)"
-			IntermediateDirectory="$(ProjectName)_$(ConfigurationName)"
-			ConfigurationType="1"
+			IntermediateDirectory="$(ConfigurationName)"
+			ConfigurationType="2"
 			CharacterSet="2"
 			WholeProgramOptimization="1"
 			>
@@ -113,9 +110,12 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="../../include/c;../../deps/msvc"
-				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY;_CRT_SECURE_NO_DEPRECATE;NDEBUG"
+				Optimization="2"
+				EnableIntrinsicFunctions="true"
+				AdditionalIncludeDirectories="../include/c;../deps/msvc"
+				PreprocessorDefinitions="MT_SHARED_LIBRARY;NDEBUG"
 				RuntimeLibrary="2"
+				EnableFunctionLevelLinking="true"
 				WarningLevel="4"
 				WarnAsError="true"
 				DebugInformationFormat="3"
@@ -131,12 +131,10 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="WS2_32.lib"
+				AdditionalDependencies="ws2_32.lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
-				RandomizedBaseAddress="1"
-				DataExecutionPrevention="0"
 				TargetMachine="1"
 			/>
 			<Tool
@@ -165,8 +163,96 @@
 	<References>
 	</References>
 	<Files>
+		<Filter
+			Name="include"
+			>
+			<File
+				RelativePath="..\include\c\libmt.h"
+				>
+			</File>
+		</Filter>
 		<File
-			RelativePath=".\client.c"
+			RelativePath=".\freelist.c"
+			>
+		</File>
+		<File
+			RelativePath=".\freelist.h"
+			>
+		</File>
+		<File
+			RelativePath=".\internal.c"
+			>
+		</File>
+		<File
+			RelativePath=".\internal.h"
+			>
+		</File>
+		<File
+			RelativePath=".\mainloop-poll.c"
+			>
+		</File>
+		<File
+			RelativePath=".\mainloop-poll.h"
+			>
+		</File>
+		<File
+			RelativePath=".\mainloop-win.c"
+			>
+		</File>
+		<File
+			RelativePath=".\mainloop-win.h"
+			>
+		</File>
+		<File
+			RelativePath=".\message-queue.c"
+			>
+		</File>
+		<File
+			RelativePath=".\message-queue.h"
+			>
+		</File>
+		<File
+			RelativePath=".\queue.c"
+			>
+		</File>
+		<File
+			RelativePath=".\subscriber.c"
+			>
+		</File>
+		<File
+			RelativePath=".\subscriber.h"
+			>
+		</File>
+		<File
+			RelativePath=".\target.c"
+			>
+		</File>
+		<File
+			RelativePath=".\target.h"
+			>
+		</File>
+		<File
+			RelativePath=".\thread-unix.c"
+			>
+		</File>
+		<File
+			RelativePath=".\thread-win.c"
+			>
+		</File>
+		<File
+			RelativePath=".\time-unix.c"
+			>
+		</File>
+		<File
+			RelativePath=".\time-win.c"
+			>
+		</File>
+		<File
+			RelativePath=".\time.c"
+			>
+		</File>
+		<File
+			RelativePath=".\Tupfile"
 			>
 		</File>
 	</Files>

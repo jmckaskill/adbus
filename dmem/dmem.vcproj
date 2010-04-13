@@ -102,10 +102,10 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				AdditionalIncludeDirectories="../include/c"
-				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;NDEBUG"
+				PreprocessorDefinitions="NDEBUG"
 				RuntimeLibrary="2"
-				WarningLevel="3"
-				Detect64BitPortabilityProblems="true"
+				WarningLevel="4"
+				WarnAsError="true"
 				DebugInformationFormat="3"
 			/>
 			<Tool

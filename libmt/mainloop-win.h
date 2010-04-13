@@ -1,4 +1,3 @@
-
 /* vim: ts=4 sw=4 sts=4 et
  *
  * Copyright (c) 2009 James R. McKaskill
@@ -26,48 +25,44 @@
 
 #pragma once
 
-#include "Server.h"
+#include "internal.h"
+#include "message-queue.h"
+#include <dmem/vector.h>
 
-#ifdef _MSC_VER
-#   pragma warning(disable:4127) // conditional expression is constant
-#endif
+#ifdef _WIN32
 
-class Thread : public EventLoop
+DVECTOR_INIT(LoopRegistration, MT_LoopRegistration*)
+DVECTOR_INIT(HANDLE, HANDLE)
+
+struct MT_LoopRegistration
 {
-public:
-    void RegisterHandle(Callback* cb, HANDLE event)
-    {
-        handles.push_back(event);
-        callbacks.push_back(cb);
-    }
+    MT_Socket                       socket;
+    MT_Handle                       handle;
 
-    void UnregisterHandle(Callback* cb, HANDLE event)
-    {
-        for (size_t i = 0; i < callbacks.size(); i++) {
-            if (callbacks[i] == cb && handles[i] == event) {
-                callbacks.erase(callbacks.begin() + i);
-                handles.erase(handles.begin() + i);
-            }
-        }
-    }
+    int                             isSocket;
+    long                            mask;
 
-    std::vector<HANDLE>     handles;
-    std::vector<Callback*>  callbacks;
+    MT_Callback                     read;
+    MT_Callback                     write;
+    MT_Callback                     close;
+    MT_Callback                     accept;
+    MT_Callback                     idle;
+    MT_Callback                     cb;
+    void*                           user;
 };
 
-int main()
+struct MT_MainLoop
 {
-    Thread t;
-    Server s;
-    s.Init(&t);
+    int                             exit;
+    int                             exitcode;
+    
+    d_Vector(LoopRegistration)      regs;
+    d_Vector(HANDLE)                handles;
 
-    while (true) {
-        DWORD ret = WaitForMultipleObjects((DWORD) t.handles.size(), &t.handles[0], FALSE, INFINITE);
-        if (ret >= WAIT_OBJECT_0 + t.handles.size())
-            abort();
+    d_Vector(LoopRegistration)      idle;
+    int                             currentIdle;
 
-        t.callbacks[ret]->OnEvent(t.handles[ret]);
-    }
+    MTI_MessageQueue                queue;
+};
 
-    return 0;
-}
+#endif

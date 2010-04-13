@@ -29,7 +29,7 @@
 
 /* -------------------------------------------------------------------------- */
 
-MT_Time MT_FromFiletime(FILETIME* ft)
+MT_Time MT_FromFileTime(FILETIME* ft)
 {
     uint64_t res = 0;
     res |= ft->dwHighDateTime;
@@ -43,7 +43,7 @@ MT_Time MT_FromFiletime(FILETIME* ft)
 
 /* -------------------------------------------------------------------------- */
 
-void MT_ToFiletime(MT_Time t, FILETIME* ft)
+void MT_ToFileTime(MT_Time t, FILETIME* ft)
 {
     /* converting unix epoch to filetime epoch */
     uint64_t res = t + UINT64_C(11644473600000000);

@@ -97,7 +97,7 @@ typedef void        (*MT_FreeCallback)(MT_Header*);
 
 #ifdef _WIN32
     typedef void* MT_Handle; /* HANDLE */
-    typedef void* MT_Socket; /* SOCKET */
+    typedef uintptr_t MT_Socket; /* SOCKET */
     typedef CRITICAL_SECTION MT_Mutex;
     typedef MT_Handle MT_Thread;
     typedef uint32_t MT_ThreadStorageKey;
@@ -203,43 +203,48 @@ MT_API void MT_Signal_Emit(MT_Signal* s, MT_Message* m);
 MT_API void MT_Connect(MT_Signal* s, MT_Target* t);
 
 MT_API MT_MainLoop* MT_Loop_New(void);
-MT_API void MT_Loop_Free(MT_MainLoop* e);
+MT_API void MT_Loop_Free(MT_MainLoop* s);
 
-MT_API MT_LoopRegistration* MT_Loop_RegisterSocket(MT_MainLoop* e, MT_Socket fd, MT_Callback read, MT_Callback write, MT_Callback close, void* user);
-MT_API MT_LoopRegistration* MT_Loop_RegisterHandle(MT_MainLoop* e, MT_Handle h, MT_Callback cb, void* user);
-MT_API MT_LoopRegistration* MT_Loop_RegisterIdle(MT_MainLoop* e, MT_Callback cb, void* user);
-MT_API MT_LoopRegistration* MT_Loop_RegisterTick(MT_MainLoop* e, MT_Time period, MT_Callback cb, void* user);
+MT_API MT_LoopRegistration* MT_Loop_AddClientSocket(MT_MainLoop* s, MT_Socket fd, MT_Callback read, MT_Callback write, MT_Callback close, void* user);
+MT_API MT_LoopRegistration* MT_Loop_AddServerSocket(MT_MainLoop* s, MT_Socket fd, MT_Callback accept, void* user);
+MT_API MT_LoopRegistration* MT_Loop_AddHandle(MT_MainLoop* s, MT_Handle h, MT_Callback cb, void* user);
+MT_API MT_LoopRegistration* MT_Loop_AddIdle(MT_MainLoop* s, MT_Callback cb, void* user);
+MT_API MT_LoopRegistration* MT_Loop_AddTick(MT_MainLoop* s, MT_Time period, MT_Callback cb, void* user);
 
-#define MT_LOOP_READ    0x01
-#define MT_LOOP_WRITE   0x02
-#define MT_LOOP_CLOSE   0x04
-#define MT_LOOP_IDLE    0x08
-#define MT_LOOP_TICK    0x10
-#define MT_LOOP_HANDLE  0x20
+#define MT_LOOP_HANDLE  0x01
+#define MT_LOOP_READ    0x02
+#define MT_LOOP_WRITE   0x04
+#define MT_LOOP_CLOSE   0x08
+#define MT_LOOP_ACCEPT  0x10
+#define MT_LOOP_IDLE    0x20
+#define MT_LOOP_TICK    0x40
 
-MT_API void MT_Loop_Enable(MT_MainLoop* e, MT_LoopRegistration* r, int flags);
-MT_API void MT_Loop_Disable(MT_MainLoop* e, MT_LoopRegistration* r, int flags);
+MT_API void MT_Loop_Enable(MT_MainLoop* s, MT_LoopRegistration* r, int flags);
+MT_API void MT_Loop_Disable(MT_MainLoop* s, MT_LoopRegistration* r, int flags);
 
-MT_API void MT_Loop_Unregister(MT_MainLoop* e, MT_LoopRegistration* r);
-MT_API void MT_Loop_Post(MT_MainLoop* e, MT_Message* m);
+MT_API void MT_Loop_Remove(MT_MainLoop* s, MT_LoopRegistration* r);
+MT_API void MT_Loop_Post(MT_MainLoop* s, MT_Message* m);
 
 MT_API MT_MainLoop* MT_Current(void);
-MT_API void MT_SetCurrent(MT_MainLoop* e);
+MT_API void MT_SetCurrent(MT_MainLoop* s);
 MT_API int  MT_Current_Step(void);
 MT_API int  MT_Current_Run(void);
 MT_API void MT_Current_Exit(int code);
 
-#define MT_Current_RegisterSocket(fd, read, write, close, user)    \
-    MT_Loop_RegisterSocket(MT_Current(), fd, read, write, close, user)
+#define MT_Current_AddClientSocket(fd, read, write, close, user)    \
+    MT_Loop_AddClientSocket(MT_Current(), fd, read, write, close, user)
 
-#define MT_Current_RegisterHandle(h, cb, user)    \
-    MT_Loop_RegisterHandle(MT_Current(), h, cb, user)
+#define MT_Current_AddServerSocket(fd, accept, user)    \
+    MT_Loop_AddServerSocket(MT_Current(), fd, accept, user)
 
-#define MT_Current_RegisterIdle(cb, user) \
-    MT_Loop_RegisterIdle(MT_Current(), cb, user)
+#define MT_Current_AddHandle(h, cb, user)    \
+    MT_Loop_AddHandle(MT_Current(), h, cb, user)
 
-#define MT_Current_RegisterTick(period, cb, user) \
-    MT_Loop_RegisterTick(MT_Current(), period, cb, user)
+#define MT_Current_AddIdle(cb, user) \
+    MT_Loop_AddIdle(MT_Current(), cb, user)
+
+#define MT_Current_AddTick(period, cb, user) \
+    MT_Loop_AddTick(MT_Current(), period, cb, user)
 
 #define MT_Current_Enable(reg, flags) \
     MT_Loop_Enable(MT_Current(), reg, flags)
@@ -247,8 +252,8 @@ MT_API void MT_Current_Exit(int code);
 #define MT_Current_Disable(reg, flags) \
     MT_Loop_Disable(MT_Current(), reg, flags)
 
-#define MT_Current_Unregister(reg) \
-    MT_Loop_Unregister(MT_Current(), reg)
+#define MT_Current_Remove(reg) \
+    MT_Loop_Remove(MT_Current(), reg)
 
 
 
@@ -257,7 +262,7 @@ MT_API void MT_Current_Exit(int code);
     { InitializeCriticalSection(lock); }
 
     MT_INLINE void MT_Mutex_Destroy(MT_Mutex* lock)
-    { DeletCriticalSection(lock); }
+    { DeleteCriticalSection(lock); }
 
     MT_INLINE void MT_Mutex_Enter(MT_Mutex* lock)
     { EnterCriticalSection(lock); }
@@ -452,7 +457,7 @@ MT_API int MT_ToBrokenDownTime(MT_Time t, struct tm* tm); /* Returns non zero on
 
 #ifdef _WIN32
     MT_API MT_Time MT_FromFileTime(FILETIME* ft);
-    MT_API int MT_ToFileTime(MT_Time, FILETIME* ft);
+    MT_API void    MT_ToFileTime(MT_Time, FILETIME* ft);
 #endif
 
 MT_API MT_Time MT_CurrentTime();

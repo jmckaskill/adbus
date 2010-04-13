@@ -60,7 +60,11 @@ static int Reply(adbus_CbData* d)
     adbus_check_string(d, NULL);
     adbus_check_end(d);
 
-    if (--replies <= 0) {
+    if (--replies % 10000 == 0) {
+        fprintf(stderr, "Left %d\n", replies);
+    }
+
+    if (replies <= 0) {
         adbus_conn_block(d->connection, ADBUS_UNBLOCK, &blockhandle, -1);
     } else {
         /* Keep pings going until we have enough replies */
@@ -108,7 +112,7 @@ int main()
     adbus_state_free(state);
     adbus_conn_deref(connection);
 
-    fprintf(stderr, "Time %d ns\n", StopTimer(&t, REPEAT));
+    fprintf(stderr, "Time %f ns\n", StopTimer(&t, REPEAT));
 
     return 0;
 }

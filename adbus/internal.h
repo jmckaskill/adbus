@@ -33,6 +33,10 @@
 #   define __STDC_CONSTANT_MACROS
 #endif
 
+#ifdef _MSC_VER
+#   define _CRT_SECURE_NO_DEPRECATE
+#endif
+
 #define ADBUS_LIBRARY
 
 #include <adbus.h>

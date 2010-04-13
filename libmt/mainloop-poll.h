@@ -29,6 +29,8 @@
 #include "message-queue.h"
 #include <dmem/vector.h>
 
+#ifndef _WIN32
+
 #include <poll.h>
 
 DVECTOR_INIT(LoopRegistration, MT_LoopRegistration*)
@@ -62,3 +64,4 @@ struct MT_MainLoop
 };
 
 
+#endif
