@@ -1,6 +1,6 @@
 # vim: set et sts=4 ts=4 sw=4 tw=78:
 
-CC = gcc
+CC = clang
 CPP = g++
 LD = ld
 
@@ -20,7 +20,6 @@ CFLAGS += -DADBUSLUA_SHARED_LIBRARY
 
 ifeq (@(ADBUS_RELEASE),y)
     CFLAGS += -O2 -DNDEBUG
-    LDFLAGS += --strip-all
 else
     CFLAGS += -DDEBUG -g -O0
     LDFLAGS += -rdynamic

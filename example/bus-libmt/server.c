@@ -26,7 +26,7 @@
 #include "server.h"
 #include <stdio.h>
 
-#ifndef _WIN32
+#if !defined _WIN32
 #   include <sys/types.h>
 #   include <sys/socket.h>
 #   include <unistd.h>
@@ -37,7 +37,7 @@
 #define NEW(t) (t*) calloc(1, sizeof(t))
 #define ZERO(v) memset(&v, 0, sizeof(v))
 
-#ifndef _WIN32
+#if !defined _WIN32
 #   define closesocket(x) close(x)
 #endif
 
@@ -51,7 +51,7 @@ Server* Server_New(adbus_Socket sock)
     s->reg      = MT_Current_AddServerSocket(sock, &Server_OnConnect, s);
 
 #if !defined _WIN32
-    fcntl(sock, F_SETFL, O_CLOEXEC);
+    fcntl(sock, F_SETFD, FD_CLOEXEC);
     fcntl(sock, F_SETFL, O_NONBLOCK);
 #endif
 
@@ -90,7 +90,7 @@ void Server_OnConnect(void* u)
             return;
 
 #if !defined _WIN32
-        fcntl(sock, F_SETFL, O_CLOEXEC);
+        fcntl(sock, F_SETFD, FD_CLOEXEC);
         fcntl(sock, F_SETFL, O_NONBLOCK);
 #endif
 

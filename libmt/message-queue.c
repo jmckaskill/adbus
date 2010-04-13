@@ -32,6 +32,7 @@
 #include "target.h"
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #ifndef _WIN32
 #	include <unistd.h>
@@ -125,6 +126,7 @@ void MTI_Queue_Dispatch(void* u)
     MT_QueueItem* item;
 
     ResetHandle(q);
+    MT_AtomicInt_Set(&q->woken, 0);
 
     while ((item = MT_Queue_Consume(&q->queue)) != NULL) {
 
@@ -148,7 +150,10 @@ void MTI_Queue_Dispatch(void* u)
 void MTI_Queue_Post(MTI_MessageQueue* q, MT_Message* m)
 {
     MT_Queue_Produce(&q->queue, &m->qitem);
-    WakeUp(q);
+
+    if (MT_AtomicInt_SetFrom(&q->woken, 0, 1) == 0) {
+        WakeUp(q);
+    }
 }
 
 

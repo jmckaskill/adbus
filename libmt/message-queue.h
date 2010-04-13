@@ -29,8 +29,9 @@
 
 struct MTI_MessageQueue
 {
-    MT_Queue    queue;
-    MT_Handle   handles[2];
+    MT_AtomicInt    woken;
+    MT_Queue        queue;
+    MT_Handle       handles[2];
 };
 
 MT_Handle MTI_Queue_Init(MTI_MessageQueue* q);

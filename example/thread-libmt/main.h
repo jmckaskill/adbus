@@ -51,8 +51,8 @@ struct PingThread
 };
 
 void Pinger_Init(Pinger* p, adbus_Connection* c);
-int  Pinger_Run(Pinger* p);
 void Pinger_Destroy(Pinger* p);
+int  Pinger_Run(Pinger* p);
 void Pinger_AsyncPing(Pinger* p);
 int  Pinger_AsyncReply(adbus_CbData* d);
 int  Pinger_AsyncError(adbus_CbData* d);

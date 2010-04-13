@@ -74,15 +74,11 @@ static int Error(adbus_CbData* d)
 }
 
 
-void __declspec(dllimport) __stdcall Sleep(unsigned long dwMilliseconds);
-
 int main()
 {
     struct Timer t;
     adbus_Connection* connection;
     adbus_State* state;
-
-    Sleep(600);
 
     StartTimer(&t);
 

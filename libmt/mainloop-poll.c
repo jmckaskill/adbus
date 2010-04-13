@@ -52,7 +52,7 @@ MT_MainLoop* MT_Loop_New(void)
     MT_ThreadStorage_Ref(&sEventLoops);
 
     queueHandle = MTI_Queue_Init(&s->queue),
-    MT_Loop_RegisterHandle(s, queueHandle, MTI_Queue_Dispatch, &s->queue);
+    MT_Loop_AddHandle(s, queueHandle, MTI_Queue_Dispatch, &s->queue);
 
     return s;
 }
@@ -82,7 +82,7 @@ void MT_Loop_Free(MT_MainLoop* s)
 }
 /* ------------------------------------------------------------------------- */
 
-MT_LoopRegistration* MT_Loop_RegisterSocket(
+MT_LoopRegistration* MT_Loop_AddClientSocket(
         MT_MainLoop*    s,
         MT_Socket       sock,
         MT_Callback     read,
@@ -95,19 +95,20 @@ MT_LoopRegistration* MT_Loop_RegisterSocket(
 
     assert(read || write || close);
 
-    r           = NEW(MT_LoopRegistration);
-    r->fd       = sock;
-    r->read     = read;
-    r->write    = write;
-    r->close    = close;
-    r->user     = user;
+    r               = NEW(MT_LoopRegistration);
+    r->fd           = sock;
+    r->read         = read;
+    r->write        = write;
+    r->close        = close;
+    r->user         = user;
 
-    pr  = dv_push(LoopRegistration, &s->regs, 1);
-    *pr = r;
+    pr              = dv_push(LoopRegistration, &s->regs, 1);
+    *pr             = r;
 
-    pfd = dv_push(pollfd, &s->events, 1);
-    pfd->fd = r->fd;
-    pfd->events = 0;
+    pfd             = dv_push(pollfd, &s->events, 1);
+    pfd->fd         = r->fd;
+    pfd->events     = 0;
+    pfd->revents    = 0;
 
     if (read) {
         pfd->events |= POLLIN;
@@ -126,18 +127,27 @@ MT_LoopRegistration* MT_Loop_RegisterSocket(
 
 /* ------------------------------------------------------------------------- */
 
-MT_LoopRegistration* MT_Loop_RegisterHandle(
+MT_LoopRegistration* MT_Loop_AddServerSocket(
+        MT_MainLoop*    s,
+        MT_Handle       h,
+        MT_Callback     accept,
+        void*           user)
+{
+    return MT_Loop_AddClientSocket(s, h, accept, NULL, NULL, user);
+}
+
+MT_LoopRegistration* MT_Loop_AddHandle(
         MT_MainLoop*    s,
         MT_Handle       h,
         MT_Callback     cb,
         void*           user)
 {
-    return MT_Loop_RegisterSocket(s, h, cb, NULL, NULL, user);
+    return MT_Loop_AddClientSocket(s, h, cb, NULL, NULL, user);
 }
 
 /* ------------------------------------------------------------------------- */
 
-MT_LoopRegistration* MT_Loop_RegisterIdle(
+MT_LoopRegistration* MT_Loop_AddIdle(
         MT_MainLoop*    s,
         MT_Callback     idle,
         void*           user)
@@ -168,7 +178,7 @@ void MT_Loop_Enable(
         if (dv_a(&s->regs, i) == r) {
             struct pollfd* pfd = &dv_a(&s->events, i);
 
-            if (flags & (MT_LOOP_READ | MT_LOOP_HANDLE)) {
+            if (flags & (MT_LOOP_READ | MT_LOOP_HANDLE | MT_LOOP_ACCEPT)) {
                 assert(r->read);
                 pfd->events |= POLLIN;
             }
@@ -200,7 +210,7 @@ void MT_Loop_Disable(
         if (dv_a(&s->regs, i) == r) {
             struct pollfd* pfd = &dv_a(&s->events, i);
 
-            if (flags & (MT_LOOP_READ | MT_LOOP_HANDLE)) {
+            if (flags & (MT_LOOP_READ | MT_LOOP_HANDLE | MT_LOOP_ACCEPT)) {
                 pfd->events &= ~POLLIN;
                 pfd->revents &= ~POLLIN;
             }
@@ -222,7 +232,7 @@ void MT_Loop_Disable(
 
 /* ------------------------------------------------------------------------- */
 
-void MT_Loop_Unregister(MT_MainLoop* s, MT_LoopRegistration* r)
+void MT_Loop_Remove(MT_MainLoop* s, MT_LoopRegistration* r)
 {
     int i;
     if (r->idle) {
@@ -261,11 +271,11 @@ void MT_Loop_Unregister(MT_MainLoop* s, MT_LoopRegistration* r)
 
 static int ProcessEvent(MT_MainLoop* s)
 {
-    /* Process the next event from e->events */
-    while (e->currentEvent < dv_size(&e->events)) {
-        struct pollfd* pfd = &dv_a(&e->events, e->currentEvent);
-        MT_LoopRegistration* r = dv_a(&e->regs, e->currentEvent);
-        assert(e->currentEvent >= 0);
+    /* Process the next event from s->events */
+    while (s->currentEvent < dv_size(&s->events)) {
+        struct pollfd* pfd = &dv_a(&s->events, s->currentEvent);
+        MT_LoopRegistration* r = dv_a(&s->regs, s->currentEvent);
+        assert(s->currentEvent >= 0);
 
         /* Mask the events to only those we care about */
         pfd->revents &= POLLIN | POLLOUT | POLLHUP;
@@ -288,7 +298,7 @@ static int ProcessEvent(MT_MainLoop* s)
             return 0;
         }
 
-        e->currentEvent++;
+        s->currentEvent++;
     }
 
     /* We couldn't find any events */
@@ -297,11 +307,11 @@ static int ProcessEvent(MT_MainLoop* s)
 
 static void CallIdle(MT_MainLoop* s)
 {
-    while (e->currentIdle < dv_size(&e->idle)) {
-        MT_LoopRegistration* r = dv_a(&e->idle, e->currentIdle);
-        assert(e->currentIdle >= 0);
+    while (s->currentIdle < dv_size(&s->idle)) {
+        MT_LoopRegistration* r = dv_a(&s->idle, s->currentIdle);
+        assert(s->currentIdle >= 0);
         r->idle(r->user);
-        e->currentIdle++;
+        s->currentIdle++;
     }
 }
 
@@ -310,28 +320,28 @@ int MT_Current_Step(void)
 	MT_MainLoop* s = MT_Current();
     int ready;
 
-    if (e->exit) {
-        return e->exitcode;
+    if (s->exit) {
+        return s->exitcode;
     }
 
     /* Try and process an exisiting event */
-    if (!ProcessEvent(e)) {
+    if (!ProcessEvent(s)) {
         return 0;
     }
 
-    CallIdle(e);
+    CallIdle(s);
 
     do {
-        ready = poll(dv_data(&e->events), dv_size(&e->events), -1);
+        ready = poll(dv_data(&s->events), dv_size(&s->events), -1);
     } while (ready < 0 && errno == EINTR);
 
     if (ready < 0)
         return -1;
 
-    e->currentIdle = 0;
-    e->currentEvent = 0;
+    s->currentIdle = 0;
+    s->currentEvent = 0;
 
-    return ProcessEvent(e);
+    return ProcessEvent(s);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -339,11 +349,46 @@ int MT_Current_Step(void)
 int MT_Current_Run(void)
 {
 	MT_MainLoop* s = MT_Current();
+
     while (!s->exit) {
-        if (MT_Current_Step()) {
+        int ready;
+
+        s->currentIdle = 0;
+        CallIdle(s);
+
+        ready = poll(dv_data(&s->events), dv_size(&s->events), -1);
+        s->currentEvent = 0;
+
+        if (ready > 0) {
+            while (s->currentEvent < dv_size(&s->events)) {
+                struct pollfd* pfd = &dv_a(&s->events, s->currentEvent);
+                MT_LoopRegistration* r = dv_a(&s->regs, s->currentEvent);
+
+                /* Mask the events to only those we care about */
+                pfd->revents &= POLLIN | POLLOUT | POLLHUP;
+
+                if ((pfd->revents & POLLIN) && r->read) {
+                    r->read(r->user);
+                }
+
+                if ((pfd->revents & POLLHUP) && r->close) {
+                    r->close(r->user);
+                    continue;
+                }
+
+                if ((pfd->revents & POLLOUT) && r->write) {
+                    r->write(r->user);
+                }
+
+                s->currentEvent++;
+            }
+
+        } else if (ready < 0 && errno != EINTR) {
             return -1;
         }
+
     }
+
     return s->exitcode;
 }
 

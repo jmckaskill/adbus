@@ -43,8 +43,6 @@ int main()
     Server* server;
     adbus_Socket sock;
     MT_MainLoop* loop;
-
-    putenv((char*) "DBUS_SESSION_BUS_ADDRESS=tcp:host=localhost,port=12345");
    
     loop = MT_Loop_New();
     MT_SetCurrent(loop);

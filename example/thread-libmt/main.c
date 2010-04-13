@@ -27,6 +27,7 @@
 #include "client.h"
 #include "dmem/string.h"
 #include <stdio.h>
+#include <limits.h>
 
 #if defined _WIN32 && !defined NDEBUG
 #   include <crtdbg.h>
@@ -49,7 +50,7 @@ void Pinger_Init(Pinger* p, adbus_Connection* c)
     p->state = adbus_state_new();
     p->proxy = adbus_proxy_new(p->state);
     p->leftToReceive = 0;
-    p->asyncPingsLeft = 10000;
+    p->asyncPingsLeft = 100000;
 
     adbus_conn_ref(c);
     adbus_proxy_init(
@@ -71,7 +72,7 @@ void Pinger_Destroy(Pinger* p)
 int Pinger_Run(Pinger* p)
 {
     int i;
-    for (i = 0; i < 1000; i++) {
+    for (i = 0; i < 10000; i++) {
         Pinger_AsyncPing(p);
     }
     return p->leftToReceive > 0;
@@ -188,6 +189,7 @@ static void PingerFinished()
 
 int main(void)
 {
+    uintptr_t block = 0;
     adbus_Connection* c;
 
     sMainLoop = MT_Loop_New();

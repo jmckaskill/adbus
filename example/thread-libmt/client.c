@@ -134,8 +134,8 @@ uint8_t MTI_Client_Rand(void* u)
 void MTI_Client_Disconnect(void* u)
 {
     MTI_Client* s = (MTI_Client*) u;
-    MT_Current_Unregister(s->reg);
-    MT_Current_Unregister(s->idlereg);
+    MT_Current_Remove(s->reg);
+    MT_Current_Remove(s->idlereg);
 
     closesocket(s->sock); 
     s->sock = ADBUS_SOCK_INVALID;
@@ -440,8 +440,8 @@ adbus_Connection* MT_CreateDBusConnection(adbus_BusType type)
     if (adbus_conn_parse(s->connection, buf + used, recvd - used))
         goto err;
 
-    s->reg = MT_Current_RegisterSocket(s->sock, &MTI_Client_OnReceive, NULL, &MTI_Client_Disconnect, s);
-    s->idlereg = MT_Current_RegisterIdle(&MTI_Client_OnIdle, s);
+    s->reg = MT_Current_AddClientSocket(s->sock, &MTI_Client_OnReceive, NULL, &MTI_Client_Disconnect, s);
+    s->idlereg = MT_Current_AddIdle(&MTI_Client_OnIdle, s);
 
     if (adbus_conn_block(s->connection, ADBUS_WAIT_FOR_CONNECTED, &handle, -1))
         goto err;
