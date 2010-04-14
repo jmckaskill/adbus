@@ -87,7 +87,7 @@ private:
 
     /* Called on any thread */
     static void         Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);
-    static void         GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser);
+    static void         GetProxy(void* u, adbus_ProxyCallback* cb, void** cbuser);
     static int          Block(void* u, adbus_BlockType type, uintptr_t* data, int timeoutms);
     static void         Free(void* u);
 

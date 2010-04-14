@@ -766,7 +766,7 @@ static int DoCall(adbus_CbData* d)
         adbus_msg_setsig(d->ret, ds_cstr(&mbr->retsig), ds_size(&mbr->retsig));
     }
 
-    ret = adbus_dispatch(mbr->methodCallback, d);
+    ret = mbr->methodCallback(d);
     adbus_iface_deref(mbr->interface);
     return ret;
 }
@@ -799,11 +799,11 @@ int adbus_mbr_call(
     d->user1 = (void*) mbr;
     d->user2 = bind->b.cuser2;
 
-    if (bind->b.proxy) {
-        return bind->b.proxy(bind->b.puser, &DoCall, d);
-    } else {
-        return DoCall(d);
-    }
+    return adbusI_proxiedDispatch(
+            bind->b.proxy,
+            bind->b.puser,
+            &DoCall,
+            d);
 }
 
 

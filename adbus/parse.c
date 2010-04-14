@@ -443,7 +443,6 @@ err:
 void adbusI_clonedata(const adbus_Message* from, adbus_Message* to)
 {
     ptrdiff_t off;
-	size_t alloc;
 
 	memcpy(to, from, sizeof(adbus_Message));
     to->data = malloc(from->size);

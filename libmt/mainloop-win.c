@@ -293,6 +293,11 @@ void MT_Loop_Remove(MT_MainLoop* s, MT_LoopRegistration* r)
             if (dv_a(&s->regs, i) == r) {
                 dv_erase(LoopRegistration, &s->regs, i, 1);
                 dv_erase(HANDLE, &s->handles, i, 1);
+
+                if (s->currentEvent == i) {
+                    s->currentEvent = -1;
+                }
+
                 break;
             }
         }
@@ -310,6 +315,174 @@ static void CallIdle(MT_MainLoop* s)
         s->currentIdle++;
     }
 }
+
+/* ------------------------------------------------------------------------- */
+
+/* 0 for continue, -1 for error, 1 for finished the current event */
+static int EventStep(MT_MainLoop* s)
+{
+    MT_LoopRegistration* r;
+
+    if (s->currentEvent == -1)
+        return 1;
+
+    r = dv_a(&s->regs, s->currentEvent);
+
+    if (!r->isSocket) {
+        s->currentEvent = -1;
+        r->cb(r->user);
+        return 1;
+    }
+
+    if (r->lNetworkEvents & FD_READ) {
+        r->lNetworkEvents &= ~FD_READ;
+        r->read(r->user);
+        return 0;
+    }
+
+    if (r->lNetworkEvents & FD_CLOSE) {
+        /* There's no point processing other events when the socket has been closed */
+        r->lNetworkEvents = 0;
+        s->currentEvent = -1;
+        r->close(r->user);
+        return 0;
+    }
+
+    if (r->lNetworkEvents & FD_ACCEPT) {
+        r->lNetworkEvents &= ~FD_ACCEPT;
+        r->accept(r->user);
+        return 0;
+    }
+    
+    if (r->lNetworkEvents & FD_WRITE) {
+        r->lNetworkEvents &= ~FD_WRITE;
+        r->write(r->user);
+        return 0;
+    }
+
+    s->currentEvent = -1;
+    return 1;
+}
+
+/* 0 for continue, -1 for error, 1 for finished all the idle callbacks */
+static int IdleStep(MT_MainLoop* s)
+{
+    assert(s->currentIdle != -1);
+    if (s->currentIdle < (int) dv_size(&s->idle)) {
+        MT_LoopRegistration* r = dv_a(&s->regs, s->currentIdle);
+        s->currentIdle++;
+        r->idle(r->user);
+        return 0;
+
+    } else {
+        return 1;
+    }
+}
+
+/* -1 for error, 0 for timeout, 1 for have an event */
+static int WaitForEvent(MT_MainLoop* s, DWORD timeout)
+{
+    for (;;) {
+        DWORD ret = WaitForMultipleObjects(
+                dv_size(&s->handles),
+                dv_data(&s->handles),
+                FALSE,
+                timeout);
+
+        if (ret < WAIT_OBJECT_0 + dv_size(&s->handles)) {
+            MT_LoopRegistration* r = dv_a(&s->regs, ret);
+            WSANETWORKEVENTS events;
+
+            if (!r->isSocket)
+                return 1;
+
+            if (WSAEnumNetworkEvents(r->socket, r->handle, &events))
+                return -1;
+
+            r->lNetworkEvents = events.lNetworkEvents & r->mask;
+            if (r->lNetworkEvents == 0)
+                continue;
+
+            s->currentEvent = (int) ret;
+            return 1;
+
+        } else if (ret == WAIT_TIMEOUT) {
+            return 0;
+
+        } else {
+            return -1;
+
+        }
+    }
+}
+
+int MT_Current_Step(void)
+{
+	MT_MainLoop* s = MT_Current();
+    int ret;
+
+    if (s->exit)
+        return -1;
+
+    switch (s->state) {
+        for (;;) {
+            case MTI_LOOP_INIT:
+                ret = WaitForEvent(s, INFINITE);
+                if (ret != 1)
+                    return -1;
+
+                /* fall through */
+
+                s->state = MTI_LOOP_EVENT;
+            case MTI_LOOP_EVENT:
+                /* Finish processing the current event */
+                ret = EventStep(s);
+                if (ret != 1) {
+                    /* Called a callback or an error */
+                    return ret;
+                }
+
+                /* see if there are any more pending os events */
+                for (;;) {
+                    ret = WaitForEvent(s, 0);
+
+                    if (ret == 1) {
+                        /* Got an event - process it */
+                        ret = EventStep(s);
+                        if (ret != 1) {
+                            /* Called a callback or an error */
+                            return ret;
+                        }
+
+                    } else if (ret == -1) {
+                        /* Error getting the events */
+                        return ret;
+
+                    } else {
+                        /* No more pending events */
+                        break;
+
+                    }
+                }
+
+                /* fall through */
+
+                s->currentIdle = 0;
+                s->state = MTI_LOOP_IDLE;
+            case MTI_LOOP_IDLE:
+                ret = IdleStep(s);
+                if (ret != 1) {
+                    /* Called a callback or an error */
+                    return ret;
+                }
+
+                /* loop around */
+        }
+    }
+
+    return 0;
+}
+
 
 /* ------------------------------------------------------------------------- */
 
@@ -347,6 +520,7 @@ static void Process(MT_MainLoop* s, DWORD index)
     }
 }
 
+
 int MT_Current_Run(void)
 {
 	MT_MainLoop* s = MT_Current();
@@ -373,6 +547,7 @@ int MT_Current_Run(void)
                     INFINITE);
 
             if (ret < WAIT_OBJECT_0 + dv_size(&s->handles)) {
+
                 Process(s, ret);
             } else {
                 return -1;

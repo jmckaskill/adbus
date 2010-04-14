@@ -664,11 +664,11 @@ int adbusI_getProperty(adbus_CbData* d)
     d->user1 = (void*) mbr;
     d->user2 = bind->b.cuser2;
 
-    if (bind->b.proxy) {
-        return bind->b.proxy(bind->b.puser, &adbusI_proxiedGetProperty, d);
-    } else {
-        return adbusI_proxiedGetProperty(d);
-    }
+    return adbusI_proxiedDispatch(
+            bind->b.proxy,
+            bind->b.puser,
+            &adbusI_proxiedGetProperty,
+            d);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -698,11 +698,11 @@ int adbusI_getAllProperties(adbus_CbData* d)
     d->user1 = (void*) interface;
     d->user2 = bind->b.cuser2;
 
-    if (bind->b.proxy) {
-        return bind->b.proxy(bind->b.puser, &adbusI_proxiedGetAllProperties, d);
-    } else {
-        return adbusI_proxiedGetAllProperties(d);
-    }
+    return adbusI_proxiedDispatch(
+            bind->b.proxy,
+            bind->b.puser,
+            &adbusI_proxiedGetAllProperties,
+            d);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -740,10 +740,10 @@ int adbusI_setProperty(adbus_CbData* d)
     d->user1 = (void*) mbr;
     d->user2 = bind->b.cuser2;
     
-    if (bind->b.proxy) {
-        return bind->b.proxy(bind->b.puser, &adbusI_proxiedSetProperty, d);
-    } else {
-        return adbusI_proxiedSetProperty(d);
-    }
+    return adbusI_proxiedDispatch(
+            bind->b.proxy,
+            bind->b.puser,
+            &adbusI_proxiedSetProperty,
+            d);
 }
 

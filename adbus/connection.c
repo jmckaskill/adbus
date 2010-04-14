@@ -642,7 +642,9 @@ int adbus_conn_dispatch(adbus_Connection* c, const adbus_Message* m)
 
     } else if (d.msg->type == ADBUS_MSG_METHOD) {
 
-        d.ret = c->dispatchReturn;
+        if ((d.msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
+            d.ret = c->dispatchReturn;
+        }
 
         if (adbusI_dispatchMethod(c, &d)) {
             goto err;
@@ -742,11 +744,13 @@ int adbus_conn_continue(adbus_Connection* c)
 
         } else if (d.msg->type == ADBUS_MSG_METHOD) {
 
-            if (!msg->ret) {
-                msg->ret = adbus_msg_new();
-            }
+            if ((d.msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
+                if (!msg->ret) {
+                    msg->ret = adbus_msg_new();
+                }
 
-            d.ret = msg->ret;
+                d.ret = msg->ret;
+            }
 
             if (adbusI_dispatchMethod(c, &d)) {
                 goto err;
@@ -966,21 +970,15 @@ void adbus_conn_proxy(adbus_Connection* c, adbus_Callback callback, adbus_Callba
  */
 void adbus_conn_getproxy(
         adbus_Connection*       c,
-        adbus_ProxyMsgCallback* msgcb,
-        void**                  msguser,
         adbus_ProxyCallback*    cb,
         void**                  cbuser)
 {
     if (c->vtable.get_proxy && adbus_conn_shouldproxy(c))
     {
-        c->vtable.get_proxy(c->obj, msgcb, msguser, cb, cbuser);
+        c->vtable.get_proxy(c->obj, cb, cbuser);
     }
     else
     {
-        if (msgcb)
-            *msgcb = NULL;
-        if (msguser)
-            *msguser = NULL;
         if (cb)
             *cb = NULL;
         if (cbuser)

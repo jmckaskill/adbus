@@ -115,7 +115,7 @@ Remote::~Remote()
     m_Socket->deleteLater();
 }
 
-int Remote::SendMsg(void* d, adbus_Message* m)
+int Remote::SendMsg(void* d, const adbus_Message* m)
 {
     Remote* c = (Remote*) d;
     return c->m_Socket->write(m->data, m->size);

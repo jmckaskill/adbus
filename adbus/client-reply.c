@@ -25,6 +25,7 @@
 
 #include "client-reply.h"
 #include "connection.h"
+#include "messages.h"
 
 /** \struct adbus_Reply
  *  \brief Data structure to register for return and error messages from a
@@ -354,7 +355,6 @@ int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
          * callback may invalidate ii.
          */
         int ret = 0;
-        adbus_MsgCallback cb;
 
         dh_del(Reply, &c->replies.lookup, ii);
         reply->set = NULL;
@@ -366,20 +366,22 @@ int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
 				adbus_conn_uniquename(c, NULL),
 				(void*) c);
 
-        if (d->msg->type == ADBUS_MSG_RETURN) {
-            cb = reply->r.callback;
+        if (d->msg->type == ADBUS_MSG_RETURN && reply->r.callback) {
             d->user1 = reply->r.cuser;
-        } else {
-            cb = reply->r.error;
-            d->user1 = reply->r.euser;
-        }
+            ret = adbusI_proxiedDispatch(
+                    reply->r.proxy,
+                    reply->r.puser,
+                    reply->r.callback,
+                    d);
 
-        if (cb) {
-            if (reply->r.proxy) {
-                ret = reply->r.proxy(reply->r.puser, cb, d);
-            } else {
-                ret = adbus_dispatch(cb, d);
-            }
+        } else if (d->msg->type == ADBUS_MSG_ERROR && reply->r.error) {
+            d->user1 = reply->r.euser;
+            ret = adbusI_proxiedDispatch(
+                    reply->r.proxy,
+                    reply->r.puser,
+                    reply->r.error,
+                    d);
+
         }
 
         reply->incallback = 0;

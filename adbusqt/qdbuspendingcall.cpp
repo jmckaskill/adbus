@@ -45,7 +45,7 @@ void QDBusPendingCallPrivate::AddReply(void* u)
     r.error = &QDBusPendingCallPrivate::ErrorCallback;
     r.euser = d;
 
-    r.proxy = &QDBusProxy::ProxyMsgCallback;
+    r.proxy = &QDBusProxy::ProxyCallback;
     r.puser = (QDBusProxy*) d;
 
     r.remote = d->m_Service.constData();

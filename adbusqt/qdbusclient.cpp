@@ -196,7 +196,7 @@ QDBusClientThreadData::~QDBusClientThreadData()
 
 static QThreadStorage<QDBusClientThreadData*> s_ThreadData;
 
-void QDBusClient::GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser)
+void QDBusClient::GetProxy(void* u, adbus_ProxyCallback* cb, void** cbuser)
 {
     QDBusClient* c = (QDBusClient*) u;
 
@@ -204,10 +204,6 @@ void QDBusClient::GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguse
 
     if (cb) {
         *cb = QDBusProxy::ProxyCallback;
-    }
-
-    if (msgcb) {
-        *msgcb = QDBusProxy::ProxyMsgCallback;
     }
 
     if (!s_ThreadData.hasLocalData()) {
@@ -223,10 +219,6 @@ void QDBusClient::GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguse
 
     if (cbuser) {
         *cbuser = p;
-    }
-
-    if (msguser) {
-        *msguser = p;
     }
 }
 

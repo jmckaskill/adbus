@@ -386,7 +386,7 @@ void QDBusMessagePrivate::reset()
 
 /* ------------------------------------------------------------------------- */
 
-void QDBusMessagePrivate::getHeaders(adbus_Message* msg)
+void QDBusMessagePrivate::getHeaders(const adbus_Message* msg)
 {
     type = msg->type;
     flags = msg->flags;
@@ -422,7 +422,12 @@ void QDBusMessagePrivate::getHeaders(adbus_Message* msg)
     }
 }
 
-/* ------------------------------------------------------------------------- */
+
+
+
+
+
+
 
 
 /* ------------------------------------------------------------------------- */

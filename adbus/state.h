@@ -72,10 +72,8 @@ struct adbusI_StateConn
     d_IList(StateData)      binds;
     d_IList(StateData)      matches;
     d_IList(StateData)      replies;
-    adbus_ProxyMsgCallback  proxy;
+    adbus_ProxyCallback     proxy;
     void*                   puser;
-    adbus_ProxyCallback     relproxy;
-    void*                   relpuser;
 };
 
 struct adbus_State

@@ -159,7 +159,7 @@ Remote::~Remote()
     closesocket(m_Socket);
 }
 
-int Remote::SendMsg(void* d, adbus_Message* m)
+int Remote::SendMsg(void* d, const adbus_Message* m)
 {
     Remote* r = (Remote*) d;
     return (int) send(r->m_Socket, m->data, (int) m->size, 0);

@@ -218,7 +218,7 @@ void Remote_FlushTxBuffer(Remote* r)
 
 /* -------------------------------------------------------------------------- */
 
-int Remote_SendMsg(void* u, adbus_Message* m)
+int Remote_SendMsg(void* u, const adbus_Message* m)
 {
     Remote* r = (Remote*) u;
     adbus_buf_append(r->txbuf, m->data, m->size);

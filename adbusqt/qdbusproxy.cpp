@@ -120,47 +120,6 @@ void QDBusProxy::ProxyCallback(void* u, adbus_Callback cb, adbus_Callback releas
 
 /* ------------------------------------------------------------------------- */
 
-QEvent::Type QDBusProxyMsgEvent::type = (QEvent::Type)QEvent::registerEventType();
-
-QDBusProxyMsgEvent::~QDBusProxyMsgEvent()
-{
-    adbus_conn_deref(connection);
-	adbus_buf_free(msgBuffer);
-	adbus_msg_free(ret);
-}
-
-// Called on the connection thread
-int QDBusProxy::ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData* d)
-{
-    QDBusProxy* s = (QDBusProxy*) user;
-    Q_ASSERT(d->connection = s->m_Connection);
-
-    if (QThread::currentThread() == s->thread()) {
-        return adbus_dispatch(cb, d);
-
-    } else {
-        QDBusProxyMsgEvent* e = new QDBusProxyMsgEvent;
-		e->msgBuffer = adbus_buf_new();
-        e->cb = cb;
-        e->connection = d->connection;
-        e->user1 = d->user1;
-        e->user2 = d->user2;
-		e->ret = d->ret ? adbus_msg_new() : NULL;
-
-
-        adbus_clonedata(e->msgBuffer, d->msg, &e->msg);
-        adbus_conn_ref(e->connection);
-
-        QCoreApplication::postEvent(s, e);
-
-        // We will send the return on the other thread
-        d->delay = 1;
-        return 0;
-    }
-}
-
-/* ------------------------------------------------------------------------- */
-
 // Called on the local thread
 bool QDBusProxy::event(QEvent* event)
 {
@@ -176,19 +135,6 @@ bool QDBusProxy::event(QEvent* event)
         if (e->cb) {
             e->cb(e->user);
         }
-        return true;
-
-    } else if (event->type() == QDBusProxyMsgEvent::type) {
-        QDBusProxyMsgEvent* e = (QDBusProxyMsgEvent*) event;
-
-        adbus_CbData d = {};
-        d.connection = e->connection;
-        d.msg   = &e->msg;
-        d.user1 = e->user1;
-        d.user2 = e->user2;
-        d.ret = e->ret;
-
-        adbus_dispatch(e->cb, &d);
         return true;
 
     } else {

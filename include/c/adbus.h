@@ -195,7 +195,6 @@ typedef uint8_t         (*adbus_RandCallback)(void*);
 typedef int             (*adbus_MsgCallback)(adbus_CbData* d);
 typedef void            (*adbus_Callback)(void*);
 typedef void            (*adbus_ProxyCallback)(void*,adbus_Callback cb,adbus_Callback release,void*);
-typedef int             (*adbus_ProxyMsgCallback)(void*,adbus_MsgCallback,adbus_CbData*);
 
 #include "adbus-iterator.h"
 
@@ -230,8 +229,7 @@ struct adbus_CbData
     jmp_buf                 jmpbuf;
 };
 
-ADBUS_API int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d);
-ADBUS_API int adbus_send_reply(adbus_CbData* d);
+ADBUS_API int adbus_finish_message(adbus_Connection* c, adbus_Message* msg, adbus_MsgFactory* ret);
 
 
 struct adbus_Argument
@@ -372,7 +370,7 @@ ADBUS_API int adbus_error_argument(
 
 
 typedef int  (*adbus_SendMsgCallback)(void*, const adbus_Message*);
-typedef void (*adbus_GetProxyCallback)(void*, adbus_ProxyMsgCallback*, void**, adbus_ProxyCallback*, void**);
+typedef void (*adbus_GetProxyCallback)(void*, adbus_ProxyCallback*, void**);
 typedef int  (*adbus_BlockCallback)(void*, adbus_BlockType type, uintptr_t* handle, int timeoutms);
 
 struct adbus_ConnVTable
@@ -415,8 +413,6 @@ ADBUS_API void adbus_conn_proxy(
 
 ADBUS_API void adbus_conn_getproxy(
         adbus_Connection*       connection,
-        adbus_ProxyMsgCallback* msgcb,
-        void**                  msgcbuser,
         adbus_ProxyCallback*    cb,
         void**                  cbuser);
 
@@ -491,7 +487,7 @@ struct adbus_Match
     adbus_MsgCallback       callback;
     void*                   cuser;
 
-    adbus_ProxyMsgCallback  proxy;
+    adbus_ProxyCallback     proxy;
     void*                   puser;
 
     adbus_Callback          release[2];
@@ -516,7 +512,7 @@ struct adbus_Reply
     adbus_MsgCallback       error;
     void*                   euser;
 
-    adbus_ProxyMsgCallback  proxy;
+    adbus_ProxyCallback     proxy;
     void*                   puser;
 
     adbus_Callback          release[2];
@@ -536,7 +532,7 @@ struct adbus_Bind
     const adbus_Interface*  interface;
     void*                   cuser2;
 
-    adbus_ProxyMsgCallback  proxy;
+    adbus_ProxyCallback     proxy;
     void*                   puser;
 
     adbus_Callback          release[2];

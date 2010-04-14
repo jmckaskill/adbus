@@ -41,6 +41,7 @@ struct MT_LoopRegistration
 
     int                             isSocket;
     long                            mask;
+    long                            lNetworkEvents;
 
     MT_Callback                     read;
     MT_Callback                     write;
@@ -51,6 +52,13 @@ struct MT_LoopRegistration
     void*                           user;
 };
 
+enum MTI_LoopStepState
+{
+    MTI_LOOP_INIT = 0,
+    MTI_LOOP_EVENT,
+    MTI_LOOP_IDLE,
+};
+
 struct MT_MainLoop
 {
     int                             exit;
@@ -58,9 +66,12 @@ struct MT_MainLoop
     
     d_Vector(LoopRegistration)      regs;
     d_Vector(HANDLE)                handles;
+    int                             currentEvent;
 
     d_Vector(LoopRegistration)      idle;
     int                             currentIdle;
+
+    enum MTI_LoopStepState          state;
 
     MTI_MessageQueue                queue;
 };

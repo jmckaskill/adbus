@@ -71,13 +71,13 @@
  *  A message factory used for setting up returned messages.
  *
  *  By default this will be used to return a message immediately after the
- *  callback completes unless noreturn is set to non-zero.
+ *  callback completes unless delay is set to non-zero.
  *
- *  \warning This is only set for method and property callbacks.
+ *  \warning This is only set when a return message has been requested.
  */
 
-/** \var adbus_CbData::noreturn
- *  Flag to indicate that no return message should be sent.
+/** \var adbus_CbData::delay
+ *  Flag to indicate that the return message will be sent later.
  */
 
 /** \var adbus_CbData::setprop
@@ -106,10 +106,7 @@
 
 /* ------------------------------------------------------------------------- */
 
-/** Dispatch a message callback
- *  \relates adbus_CbData
- */
-int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d)
+static int DoDispatch(adbus_MsgCallback callback, adbus_CbData* d)
 {
     int ret = setjmp(d->jmpbuf);
     if (ret == ADBUSI_ERROR) {
@@ -120,6 +117,74 @@ int adbus_dispatch(adbus_MsgCallback callback, adbus_CbData* d)
 
     adbus_iter_args(&d->checkiter, d->msg);
     return callback(d);
+}
+
+typedef struct ProxiedDispatch ProxiedDispatch;
+
+struct ProxiedDispatch
+{
+    adbus_Connection*   c;
+    adbus_Message*      msg;
+    adbus_MsgFactory*   ret;
+    adbus_MsgCallback   cb;
+    void*               user1;
+    void*               user2;
+};
+
+static void DoProxiedDispatch(void* u)
+{
+    struct ProxiedDispatch* s = (ProxiedDispatch*) u;
+
+    adbus_CbData d;
+
+    ZERO(d);
+    d.msg = s->msg;
+    d.ret = s->ret;
+    d.connection = s->c;
+    d.user1 = s->user1;
+    d.user2 = s->user2;
+
+    DoDispatch(s->cb, &d);
+
+    if (!d.delay) {
+        adbus_finish_message(s->c, s->msg, s->ret);
+    }
+
+    s->msg = NULL;
+}
+
+static void FreeProxiedDispatch(void* u)
+{
+    struct ProxiedDispatch* s = (ProxiedDispatch*) u;
+
+    if (s->msg) {
+        adbus_finish_message(s->c, s->msg, NULL);
+    }
+
+    free(s);
+}
+
+int adbusI_proxiedDispatch(
+        adbus_ProxyCallback proxy,
+        void*               puser,
+        adbus_MsgCallback   callback,
+        adbus_CbData*       d)
+{
+    if (proxy) {
+
+        ProxiedDispatch* s  = NEW(ProxiedDispatch);
+        s->c                = d->connection;
+        s->msg              = d->msg;
+        s->ret              = d->ret;
+
+        proxy(puser, &DoProxiedDispatch, &FreeProxiedDispatch, s);
+
+        d->delay = 1;
+        return 0;
+
+    } else {
+        return DoDispatch(callback, d);
+    }
 }
 
 /* ------------------------------------------------------------------------- */

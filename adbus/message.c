@@ -408,7 +408,6 @@ int adbus_msg_build(adbus_MsgFactory* m, adbus_Message* msg)
  */
 int adbus_msg_send(adbus_MsgFactory* m, adbus_Connection* c)
 {
-    int ret;
     adbus_Message msg;
 
     if (adbus_msg_serial(m) < 0) {

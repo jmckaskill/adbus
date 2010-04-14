@@ -153,16 +153,16 @@ static void FreeData(adbusI_StateData* d)
     dil_remove(StateData, d, &d->hl);
 
     if (d->release[0]) {
-        if (d->conn->relproxy) {
-            d->conn->relproxy(d->conn->relpuser, NULL, d->release[0], d->ruser[0]);
+        if (d->conn->proxy) {
+            d->conn->proxy(d->conn->puser, NULL, d->release[0], d->ruser[0]);
         } else {
             d->release[0](d->ruser[0]);
         }
     }
 
     if (d->release[1]) {
-        if (d->conn->relproxy) {
-            d->conn->relproxy(d->conn->relpuser, NULL, d->release[1], d->ruser[1]);
+        if (d->conn->proxy) {
+            d->conn->proxy(d->conn->puser, NULL, d->release[1], d->ruser[1]);
         } else {
             d->release[1](d->ruser[1]);
         }
@@ -495,7 +495,7 @@ static void LookupConnection(adbus_State* s, adbusI_StateData* d, adbus_Connecti
     conn->connection = c;
     conn->refConnection = s->refConnection;
     dil_insert_after(StateConn, &s->connections, conn, &conn->hl);
-    adbus_conn_getproxy(c, &conn->proxy, &conn->puser, &conn->relproxy, &conn->relpuser);
+    adbus_conn_getproxy(c, &conn->proxy, &conn->puser);
 
     if (s->refConnection) {
         adbus_conn_ref(c);

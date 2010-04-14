@@ -49,21 +49,6 @@ struct MTI_Client
     MT_MainLoop*            loop;
 };
 
-
-struct MTI_ClientMessage
-{
-    MT_Header               header;
-    MT_Message              msgHeader;
-    adbus_Connection*       connection;
-    adbus_Buffer*           msgBuffer;
-    adbus_Message           msg;
-    adbus_MsgFactory*       ret;
-    void*                   user1;
-    void*                   user2;
-    adbus_Bool              hasReturn;
-    adbus_MsgCallback       cb;
-};
-
 struct MTI_ProxyMessage
 {
     MT_Header               header;
@@ -81,7 +66,7 @@ void MTI_ProxyMessage_Free(MT_Header* h);
 
 int     MTI_Client_SendFlush(MTI_Client* s, size_t req);
 void    MTI_Client_OnIdle(void* u);
-int     MTI_Client_SendMsg(void* u, adbus_Message* m);
+int     MTI_Client_SendMsg(void* u, const adbus_Message* m);
 int     MTI_Client_Send(void* u, const char* buf, size_t sz);
 int     MTI_Client_Recv(void* u, char* buf, size_t sz);
 uint8_t MTI_Client_Rand(void* u);
@@ -91,7 +76,7 @@ void    MTI_Client_OnReceive(void* u);
 int     MTI_Client_Block(void* u, adbus_BlockType type, uintptr_t* block, int timeoutms);
 void    MTI_Client_Connected(void* u);
 void    MTI_Client_ConnectionProxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);
-void    MTI_Client_GetProxy(void* u, adbus_ProxyMsgCallback* msgcb, void** msguser, adbus_ProxyCallback* cb, void** cbuser);
+void    MTI_Client_GetProxy(void* u, adbus_ProxyCallback* cb, void** cbuser);
 void    MTI_Client_Free(void* u);;
 
 void    MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);

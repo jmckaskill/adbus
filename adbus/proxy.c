@@ -474,8 +474,6 @@ struct BlockData
     void*                   euser;
     adbus_ProxyCallback     proxy;
     void*                   puser;
-    adbus_ProxyMsgCallback  msgproxy;
-    void*                   msgpuser;
     adbus_Reply             reply;
     adbus_ConnReply*        connReply;
     adbusI_thread_t         localThread;
@@ -494,19 +492,6 @@ static void CallLocalCallback(struct BlockData* s, adbus_Callback cb, adbus_Call
             release(s);
         }
     }
-}
-
-static int CallLocalMsgCallback(struct BlockData* s, adbus_MsgCallback cb, void* user, adbus_CbData* d)
-{
-    if (cb) {
-        d->user1 = user;
-        if (s->msgproxy) {
-            return s->msgproxy(s->msgpuser, cb, d);
-        } else {
-            return cb(d);
-        }
-    }
-    return 0;
 }
 
 /* On the local thread */
@@ -570,27 +555,31 @@ static void FinishRemoveReply(void* u)
     }
 }
 
-/* On the connection thread */
+/* On the local thread */
 static int BlockCallback(adbus_CbData* d)
 {
     struct BlockData* s = (struct BlockData*) d->user1;
     ADBUSI_LOG_3("BlockCallback %p", d->user1);
 
-    if (CallLocalMsgCallback(s, s->callback, s->cuser, d))
-        return -1;
+    if (s->callback) {
+        d->user1 = s->cuser;
+        s->callback(d);
+    }
 
     s->err = 0;
     return 0;
 }
 
-/* On the connection thread */
+/* On the local thread */
 static int BlockError(adbus_CbData* d)
 {
     struct BlockData* s = (struct BlockData*) d->user1;
-    ADBUSI_LOG_3("BlockCallback %p", d->user1);
+    ADBUSI_LOG_3("BlockError %p", d->user1);
 
-    if (CallLocalMsgCallback(s, s->error, s->euser, d))
-        return -1;
+    if (s->error) {
+        d->user1 = s->euser;
+        s->error(d);
+    }
 
     s->err = 1;
     return 0;
@@ -638,7 +627,7 @@ int adbus_call_block(adbus_Call* call)
     d.euser             = call->euser;
 
     adbus_conn_ref(d.connection);
-    adbus_conn_getproxy(d.connection, &d.msgproxy, &d.msgpuser, &d.proxy, &d.puser);
+    adbus_conn_getproxy(d.connection, &d.proxy, &d.puser);
 
     r->serial           = (uint32_t) adbus_msg_serial(msg);
     r->remote           = ds_cstr(&p->service);
@@ -647,6 +636,8 @@ int adbus_call_block(adbus_Call* call)
     r->cuser            = &d;
     r->error            = &BlockError;
     r->euser            = &d;
+    r->proxy            = d.proxy;
+    r->puser            = d.puser;
     r->release[0]       = &BlockRelease;
     r->ruser[0]         = &d;
 

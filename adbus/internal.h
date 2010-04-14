@@ -33,7 +33,7 @@
 #   define __STDC_CONSTANT_MACROS
 #endif
 
-#ifdef _MSC_VER
+#if defined _MSC_VER && !defined _CRT_SECURE_NO_DEPRECATE
 #   define _CRT_SECURE_NO_DEPRECATE
 #endif
 

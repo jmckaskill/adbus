@@ -332,7 +332,7 @@ bool QDBusObject::addReply(const QByteArray& remote, uint32_t serial, QObject* r
     d->reply.error = &ErrorCallback;
     d->reply.euser = d;
     
-    d->reply.proxy = &ProxyMsgCallback;
+    d->reply.proxy = &ProxyCallback;
     d->reply.puser = this;
 
     d->connection = m_Connection;
@@ -422,7 +422,7 @@ bool QDBusObject::addMatch(
     d->match.callback = &MatchCallback;
     d->match.cuser = d;
     
-    d->match.proxy = &ProxyMsgCallback;
+    d->match.proxy = &ProxyCallback;
     d->match.puser = this;
 
     d->match.release[0] = &ReleaseMatch;
@@ -713,7 +713,7 @@ bool QDBusObject::bindFromMetaObject(const QByteArray& path, QObject* object, QD
         d->bind.interface = iface;
         d->bind.cuser2 = d;
 
-        d->bind.proxy = &ProxyMsgCallback;
+        d->bind.proxy = &ProxyCallback;
         d->bind.puser = this;
 
         d->bind.release[0] = &ReleaseBind;
@@ -887,7 +887,7 @@ bool QDBusObject::bindFromXml(const QByteArray& path, QObject* object, const cha
     d->bind.interface = iface;
     d->bind.cuser2 = d;
 
-    d->bind.proxy = &ProxyMsgCallback;
+    d->bind.proxy = &ProxyCallback;
     d->bind.puser = this;
 
     d->bind.release[0] = &ReleaseBind;

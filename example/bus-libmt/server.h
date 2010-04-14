@@ -65,7 +65,7 @@ struct Remote
 Remote* Remote_New(adbus_Socket sock, adbus_Server* s);
 void    Remote_Free(Remote* r);
 void    Remote_FlushTxBuffer(Remote* r);
-int     Remote_SendMsg(void* u, adbus_Message* m);
+int     Remote_SendMsg(void* u, const adbus_Message* m);
 int     Remote_Send(void* u, const char* data, size_t sz);
 uint8_t Remote_Rand(void* u);
 void    Remote_OnIdle(void* u);

@@ -75,7 +75,7 @@ public:
     QDBusMessagePrivate() {reset();}
 
     void reset();
-    void getHeaders(adbus_Message* msg);
+    void getHeaders(const adbus_Message* msg);
 
     adbus_MessageType   type;
     int                 flags;

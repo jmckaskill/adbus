@@ -189,7 +189,6 @@ static void PingerFinished()
 
 int main(void)
 {
-    uintptr_t block = 0;
     adbus_Connection* c;
 
     sMainLoop = MT_Loop_New();

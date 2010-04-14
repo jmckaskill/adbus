@@ -479,12 +479,16 @@ static int AddMatch(lua_State* L)
         }
     }
 
+    adbus_conn_getproxy(o->c, &o->proxy, &o->puser);
+
+    /* ReleaseObject is called on the connection thread */
+
     m->callback             = &adbusluaI_callback;
     m->cuser                = o;
     m->release[0]           = &ReleaseObject;
     m->ruser[0]             = o;
-
-    adbus_conn_getproxy(o->c, &m->proxy, &m->puser, &o->proxy, &o->puser);
+    m->proxy                = o->proxy;
+    m->puser                = o->puser;
 
     if (adbus_conn_shouldproxy(o->c)) {
         /* Dup the data in the match reg - freed in FreeProxiedAddMatch */
@@ -550,14 +554,18 @@ static int AddReply(lua_State* L)
     r->remoteSize           = (int) remotesz;
     r->serial               = (uint32_t) serial;
 
+    adbus_conn_getproxy(o->c, &o->proxy, &o->puser);
+
+    /* ReleaseObject is called on the connection thread */
+
     r->callback             = &adbusluaI_callback;
     r->cuser                = o;
     r->error                = &adbusluaI_callback;
     r->euser                = o;
     r->release[0]           = &ReleaseObject;
     r->ruser[0]             = o;
-
-    adbus_conn_getproxy(o->c, &r->proxy, &r->puser, &o->proxy, &o->puser);
+    r->proxy                = o->proxy;
+    r->puser                = o->puser;
 
     if (adbus_conn_shouldproxy(o->c)) {
         /* Dup the data in the reply reg - freed in FreeProxiedAddReply */
@@ -612,14 +620,19 @@ static int Bind(lua_State* L)
 
     adbus_bind_init(b);
 
+    adbus_conn_getproxy(o->c, &o->proxy, &o->puser);
+
+    /* ReleaseObject is called on the connection thread */
+
     b->path                 = path;
     b->pathSize             = (int) pathsz;
     b->interface            = i;
     b->cuser2               = o;
     b->release[0]           = &ReleaseObject;
     b->ruser[0]             = o;
+    b->proxy                = o->proxy;
+    b->puser                = o->puser;
 
-    adbus_conn_getproxy(o->c, &b->proxy, &b->puser, &o->proxy, &o->puser);
 
     if (adbus_conn_shouldproxy(o->c)) {
         /* Dup the data in the bind reg - freed in FreeProxiedBind */

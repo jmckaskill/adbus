@@ -25,6 +25,7 @@
 
 #include "client-match.h"
 #include "connection.h"
+#include "messages.h"
 
 /** \struct adbus_Match
  *  \brief Data structure used to register general matches.
@@ -409,11 +410,11 @@ int adbusI_dispatchMatch(adbus_ConnMatch* m, adbus_CbData* d, d_Vector(Argument)
 
     d->user1 = m->m.cuser;
 
-    if (m->m.proxy) {
-        return m->m.proxy(m->m.puser, m->m.callback, d);
-    } else {
-        return adbus_dispatch(m->m.callback, d);
-    }
+    return adbusI_proxiedDispatch(
+            m->m.proxy,
+            m->m.puser,
+            m->m.callback,
+            d);
 }
 
 

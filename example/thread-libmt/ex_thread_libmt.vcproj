@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="ex_thread"
+	Name="ex_thread_libmt"
 	ProjectGUID="{328CFA09-92FF-4D12-92C4-2B52A7975EDD}"
 	RootNamespace="ex_thread_libmt"
 	TargetFrameworkVersion="196613"
@@ -159,82 +159,6 @@
 	<References>
 	</References>
 	<Files>
-		<Filter
-			Name="MT"
-			>
-			<File
-				RelativePath=".\MT\Common.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventLoop.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventLoop_Unix.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventLoop_Win.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventQueue.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\EventQueue_p.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Freelist.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Freelist.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Lock.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Target.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Target.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Thread.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Thread_Unix.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Thread_Win.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time.h"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time_Unix.c"
-				>
-			</File>
-			<File
-				RelativePath=".\MT\Time_Win.c"
-				>
-			</File>
-		</Filter>
 		<File
 			RelativePath=".\client.c"
 			>
@@ -249,6 +173,14 @@
 		</File>
 		<File
 			RelativePath=".\main.c"
+			>
+		</File>
+		<File
+			RelativePath=".\main.h"
+			>
+		</File>
+		<File
+			RelativePath=".\Tupfile"
 			>
 		</File>
 	</Files>

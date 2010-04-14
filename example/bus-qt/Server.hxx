@@ -82,7 +82,7 @@ private slots:
     void readyRead();
 
 private:
-    static int SendMsg(void* d, adbus_Message* m);
+    static int SendMsg(void* d, const adbus_Message* m);
     static int Send(void* d, const char* b, size_t sz);
     static uint8_t Rand(void* d);
 

@@ -54,9 +54,8 @@ struct QDBusProxyMsgEvent : public QEvent
 
     adbus_MsgCallback   cb;
     adbus_Connection*   connection;
-	adbus_Buffer*		msgBuffer;
 	adbus_MsgFactory*	ret;
-    adbus_Message       msg;
+    adbus_Message*      msg;
     void*               user1;
     void*               user2;
 };
@@ -69,7 +68,6 @@ public:
 
     // Called on the connection thread - user is pointer to this QDBusProxy
     static void ProxyCallback(void* user, adbus_Callback cb, adbus_Callback release, void* cbuser);
-    static int  ProxyMsgCallback(void* user, adbus_MsgCallback cb, adbus_CbData* d);
 
     // Called on the local thread
     virtual bool event(QEvent* e);
