@@ -213,7 +213,6 @@ struct adbus_CbData
 
     const adbus_Message*    msg;
     adbus_MsgFactory*       ret;
-
     adbus_Bool              delay;
 
     adbus_Iterator          setprop;
@@ -229,7 +228,10 @@ struct adbus_CbData
     jmp_buf                 jmpbuf;
 };
 
-ADBUS_API int adbus_finish_message(adbus_Connection* c, adbus_Message* msg, adbus_MsgFactory* ret);
+ADBUS_API int adbus_finish_message(
+        adbus_Connection*       c,
+        const adbus_Message*    msg,
+        adbus_MsgFactory*       ret);
 
 
 struct adbus_Argument

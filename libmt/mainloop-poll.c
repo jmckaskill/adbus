@@ -265,6 +265,8 @@ void MT_Loop_Remove(MT_MainLoop* s, MT_LoopRegistration* r)
             }
         }
     }
+
+    free(r);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -368,16 +370,21 @@ int MT_Current_Run(void)
                 pfd->revents &= POLLIN | POLLOUT | POLLHUP;
 
                 if ((pfd->revents & POLLIN) && r->read) {
+                    pfd->revents &= ~POLLIN;
                     r->read(r->user);
+                    continue;
                 }
 
                 if ((pfd->revents & POLLHUP) && r->close) {
+                    pfd->revents &= ~POLLHUP;
                     r->close(r->user);
                     continue;
                 }
 
                 if ((pfd->revents & POLLOUT) && r->write) {
+                    pfd->revents &= ~POLLOUT;
                     r->write(r->user);
+                    continue;
                 }
 
                 s->currentEvent++;

@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <limits.h>
 
-#define REPEAT      1000000
+#define REPEAT 100000
 static int replies = REPEAT;
 static int sent    = 0;
 
@@ -60,11 +60,7 @@ static int Reply(adbus_CbData* d)
     adbus_check_string(d, NULL);
     adbus_check_end(d);
 
-    if (--replies % 10000 == 0) {
-        fprintf(stderr, "Left %d\n", replies);
-    }
-
-    if (replies <= 0) {
+    if (--replies <= 0) {
         adbus_conn_block(d->connection, ADBUS_UNBLOCK, &blockhandle, -1);
     } else {
         /* Keep pings going until we have enough replies */
@@ -101,7 +97,7 @@ int main()
     adbus_proxy_setinterface(proxy, "nz.co.foobar.adbus.PingTest", -1);
 
     /* Limit ourselves to 100000 pings at a time */
-    for (i = 0; i < 100000; ++i) {
+    for (i = 0; i < REPEAT / 10; ++i) {
         SendPing();
     }
 

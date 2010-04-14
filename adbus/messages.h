@@ -28,10 +28,15 @@
 #include "internal.h"
 
 ADBUSI_FUNC int adbusI_proxiedDispatch(
-        adbus_ProxyCallback proxy,
-        void*               puser,
-        adbus_MsgCallback   callback,
-        adbus_CbData*       d);
+        adbus_ProxyCallback     proxy,
+        void*                   puser,
+        adbus_MsgCallback       callback,
+        adbus_CbData*           d);
+
+ADBUSI_FUNC int adbusI_sendReply(
+        adbus_Connection*       c,
+        const adbus_Message*    msg,
+        adbus_MsgFactory*       ret);
 
 ADBUSI_FUNC int adbusI_pathError(adbus_CbData* d);
 ADBUSI_FUNC int adbusI_interfaceError(adbus_CbData* d);

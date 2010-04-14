@@ -63,7 +63,7 @@ struct Remote
 struct Remote* CreateRemote(int fd, struct Server* s);
 void    FreeRemote(struct Remote* r);
 void    FlushRemote(struct Remote* r);
-int     RemoteSendMsg(void* u, adbus_Message* m);
+int     RemoteSendMsg(void* u, const adbus_Message* m);
 int     RemoteSend(void* u, const char* data, size_t sz);
 uint8_t RemoteRand(void* u);
 void    RemoteRecv(struct Remote* r);

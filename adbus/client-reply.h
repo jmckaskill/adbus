@@ -43,6 +43,7 @@ DHASH_MAP_INIT_UINT32(Reply, adbus_ConnReply*)
 struct adbusI_ReplySet
 {
     d_IList(Reply)              list;
+    d_IList(Reply)              freelist;
     d_Hash(Reply)               lookup;
 };
 

@@ -24,6 +24,7 @@
  */
 
 #include "messages.h"
+#include "connection.h"
 
 /** \struct adbus_CbData
  *  \brief Data structure used for message callbacks.
@@ -119,21 +120,21 @@ static int DoDispatch(adbus_MsgCallback callback, adbus_CbData* d)
     return callback(d);
 }
 
-typedef struct ProxiedDispatch ProxiedDispatch;
+typedef struct ProxiedMessage ProxiedMessage;
 
-struct ProxiedDispatch
+struct ProxiedMessage
 {
-    adbus_Connection*   c;
-    adbus_Message*      msg;
-    adbus_MsgFactory*   ret;
-    adbus_MsgCallback   cb;
-    void*               user1;
-    void*               user2;
+    adbus_Connection*       c;
+    const adbus_Message*    msg;
+    adbus_MsgFactory*       ret;
+    adbus_MsgCallback       cb;
+    void*                   user1;
+    void*                   user2;
 };
 
 static void DoProxiedDispatch(void* u)
 {
-    struct ProxiedDispatch* s = (ProxiedDispatch*) u;
+    struct ProxiedMessage* s = (ProxiedMessage*) u;
 
     adbus_CbData d;
 
@@ -155,7 +156,7 @@ static void DoProxiedDispatch(void* u)
 
 static void FreeProxiedDispatch(void* u)
 {
-    struct ProxiedDispatch* s = (ProxiedDispatch*) u;
+    struct ProxiedMessage* s = (ProxiedMessage*) u;
 
     if (s->msg) {
         adbus_finish_message(s->c, s->msg, NULL);
@@ -172,10 +173,13 @@ int adbusI_proxiedDispatch(
 {
     if (proxy) {
 
-        ProxiedDispatch* s  = NEW(ProxiedDispatch);
+        ProxiedMessage* s   = NEW(ProxiedMessage);
         s->c                = d->connection;
         s->msg              = d->msg;
         s->ret              = d->ret;
+        s->cb               = callback;
+        s->user1            = d->user1;
+        s->user2            = d->user2;
 
         proxy(puser, &DoProxiedDispatch, &FreeProxiedDispatch, s);
 
@@ -184,6 +188,62 @@ int adbusI_proxiedDispatch(
 
     } else {
         return DoDispatch(callback, d);
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+
+int adbusI_sendReply(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
+{
+    int err = 0;
+
+    if (ret && msg->type == ADBUS_MSG_METHOD) {
+        if (adbus_msg_type(ret) == ADBUS_MSG_INVALID) {
+            adbus_msg_settype(ret, ADBUS_MSG_RETURN);
+        }
+
+        adbus_msg_setdestination(ret, msg->sender, msg->senderSize);
+        adbus_msg_setreply(ret, msg->serial);
+        adbus_msg_setflags(ret, adbus_msg_flags(ret) | ADBUS_MSG_NO_REPLY);
+        err = adbus_msg_send(ret, c);
+    }
+
+    return err;
+}
+
+static void DoFinishMessage(void* u)
+{
+    ProxiedMessage* s = (ProxiedMessage*) u;
+    adbusI_sendReply(s->c, s->msg, s->ret);
+}
+
+static void FreeFinishMessage(void* u)
+{
+    ProxiedMessage* s = (ProxiedMessage*) u;
+
+    adbusI_derefMessage(s->c, (adbus_Message*) s->msg);
+    adbus_conn_deref(s->c);
+    free(s);
+}
+
+int adbus_finish_message(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
+{
+    if (adbus_conn_shouldproxy(c)) {
+
+        ProxiedMessage* s   = NEW(ProxiedMessage);
+        s->c                = c;
+        s->msg              = msg;
+        s->ret              = ret;
+
+        adbus_conn_ref(s->c);
+
+        adbus_conn_proxy(c, &DoFinishMessage, &FreeFinishMessage, s);
+        return 0;
+
+    } else {
+        int err = adbusI_sendReply(c, msg, ret);
+        adbusI_derefMessage(c, (adbus_Message*) msg);
+        return err;
     }
 }
 

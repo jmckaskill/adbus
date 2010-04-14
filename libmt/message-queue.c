@@ -100,7 +100,6 @@ static void WakeUp(MTI_MessageQueue* q)
 
 /* ------------------------------------------------------------------------- */
 
-
 /* Non platform specific stuff */
 
 MT_Handle MTI_Queue_Init(MTI_MessageQueue* q)
@@ -114,6 +113,16 @@ MT_Handle MTI_Queue_Init(MTI_MessageQueue* q)
 
 void MTI_Queue_Destroy(MTI_MessageQueue* q)
 {
+    MT_QueueItem* item;
+    while ((item = MT_Queue_Consume(&q->queue)) != NULL) {
+        MT_Message* m = (MT_Message*) ((char*) item - offsetof(MT_Message, qitem));
+
+        if (m->target) {
+            MTI_Target_FinishMessage(m);
+        } else if (m->free) {
+            m->free(m);
+        }
+    }
     assert(!q->queue.first && !q->queue.last);
     FreeHandle(q);
 }

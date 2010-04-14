@@ -199,7 +199,7 @@ void FlushRemote(struct Remote* r)
 
 /* -------------------------------------------------------------------------- */
 
-int RemoteSendMsg(void* u, adbus_Message* m)
+int RemoteSendMsg(void* u, const adbus_Message* m)
 {
     struct Remote* r = (struct Remote*) u;
     adbus_buf_append(r->txbuf, m->data, m->size);

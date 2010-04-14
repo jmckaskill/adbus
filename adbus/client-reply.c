@@ -212,11 +212,19 @@ adbus_ConnReply* adbus_conn_addreply(
 
     assert(added && remote);
 
-    reply                   = NEW(adbus_ConnReply);
+    reply = c->replies.freelist.next;
+
+    if (!reply) {
+        reply = NEW(adbus_ConnReply);
+    } else {
+        dil_remove(Reply, reply, &reply->hl);
+    }
+
     reply->set              = &c->replies;
     reply->remote           = remote;
     reply->r                = *reg;
     reply->r.remote         = NULL;
+    reply->incallback       = 0;
 
     dh_key(&c->replies.lookup, ii) = serial;
     dh_val(&c->replies.lookup, ii) = reply;
@@ -228,7 +236,7 @@ adbus_ConnReply* adbus_conn_addreply(
 
 /* -------------------------------------------------------------------------- */
 
-static void FreeReply(adbus_ConnReply* r)
+static void FreeReply(adbus_Connection* c, adbus_ConnReply* r)
 {
     /* Disconnect from hash table */
     if (r->set) {
@@ -268,7 +276,7 @@ static void FreeReply(adbus_ConnReply* r)
     if (!r->incallback) {
         /* Free data */
         adbusI_derefTrackedRemote(r->remote);
-        free(r);
+        dil_insert_after(Reply, &c->replies.freelist, r, &r->hl);
     }
 }
 
@@ -277,10 +285,16 @@ static void FreeReply(adbus_ConnReply* r)
 void adbusI_freeReplies(adbus_Connection* c)
 {
     adbus_ConnReply* r;
+
     DIL_FOREACH (Reply, r, &c->replies.list, hl) {
         r->set = NULL;
-        FreeReply(r);
+        FreeReply(c, r);
     }
+
+    DIL_FOREACH (Reply, r, &c->replies.freelist, hl) {
+        free(r);
+    }
+
     dh_free(Reply, &c->replies.lookup);
 }
 
@@ -309,7 +323,7 @@ void adbus_conn_removereply(
 				adbus_conn_uniquename(c, NULL),
 				(void*) c);
 
-        FreeReply(reply);
+        FreeReply(c, reply);
     }
 }
 
@@ -385,7 +399,7 @@ int adbusI_dispatchReply(adbus_Connection* c, adbus_CbData* d)
         }
 
         reply->incallback = 0;
-        FreeReply(reply);
+        FreeReply(c, reply);
         return ret;
     }
     else 

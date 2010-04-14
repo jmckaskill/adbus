@@ -96,7 +96,6 @@ struct adbus_Connection
     adbusI_RemoteTracker        tracker;
 };
 
-
-
+void adbusI_derefMessage(adbus_Connection* c, adbus_Message* msg);
 
 

@@ -49,7 +49,7 @@ void Pinger_Init(Pinger* p, adbus_Connection* c)
     p->state = adbus_state_new();
     p->proxy = adbus_proxy_new(p->state);
     p->leftToReceive = 0;
-    p->asyncPingsLeft = 100000;
+    p->asyncPingsLeft = 1000000;
 
     adbus_conn_ref(c);
     adbus_proxy_init(
@@ -71,7 +71,7 @@ void Pinger_Destroy(Pinger* p)
 int Pinger_Run(Pinger* p)
 {
     int i;
-    for (i = 0; i < 10000; i++) {
+    for (i = 0; i < 100000; i++) {
         Pinger_AsyncPing(p);
     }
     return p->leftToReceive > 0;

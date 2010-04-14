@@ -29,6 +29,7 @@
 #include "state.h"
 #include "proxy.h"
 #include "parse.h"
+#include "messages.h"
 
 #include <inttypes.h>
 #include <assert.h>
@@ -551,8 +552,9 @@ static void FreeMessage(adbusI_ConnMsg* m)
     free(m);
 }
 
-static void DerefMessage(adbus_Connection* c, adbusI_ConnMsg* m)
+void adbusI_derefMessage(adbus_Connection* c, adbus_Message* msg)
 { 
+    adbusI_ConnMsg* m = (adbusI_ConnMsg*) msg;
     if (--m->ref == 0) {
         assert(!m->next);
 
@@ -565,40 +567,6 @@ static void DerefMessage(adbus_Connection* c, adbusI_ConnMsg* m)
             free(adbus_buf_release(m->buf));
         }
     }
-}
-
-/* -------------------------------------------------------------------------- */
-
-static int SendReply(adbus_Connection* c, const adbus_Message* msg, adbus_MsgFactory* ret)
-{
-    int err = 0;
-
-    if (ret && msg->type == ADBUS_MSG_METHOD) {
-        if (adbus_msg_type(ret) == ADBUS_MSG_INVALID) {
-            adbus_msg_settype(ret, ADBUS_MSG_RETURN);
-        }
-
-        adbus_msg_setdestination(ret, msg->sender, msg->senderSize);
-        adbus_msg_setreply(ret, msg->serial);
-        adbus_msg_setflags(ret, adbus_msg_flags(ret) | ADBUS_MSG_NO_REPLY);
-        err = adbus_msg_send(ret, c);
-    }
-
-    return err;
-}
-
-int adbus_finish_message(adbus_Connection* c, adbus_Message* msg, adbus_MsgFactory* ret)
-{
-    int err = 0;
-    adbusI_ConnMsg* m = (adbusI_ConnMsg*) msg;
-
-    ADBUSI_ASSERT_CONN_THREAD(c);
-
-    err = SendReply(c, msg, ret);
-    DerefMessage(c, m);
-    adbus_conn_deref(c);
-
-    return err;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -651,7 +619,7 @@ int adbus_conn_dispatch(adbus_Connection* c, const adbus_Message* m)
         /* Delayed replies are not supported with adbus_conn_dispatch */
         assert(!d.delay);
 
-        if (SendReply(c, d.msg, d.ret)) {
+        if (adbusI_sendReply(c, d.msg, d.ret)) {
             goto err;
         }
     }
@@ -704,14 +672,16 @@ int adbus_conn_continue(adbus_Connection* c)
          * matchFinished is not set).
          */
         dil_setiter(&c->matches.list, match->hl.next);
+
+        msg->ref++;
+        d.delay = 0;
+
         if (adbusI_dispatchMatch(match, &d, &msg->arguments)) {
             goto err;
         }
 
-        if (d.delay) {
-            d.delay = 0;
-            msg->ref++;
-            adbus_conn_ref(c);
+        if (!d.delay) {
+            msg->ref--;
         }
     }
 
@@ -724,52 +694,58 @@ int adbus_conn_continue(adbus_Connection* c)
          */
         assert(msg == c->processBegin);
         c->processBegin = msg->next;
+        if (c->processEnd == msg) {
+            assert(msg->next == NULL);
+            c->processEnd = NULL;
+        }
+
         msg->next = NULL;
 
         msg->msgFinished = 1;
 
         if (d.msg->type == ADBUS_MSG_ERROR || d.msg->type == ADBUS_MSG_RETURN) {
 
+            msg->ref++;
+            d.delay = 0;
+
             if (adbusI_dispatchReply(c, &d)) {
                 goto err;
             }
 
-            if (d.delay) {
-                d.delay = 0;
-                msg->ref++;
-                adbus_conn_ref(c);
+            if (!d.delay) {
+                msg->ref--;
             }
 
         } else if (d.msg->type == ADBUS_MSG_METHOD) {
 
-            if ((d.msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
-                if (!msg->ret) {
-                    msg->ret = adbus_msg_new();
-                }
-
-                d.ret = msg->ret;
+            if (!msg->ret) {
+                msg->ret = adbus_msg_new();
             }
+
+            d.ret = msg->ret;
+
+            msg->ref++;
+            d.delay = 0;
 
             if (adbusI_dispatchMethod(c, &d)) {
                 goto err;
             }
 
-            if (d.delay) {
-                d.delay = 0;
-                msg->ref++;
-                adbus_conn_ref(c);
-            } else if (SendReply(c, d.msg, d.ret)) {
-                goto err;
+            if (!d.delay) {
+                msg->ref--;
+                if (adbusI_sendReply(c, d.msg, d.ret)) {
+                    goto err;
+                }
             }
 
         }
     }
 
-    DerefMessage(c, msg);
+    adbusI_derefMessage(c, &msg->msg);
     return 0;
 
 err:
-    DerefMessage(c, msg);
+    adbusI_derefMessage(c, &msg->msg);
     return -1;
 }
 
@@ -910,14 +886,10 @@ int adbus_conn_parsecb(adbus_Connection* c)
     }
 
     ret = SplitParseMessage(c);
-    if (ret < 0) {
+    if (ret < 0)
         return -1;
-    } else if (ret == 0) {
-        /* No new messages */
-        return 0;
-    }
 
-    if (ParseNewMessages(c, m))
+    if (ret != 0 && ParseNewMessages(c, m))
         return -1;
 
     if (read < 0)
