@@ -23,10 +23,34 @@
  * ----------------------------------------------------------------------------
  */
 
-#pragma once
+#include "internal.h"
 
-#include <libmt.h>
-#include <adbus.h>
+#ifndef _WIN32
+#include <dmem/vector.h>
+#include <unistd.h>
 
-adbus_Connection* MT_CreateDBusConnection(adbus_BusType type);
+int HW_Process_Start(const char* app, const char* dir, const char* args[], size_t argnum)
+{
+    char** execargs = (char**) alloca(sizeof(char*) * (argnum + 1));
+    execargs[0] = app;
+    memcpy(&execargs[1], args, argnum * sizeof(char*));
+    switch (fork()) {
+        case -1:
+            /* Error in parent */
+            return -1;
 
+        case 0:
+            /* Success in parent */
+            return 0;
+
+        default:
+            /* Success in child */
+            if (dir) {
+                chdir(dir);
+            }
+            execv(app, execargs);
+            return 0;
+    }
+}
+
+#endif

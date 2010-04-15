@@ -29,7 +29,8 @@
 #   include <winsock2.h>
 #endif
 
-#include "client.h"
+#include "internal.h"
+#include <libmt-client.h>
 
 
 #define NEW(type) (type*) calloc(1, sizeof(type))

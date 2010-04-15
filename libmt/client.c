@@ -23,7 +23,7 @@
  * ----------------------------------------------------------------------------
  */
 
-#include "client_p.h"
+#include "client.h"
 #include <limits.h>
 #include <stddef.h>
 

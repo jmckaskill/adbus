@@ -385,6 +385,11 @@ MT_API void MT_ThreadStorage_Deref(MT_ThreadStorage* s);
     { pthread_setspecific(s->tls, val); }
 #endif
 
+/* args does not include the app name 
+ * dir can be null to use the current directory
+ */
+MT_API int MT_Process_Start(const char* app, const char* dir, const char* args[], size_t argnum);
+
 
 
 
@@ -515,15 +520,18 @@ namespace MT
     };
 
 
-    class EventLoop
+    class MainLoop
     {
-        MT_NOT_COPYABLE(EventLoop);
+        MT_NOT_COPYABLE(MainLoop);
     public:
-        EventLoop() : m(MT_Loop_New()) {}
-        ~EventLoop() {MT_Loop_Free(m);}
+        MainLoop() : m(MT_Loop_New()) {}
+        ~MainLoop() {MT_Loop_Free(m);}
 
         void SetCurrent()
         { MT_SetCurrent(m); }
+
+        MT_LoopRegistration* AddTick(MT_Time period, MT_Callback cb, void* user)
+        { return MT_Loop_AddTick(m, period, cb, user); }
 
         static int Run()
         { return MT_Current_Run(); }
