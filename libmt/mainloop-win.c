@@ -210,6 +210,57 @@ MT_LoopRegistration* MT_Loop_AddIdle(
 
 /* ------------------------------------------------------------------------- */
 
+static size_t UpperBound(d_Vector(LoopRegistration)* vec, MT_Time nextTick)
+{
+    size_t sz = dv_size(vec);
+    size_t half;
+    size_t begin, middle, end;
+
+    begin = 0;
+    end   = sz;
+
+    while (sz > 0) {
+        half = sz / 2;
+        middle = begin + half;
+        if (dv_a(vec, middle)->nextTick < nextTick) {
+            /* upper bound is in second half */
+            sz = half;
+        } else {
+            /* upper bound is in first half */
+            begin = middle + 1;
+            sz = sz - half - 1;
+        }
+    }
+    return begin;
+}
+
+MT_LoopRegistration* MT_Loop_AddTick(
+        MT_MainLoop*    s,
+        MT_Time         period,
+        MT_Callback     cb,
+        void*           user)
+{
+    MT_LoopRegistration *r, **pr;
+    size_t index;
+
+    assert(cb);
+
+    r             = NEW(MT_LoopRegistration);
+    r->cb         = cb;
+    r->user       = user;
+    r->period     = period;
+    r->nextTick   = MT_CurrentTime() + period;
+
+    index = UpperBound(&s->ticks, r->nextTick);
+
+    pr  = dv_insert(LoopRegistration, &s->ticks, index, 1);
+    *pr = r;
+
+    return r;
+}
+
+/* ------------------------------------------------------------------------- */
+
 void MT_Loop_Enable(
         MT_MainLoop*            s,
         MT_LoopRegistration*    r,
@@ -304,17 +355,6 @@ void MT_Loop_Remove(MT_MainLoop* s, MT_LoopRegistration* r)
     }
 }
 
-/* ------------------------------------------------------------------------- */
-
-static void CallIdle(MT_MainLoop* s)
-{
-    while (s->currentIdle < (int) dv_size(&s->idle)) {
-        MT_LoopRegistration* r = dv_a(&s->idle, s->currentIdle);
-        assert(s->currentIdle >= 0);
-        r->idle(r->user);
-        s->currentIdle++;
-    }
-}
 
 /* ------------------------------------------------------------------------- */
 
@@ -418,8 +458,11 @@ static int WaitForEvent(MT_MainLoop* s, DWORD timeout)
 
 int MT_Current_Step(void)
 {
-	MT_MainLoop* s = MT_Current();
+  	MT_MainLoop* s = MT_Current();
     int ret;
+
+    /* TODO */
+    assert(dv_size(&s->ticks) == 0);
 
     if (s->exit)
         return -1;
@@ -483,6 +526,50 @@ int MT_Current_Step(void)
     return 0;
 }
 
+/* ------------------------------------------------------------------------- */
+
+static void CallIdle(MT_MainLoop* s)
+{
+    while (s->currentIdle < (int) dv_size(&s->idle)) {
+        MT_LoopRegistration* r = dv_a(&s->idle, s->currentIdle);
+        assert(s->currentIdle >= 0);
+        r->idle(r->user);
+        s->currentIdle++;
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+
+static MT_Time CheckForTimeout(MT_MainLoop* s)
+{
+    size_t index;
+    MT_LoopRegistration *r;
+    MT_Time now;
+
+    if (dv_size(&s->ticks) == 0)
+        return MT_TIME_INVALID;
+    
+    now = MT_CurrentTime();
+    r = dv_a(&s->ticks, 0);
+    while (r->nextTick < now) {
+        /* Moving item at 0 shifts the item at index down one, so we move this
+         * reg to index to be after the data currently at index.
+         */
+        index = UpperBound(&s->ticks, now + r->period);
+        dv_move(LoopRegistration, &s->ticks, 0, index - 1);
+        r->nextTick = now + r->period;
+
+        r->cb(r->user);
+
+        if (dv_size(&s->ticks) == 0)
+            return MT_TIME_INVALID;
+
+        now = MT_CurrentTime();
+        r = dv_a(&s->ticks, 0);
+    }
+
+    return r->nextTick - now;
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -520,12 +607,12 @@ static void Process(MT_MainLoop* s, DWORD index)
     }
 }
 
-
 int MT_Current_Run(void)
 {
 	MT_MainLoop* s = MT_Current();
     while (!s->exit) {
 
+        /* Consume any pending events from the OS */
         DWORD ret = WaitForMultipleObjects(
                 dv_size(&s->handles),
                 dv_data(&s->handles),
@@ -537,20 +624,28 @@ int MT_Current_Run(void)
 
         } else if (ret == WAIT_TIMEOUT) {
 
-            s->currentIdle = 0;
-            CallIdle(s);
+            /* The OS doesn't have any more pending events, call idle and then
+             * block for more events.
+             */
+            while (ret == WAIT_TIMEOUT) {
+                MT_Time timeout = CheckForTimeout(s);
 
-            ret = WaitForMultipleObjects(
-                    dv_size(&s->handles),
-                    dv_data(&s->handles),
-                    FALSE,
-                    INFINITE);
+                s->currentIdle = 0;
+                CallIdle(s);
 
-            if (ret < WAIT_OBJECT_0 + dv_size(&s->handles)) {
+                timeout = CheckForTimeout(s);
 
-                Process(s, ret);
-            } else {
-                return -1;
+                ret = WaitForMultipleObjects(
+                        dv_size(&s->handles),
+                        dv_data(&s->handles),
+                        FALSE,
+                        MT_TIME_ISVALID(timeout) ? (DWORD) MT_TIME_TO_MS(timeout) : INFINITE);
+
+                if (ret < WAIT_OBJECT_0 + dv_size(&s->handles)) {
+                    Process(s, ret);
+                } else if (ret != WAIT_TIMEOUT) {
+                    return -1;
+                }
             }
 
         } else {

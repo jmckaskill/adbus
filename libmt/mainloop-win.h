@@ -50,6 +50,9 @@ struct MT_LoopRegistration
     MT_Callback                     idle;
     MT_Callback                     cb;
     void*                           user;
+
+    MT_Time                         period;
+    MT_Time                         nextTick;
 };
 
 enum MTI_LoopStepState
@@ -70,6 +73,8 @@ struct MT_MainLoop
 
     d_Vector(LoopRegistration)      idle;
     int                             currentIdle;
+
+    d_Vector(LoopRegistration)      ticks;
 
     enum MTI_LoopStepState          state;
 
