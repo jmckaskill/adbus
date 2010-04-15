@@ -522,15 +522,6 @@ namespace MT
         EventLoop() : m(MT_Loop_New()) {}
         ~EventLoop() {MT_Loop_Free(m);}
 
-        void SetTick(MT_Time period, MT_Callback cb, void* user)
-        { MT_Loop_SetTick(m, period, cb, user); }
-
-        void Register(MT_Handle h, MT_Callback cb, void* user)
-        { MT_Loop_Register(m, h, cb, user); }
-
-        void Unregister(MT_Handle h)
-        { MT_Loop_Unregister(m, h); }
-
         void SetCurrent()
         { MT_SetCurrent(m); }
 

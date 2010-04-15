@@ -39,7 +39,7 @@
 **
 ****************************************************************************/
 
-#include "chat.h"
+#include "chat.hxx"
 #include <QtGui/QApplication>
 #include <QtGui/QMessageBox>
 

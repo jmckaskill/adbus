@@ -2,9 +2,9 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9.00"
-	Name="bus-qt"
-	ProjectGUID="{2C15BF87-EFDC-45E6-9C29-CEFF0004A4F9}"
-	RootNamespace="busqt"
+	Name="dbus-chat"
+	ProjectGUID="{801A472C-0885-4BD9-928C-9E4254772509}"
+	RootNamespace="dbuschat"
 	TargetFrameworkVersion="196613"
 	>
 	<Platforms>
@@ -14,7 +14,7 @@
 	</Platforms>
 	<ToolFiles>
 		<ToolFile
-			RelativePath="..\..\qt-build.rules"
+			RelativePath="..\..\..\qt-build.rules"
 		/>
 	</ToolFiles>
 	<Configurations>
@@ -39,12 +39,13 @@
 			/>
 			<Tool
 				Name="MOC"
-				AdditionalIncludeDirectories="$(QTDIR)/include;../../include/c;../../deps/msvc"
-				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
 				CompilerAdditionalOptions="/Od /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /nologo /c /ZI /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QDBUSXML2CPP"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
+				CompilerAdditionalOptions="/Od /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /nologo /c /ZI /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -58,8 +59,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="$(QTDIR)/include;../../include/c;../../deps/msvc"
-				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="3"
@@ -77,7 +77,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="QtCored4.lib QtNetworkd4.lib"
+				AdditionalDependencies="QtCored4.lib QtGuid4.lib"
 				AdditionalLibraryDirectories="$(QTDIR)/lib"
 				GenerateDebugInformation="true"
 				TargetMachine="1"
@@ -126,12 +126,15 @@
 			/>
 			<Tool
 				Name="MOC"
-				AdditionalIncludeDirectories="$(QTDIR)/include;../../include/c;../../deps/msvc"
-				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
+				PreprocessorDefinitions="NDEBUG"
 				CompilerAdditionalOptions="/O2 /Oi /GL /D &quot;_MBCS&quot; /FD /EHsc /MD /Gy /Fd&quot;Release\vc90.pdb&quot; /W3 /nologo /c /Zi /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QDBUSXML2CPP"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
+				PreprocessorDefinitions="NDEBUG"
+				CompilerAdditionalOptions="/O2 /Oi /GL /D &quot;_MBCS&quot; /FD /EHsc /MD /Gy /Fd&quot;Release\vc90.pdb&quot; /W3 /nologo /c /Zi /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
@@ -146,8 +149,8 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				EnableIntrinsicFunctions="true"
-				AdditionalIncludeDirectories="$(QTDIR)/include;../../include/c;../../deps/msvc"
-				PreprocessorDefinitions="ADBUS_SHARED_LIBRARY;NDEBUG"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
+				PreprocessorDefinitions="NDEBUG"
 				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				WarningLevel="3"
@@ -164,7 +167,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalDependencies="QtCore4.lib QtNetwork4.lib"
+				AdditionalDependencies="QtCore4.lib QtGui4.lib"
 				AdditionalLibraryDirectories="$(QTDIR)/lib"
 				GenerateDebugInformation="true"
 				OptimizeReferences="2"
@@ -198,15 +201,27 @@
 	</References>
 	<Files>
 		<File
-			RelativePath=".\main.cpp"
+			RelativePath=".\chat.cpp"
 			>
 		</File>
 		<File
-			RelativePath=".\Server.cpp"
+			RelativePath=".\chat.hxx"
 			>
 		</File>
 		<File
-			RelativePath=".\Server.hxx"
+			RelativePath=".\chatmainwindow.ui"
+			>
+		</File>
+		<File
+			RelativePath=".\chatsetnickname.ui"
+			>
+		</File>
+		<File
+			RelativePath=".\com.trolltech.chat.dbus"
+			>
+		</File>
+		<File
+			RelativePath=".\dbus-chat.pro"
 			>
 		</File>
 		<File

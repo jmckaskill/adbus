@@ -642,16 +642,14 @@ int adbus_conn_dispatch(adbus_Connection* c, const adbus_Message* m)
 
     } else if (d.msg->type == ADBUS_MSG_METHOD) {
 
-        if ((d.msg->flags & ADBUS_MSG_NO_REPLY) == 0) {
-            d.ret = c->dispatchReturn;
-        }
+        d.ret = c->dispatchReturn;
 
         if (adbusI_dispatchMethod(c, &d)) {
             goto err;
         }
 
         /* Delayed replies are not supported with adbus_conn_dispatch */
-        assert(d.delay);
+        assert(!d.delay);
 
         if (SendReply(c, d.msg, d.ret)) {
             goto err;
