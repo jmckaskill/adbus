@@ -30,34 +30,41 @@
 			/>
 			<Tool
 				Name="UIC"
-			/>
-			<Tool
-				Name="VCCustomBuildTool"
+				ExecutionBucket="2"
 			/>
 			<Tool
 				Name="QRC"
 			/>
 			<Tool
-				Name="MOC"
-				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
-				CompilerAdditionalOptions="/Od /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /nologo /c /ZI /TP /errorReport:prompt"
-			/>
-			<Tool
-				Name="QDBUSXML2CPP"
-				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
-				CompilerAdditionalOptions="/Od /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /nologo /c /ZI /TP /errorReport:prompt"
+				Name="VCCustomBuildTool"
+				ExecutionBucket="4"
 			/>
 			<Tool
 				Name="VCXMLDataGeneratorTool"
 			/>
 			<Tool
+				Name="QDBUSXML2CPP"
+				ExecutionBucket="5"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
+				CompilerAdditionalOptions="/Od /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /nologo /c /ZI /TP /errorReport:prompt"
+			/>
+			<Tool
+				Name="MOC"
+				ExecutionBucket="6"
+				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
+				CompilerAdditionalOptions="/Od /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /nologo /c /ZI /TP /errorReport:prompt"
+			/>
+			<Tool
 				Name="VCWebServiceProxyGeneratorTool"
+				ExecutionBucket="7"
 			/>
 			<Tool
 				Name="VCMIDLTool"
+				ExecutionBucket="8"
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				ExecutionBucket="9"
 				Optimization="0"
 				AdditionalIncludeDirectories="&quot;$(IntDir)&quot;;&quot;$(QTDIR)/include&quot;;."
 				MinimalRebuild="true"
@@ -68,15 +75,19 @@
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
+				ExecutionBucket="10"
 			/>
 			<Tool
 				Name="VCResourceCompilerTool"
+				ExecutionBucket="11"
 			/>
 			<Tool
 				Name="VCPreLinkEventTool"
+				ExecutionBucket="12"
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				ExecutionBucket="13"
 				AdditionalDependencies="QtCored4.lib QtGuid4.lib"
 				AdditionalLibraryDirectories="$(QTDIR)/lib"
 				GenerateDebugInformation="true"
@@ -84,15 +95,19 @@
 			/>
 			<Tool
 				Name="VCALinkTool"
+				ExecutionBucket="14"
 			/>
 			<Tool
 				Name="VCManifestTool"
+				ExecutionBucket="15"
 			/>
 			<Tool
 				Name="VCXDCMakeTool"
+				ExecutionBucket="16"
 			/>
 			<Tool
 				Name="VCBscMakeTool"
+				ExecutionBucket="17"
 			/>
 			<Tool
 				Name="VCFxCopTool"
@@ -102,6 +117,7 @@
 			/>
 			<Tool
 				Name="VCPostBuildEventTool"
+				ExecutionBucket="19"
 			/>
 		</Configuration>
 		<Configuration
