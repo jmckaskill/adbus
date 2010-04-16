@@ -167,10 +167,22 @@
 			Name="include"
 			>
 			<File
+				RelativePath="..\include\c\libmt-client.h"
+				>
+			</File>
+			<File
 				RelativePath="..\include\c\libmt.h"
 				>
 			</File>
 		</Filter>
+		<File
+			RelativePath=".\client.c"
+			>
+		</File>
+		<File
+			RelativePath=".\client.h"
+			>
+		</File>
 		<File
 			RelativePath=".\freelist.c"
 			>

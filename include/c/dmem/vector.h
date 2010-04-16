@@ -119,6 +119,21 @@ extern "C" {
         memmove(&d[begin], &d[end], (v->size - end) * sizeof(type));        \
         dv_shrink_base((dv_base_t*) v, sizeof(type), num);                  \
     }                                                                       \
+    DMEM_INLINE void dv_move_##name(dv_##name##_t* v,                       \
+                                    size_t from,                            \
+                                    size_t to)                              \
+    {                                                                       \
+        type* d = v->data;                                                  \
+        type val = d[from];                                                 \
+        if (from < to) {                                                    \
+          /* Shift [from + 1, to] down to [from, to - 1] */                 \
+          memmove(&d[from], &d[from + 1], (to - from) * sizeof(type));      \
+        } else if (from > to) {                                             \
+          /* Shift [to, from - 1] up to [to + 1, from] */                   \
+          memmove(&d[to], &d[to + 1], (to - from) * sizeof(type));          \
+        }                                                                   \
+        d[to] = val;                                                        \
+    }                                                                       \
 
 
 #define d_Vector(name)                      dv_##name##_t
@@ -130,6 +145,7 @@ extern "C" {
 #define dv_pop(name, pvec, num)             dv_pop_##name(pvec, num)
 #define dv_insert(name, pvec, index, num)   dv_insert_##name(pvec, index, num)
 #define dv_erase(name, pvec, index, num)    dv_erase_##name(pvec, index, num)
+#define dv_move(name, pvec, from, to)       dv_move_##name(pvec, from, to)
 
 #define dv_remove(name, pvec, test)                                         \
     do {                                                                    \

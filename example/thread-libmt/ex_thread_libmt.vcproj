@@ -164,18 +164,6 @@
 	</References>
 	<Files>
 		<File
-			RelativePath=".\client.c"
-			>
-		</File>
-		<File
-			RelativePath=".\client.h"
-			>
-		</File>
-		<File
-			RelativePath=".\client_p.h"
-			>
-		</File>
-		<File
 			RelativePath=".\main.c"
 			>
 		</File>

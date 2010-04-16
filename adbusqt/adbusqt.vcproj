@@ -41,6 +41,9 @@
 			<Tool
 				Name="MOC"
 				AdditionalOptions=""
+				AdditionalIncludeDirectories="../include/c;../deps/msvc;&quot;$(QTDIR)/include&quot;;&quot;$(QTDIR)/include/Qt&quot;;."
+				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;QDBUS_MAKEDLL"
+				CompilerAdditionalOptions="/Od /D &quot;_WINDLL&quot; /D &quot;_MBCS&quot; /Gm /EHsc /RTC1 /MDd /Fd&quot;Debug\vc90.pdb&quot; /W3 /WX /nologo /c /ZI /TP /errorReport:prompt"
 			/>
 			<Tool
 				Name="QDBUSXML2CPP"
@@ -57,7 +60,7 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="../include/c;../deps/msvc;&quot;$(QTDIR)/include&quot;;&quot;$(QTDIR)/include/Qt&quot;"
+				AdditionalIncludeDirectories="../include/c;../deps/msvc;&quot;$(QTDIR)/include&quot;;&quot;$(QTDIR)/include/Qt&quot;;."
 				PreprocessorDefinitions="_CRT_SECURE_NO_DEPRECATE;ADBUS_SHARED_LIBRARY;QDBUS_MAKEDLL"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
@@ -257,6 +260,14 @@
 				RelativePath=".\qdbuspendingcall.hxx"
 				>
 				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="MOC"
+						MocAdditionalOptions="-fqdbuspendingcall_p.hxx"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
 					Name="Release|Win32"
 					>
 					<Tool
@@ -280,6 +291,14 @@
 			<File
 				RelativePath=".\qdbusservicewatcher.hxx"
 				>
+				<FileConfiguration
+					Name="Debug|Win32"
+					>
+					<Tool
+						Name="MOC"
+						MocAdditionalOptions="-fqdbusservicewatcher_p.h"
+					/>
+				</FileConfiguration>
 				<FileConfiguration
 					Name="Release|Win32"
 					>

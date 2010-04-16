@@ -24,7 +24,6 @@
  */
 
 #include "main.h"
-#include "client.h"
 #include "dmem/string.h"
 #include <stdio.h>
 #include <limits.h>

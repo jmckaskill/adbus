@@ -25,8 +25,9 @@
 
 #pragma once
 
-#include <libmt.h>
 #include <adbus.h>
+#include <libmt.h>
+#include <libmt-client.h>
 
 
 typedef struct Pinger Pinger;
