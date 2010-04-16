@@ -24,7 +24,7 @@
  */
 
 #include "qdbusconnectioninterface.hxx"
-#include <adbus.h>
+#include "qdbusabstractinterface_p.h"
 
 /* ------------------------------------------------------------------------- */
 
@@ -85,10 +85,72 @@ QDBusReply<bool> QDBusConnectionInterface::unregisterService(const QString& serv
 
 /* ------------------------------------------------------------------------- */
 
+#define CHANGED     "2serviceOwnerChanged("
+#define ACQUIRED    "2serviceAcquired("
+#define LOST        "2serviceLost("
 void QDBusConnectionInterface::connectNotify(const char* slot)
-{ QDBusAbstractInterface::connectNotify(slot); }
+{ 
+    QDBusAbstractInterfacePrivate* d = QDBusAbstractInterfacePrivate::d_func(this);
+
+    if (strncmp(slot, CHANGED, strlen(CHANGED)) == 0) {
+        QMutexLocker lock(&d->matchLock);
+        if (d->matches["serviceOwnerChanged"]++ == 0) {
+            lock.unlock();
+            connect(this, SIGNAL(NameOwnerChanged(QString,QString,QString)),
+                    this, SIGNAL(serviceOwnerChanged(QString,QString,QString)));
+
+        }
+
+    } else if (strncmp(slot, ACQUIRED, strlen(ACQUIRED)) == 0) {
+        QMutexLocker lock(&d->matchLock);
+        if (d->matches["serviceAcquired"]++ == 0) {
+            lock.unlock();
+            connect(this, SIGNAL(NameAcquired(QString)), this, SIGNAL(serviceRegistered(QString)));
+        }
+
+    } else if (strncmp(slot, LOST, strlen(LOST)) == 0) {
+        QMutexLocker lock(&d->matchLock);
+        if (d->matches["serviceLost"]++ == 0) {
+            lock.unlock();
+            connect(this, SIGNAL(NameLost(QString)), this, SIGNAL(serviceUnregistered(QString)));
+        }
+
+    } else {
+        QDBusAbstractInterface::connectNotify(slot);
+    }
+}
 
 void QDBusConnectionInterface::disconnectNotify(const char* slot)
-{ QDBusAbstractInterface::disconnectNotify(slot); }
+{
+    QDBusAbstractInterfacePrivate* d = QDBusAbstractInterfacePrivate::d_func(this);
+
+    if (strncmp(slot, CHANGED, strlen(CHANGED)) == 0) {
+        QMutexLocker lock(&d->matchLock);
+        if (--d->matches["serviceOwnerChanged"] == 0) {
+            lock.unlock();
+            disconnect(this, SIGNAL(NameOwnerChanged(QString,QString,QString)),
+                    this, SIGNAL(serviceOwnerChanged(QString,QString,QString)));
+
+        }
+
+    } else if (strncmp(slot, ACQUIRED, strlen(ACQUIRED)) == 0) {
+        QMutexLocker lock(&d->matchLock);
+        if (--d->matches["serviceAcquired"] == 0) {
+            lock.unlock();
+            disconnect(this, SIGNAL(NameAcquired(QString)), this, SIGNAL(serviceRegistered(QString)));
+        }
+
+    } else if (strncmp(slot, LOST, strlen(LOST)) == 0) {
+        QMutexLocker lock(&d->matchLock);
+        if (--d->matches["serviceLost"] == 0) {
+            lock.unlock();
+            disconnect(this, SIGNAL(NameLost(QString)), this, SIGNAL(serviceUnregistered(QString)));
+        }
+
+    } else {
+        QDBusAbstractInterface::disconnectNotify(slot);
+    }
+}
+
 
 

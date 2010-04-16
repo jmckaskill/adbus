@@ -29,6 +29,7 @@
 #include "qsharedfunctions_p.h"
 #include "qdbusmessage_p.h"
 #include "qdbuspendingreply.h"
+#include "qdbusdebug.h"
 
 /* ------------------------------------------------------------------------- */
 
@@ -115,6 +116,10 @@ int QDBusPendingCallPrivate::ReplyCallback(adbus_CbData* data)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
 
+    QDBUS_LOG("PendingReplyCallback: Remote '%s', Serial %d",
+            d->m_Service.constData(),
+            (int) d->m_Serial);
+
     QDBusMessagePrivate::FromMessage(d->m_Reply, data->msg);
     d->haveReply();
     return 0;
@@ -125,6 +130,11 @@ int QDBusPendingCallPrivate::ReplyCallback(adbus_CbData* data)
 int QDBusPendingCallPrivate::ErrorCallback(adbus_CbData* data)
 {
     QDBusPendingCallPrivate* d = (QDBusPendingCallPrivate*) data->user1;
+
+    QDBUS_LOG("PendingErrorCallback: Remote '%s', Serial %d, Error '%s'",
+            d->m_Service.constData(),
+            (int) d->m_Serial,
+            data->msg->error);
 
     QDBusMessagePrivate::FromMessage(d->m_Reply, data->msg);
     d->m_Error = QDBusError(d->m_Reply);

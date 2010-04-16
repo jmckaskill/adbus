@@ -5,6 +5,6 @@ CFLAGS += $(CFLAGS_QT_CORE) $(CFLAGS_QT_DBUS)
 : foreach *.dbus |> !dbus_interface |> %B_interface.h %B_interface.cpp
 : foreach *.dbus |> !dbus_adaptor |> %B_adaptor.h %B_adaptor.cpp
 : foreach *.ui |> !uic |> ui_%B.h
-: foreach *.h *.hxx |> !moc |> moc_%B.cpp
+: foreach *.h *.hxx | *.h |> !moc |> moc_%B.cpp
 : foreach *.cpp | ui_*.h *_adaptor.h *_interface.h |> !cpp |> %B.o
 

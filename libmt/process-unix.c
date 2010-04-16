@@ -28,11 +28,12 @@
 #ifndef _WIN32
 #include <dmem/vector.h>
 #include <unistd.h>
+#include <alloca.h>
 
 int HW_Process_Start(const char* app, const char* dir, const char* args[], size_t argnum)
 {
     char** execargs = (char**) alloca(sizeof(char*) * (argnum + 1));
-    execargs[0] = app;
+    execargs[0] = (char*) app;
     memcpy(&execargs[1], args, argnum * sizeof(char*));
     switch (fork()) {
         case -1:
@@ -54,3 +55,4 @@ int HW_Process_Start(const char* app, const char* dir, const char* args[], size_
 }
 
 #endif
+

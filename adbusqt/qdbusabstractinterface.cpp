@@ -81,30 +81,27 @@ QDBusAbstractInterfacePrivate::~QDBusAbstractInterfacePrivate()
 
 /* ------------------------------------------------------------------------- */
 
+#define DESTROYED "2destroyed("
 void QDBusAbstractInterface::connectNotify(const char* signal)
 {
     Q_D(QDBusAbstractInterface);
 
-    if (strcmp(signal, "destroyed(QObject*)") == 0)
+    if (strncmp(signal, DESTROYED, strlen(DESTROYED)) == 0)
         return;
 
     const char* nameend = strchr(signal, '(');
     if (nameend == NULL)
         return;
 
-    QByteArray sigMethod = "2";
-    sigMethod += signal;
-
-    QByteArray member(signal, (int) (nameend - signal));
+    QByteArray member(signal + 1, (int) (nameend - signal - 1));
 
     {
         QMutexLocker lock(&d->matchLock);
-        if (!d->matches.contains(member))
+        if (d->matches[member]++ != 0)
             return;
-        d->matches.insert(member);
     }
 
-    d->object->addMatch(d->remote, d->path, d->interface, member, this, sigMethod.constData());
+    d->object->addMatch(d->remote, d->path, d->interface, member, this, signal);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -113,26 +110,22 @@ void QDBusAbstractInterface::disconnectNotify(const char* signal)
 {
     Q_D(QDBusAbstractInterface);
 
-    if (strcmp(signal, "destroyed(QObject*)") == 0)
+    if (strncmp(signal, DESTROYED, strlen(DESTROYED)) == 0)
         return;
 
     const char* nameend = strchr(signal, '(');
     if (nameend == NULL)
         return;
 
-    QByteArray sigMethod = "2";
-    sigMethod += signal;
-
-    QByteArray member(signal, (int) (nameend - signal));
+    QByteArray member(signal + 1, (int) (nameend - signal - 1));
 
     {
         QMutexLocker lock(&d->matchLock);
-        if (!d->matches.contains(member))
+        if (--d->matches[member] != 0)
             return;
-        d->matches.remove(member);
     }
 
-    d->object->removeMatch(d->remote, d->path, d->interface, member, this, sigMethod.constData());
+    d->object->removeMatch(d->remote, d->path, d->interface, member, this, signal);
                           
 }
 

@@ -78,7 +78,7 @@ int     MTI_Client_Block(void* u, adbus_BlockType type, uintptr_t* block, int ti
 void    MTI_Client_Connected(void* u);
 void    MTI_Client_ConnectionProxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);
 void    MTI_Client_GetProxy(void* u, adbus_ProxyCallback* cb, void** cbuser);
-void    MTI_Client_Free(void* u);;
+void    MTI_Client_Free(void* u);
 
 void    MTI_Client_Proxy(void* u, adbus_Callback cb, adbus_Callback release, void* cbuser);
 int     MTI_Client_MsgProxy(void* u, adbus_MsgCallback msgcb, adbus_CbData* d);

@@ -97,6 +97,13 @@ int QDBusObject::MatchCallback(adbus_CbData* d)
     QDBusMatchData* data = (QDBusMatchData*) d->user1;
     QDBusMessage& msg    = data->owner->m_CurrentMessage;
 
+    QDBUS_LOG("MatchCallback: Sender '%s', Path '%s', Interface '%s', Member '%s', Slot '%s'",
+            data->sender.constData(),
+            data->path.constData(),
+            data->interface.constData(),
+            data->member.constData(),
+            data->slot.constData());
+
     /* We can get messages after the match has been removed, since we have to
      * just across to the connection thread to remove the match.
      */
@@ -127,6 +134,10 @@ int QDBusObject::ReplyCallback(adbus_CbData* d)
 {
     QDBusReplyData* data = (QDBusReplyData*) d->user1;
     QDBusMessage& msg    = data->owner->m_CurrentMessage;
+
+    QDBUS_LOG("ReplyCallback: Remote '%s', Serial %d",
+            data->remote.constData(),
+            (int) data->reply.serial);
 
     /* We always add the reply callback, even if the user didn't set a reply
      * callback, so that we can remove the reply data.
@@ -162,6 +173,11 @@ int QDBusObject::ErrorCallback(adbus_CbData* d)
     QDBusReplyData* data = (QDBusReplyData*) d->user1;
     QDBusMessage& msg    = data->owner->m_CurrentMessage;
 
+    QDBUS_LOG("ErrorCallback: Remote '%s', Serial %d, Error '%s'",
+            data->remote.constData(),
+            (int) data->reply.serial,
+            d->msg->error);
+
     /* We always add the reply callback, even if the user didn't set a reply
      * callback, so that we can remove the reply data.
      */
@@ -196,6 +212,11 @@ int QDBusObject::MethodCallback(adbus_CbData* d)
     QDBusBindData* bind     = (QDBusBindData*) d->user2;
     QDBusMessage&  msg      = bind->owner->m_CurrentMessage;
 
+    QDBUS_LOG("MethodCallback: Path '%s', Interface '%s', Method '%s'",
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
+
     Q_ASSERT(method->methodIndex >= 0);
 
     adbus_Iterator argiter = {};
@@ -225,6 +246,11 @@ int QDBusObject::GetPropertyCallback(adbus_CbData* d)
     QDBusPropertyData* prop = (QDBusPropertyData*) d->user1;
     QDBusUserData* bind     = (QDBusUserData*) d->user2;
 
+    QDBUS_LOG("MethodCallback: Path '%s', Interface '%s', Method '%s'",
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
+
     Q_ASSERT(prop->propIndex >= 0);
 
     bind->object->qt_metacall(
@@ -243,6 +269,11 @@ int QDBusObject::SetPropertyCallback(adbus_CbData* d)
 {
     QDBusPropertyData* prop = (QDBusPropertyData*) d->user1;
     QDBusUserData* bind     = (QDBusUserData*) d->user2;
+
+    QDBUS_LOG("SetPropertyCallback: Path '%s', Interface '%s', Method '%s'",
+            d->msg->path,
+            d->msg->interface,
+            d->msg->member);
 
     Q_ASSERT(prop->propIndex >= 0);
 

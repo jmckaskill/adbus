@@ -112,7 +112,7 @@ int main(int argc, char **argv)
                  SLOT(start(QString,QString,QString)));
 
     QProcess pong;
-    pong.start("./complexpong");
+    pong.start("./ex_qtdbus_complexpong");
 
     app.exec();
 }

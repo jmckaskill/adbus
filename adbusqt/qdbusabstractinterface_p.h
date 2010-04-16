@@ -39,18 +39,21 @@ public:
     QDBusAbstractInterfacePrivate(const QDBusConnection& c);
     ~QDBusAbstractInterfacePrivate();
 
-    QDBusConnection     qconnection;
-    adbus_Connection*   connection;
-    QDBusObject*        object;
-    QByteArray          remote;
-    QByteArray          path;
-    QString             remoteStr;
-    QString             pathStr;
-    QByteArray          interface;
-    QDBusError          lastError;
+    static QDBusAbstractInterfacePrivate* d_func(QDBusAbstractInterface* i)
+    { return i->d_func(); }
 
-    QMutex              matchLock;
-    QSet<QByteArray>    matches;
+    QDBusConnection         qconnection;
+    adbus_Connection*       connection;
+    QDBusObject*            object;
+    QByteArray              remote;
+    QByteArray              path;
+    QString                 remoteStr;
+    QString                 pathStr;
+    QByteArray              interface;
+    QDBusError              lastError;
+
+    QMutex                  matchLock;
+    QHash<QByteArray, int>  matches;
 
     mutable adbus_MsgFactory* msg;
 };
