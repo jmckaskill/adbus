@@ -1,5 +1,5 @@
 include_rules
 
-CFLAGS += -fvisibility=hidden
+CFLAGS += -fvisibility=hidden -ansi -pedantic
 : foreach *.c |> !c99 |> %B.o
 

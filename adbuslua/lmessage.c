@@ -48,12 +48,16 @@ static int AppendStruct(
     int             index,
     adbus_Buffer*   b)
 {
+    int n, i;
+
     adbus_buf_beginstruct(b);
 
-    int n = (int) lua_objlen(L, index);
-    for (int i = 1; i <= n; ++i) {
+    n = (int) lua_objlen(L, index);
+    for (i = 1; i <= n; ++i) {
+        int val;
+
         lua_rawgeti(L, index, i);
-        int val = lua_gettop(L);
+        val = lua_gettop(L);
 
         if (adbuslua_to_argument(L, val, b))
             return -1;
@@ -125,6 +129,7 @@ static int AppendVariant(
     int                     index,
     adbus_Buffer*          b)
 {
+    adbus_BufVariant v;
     int top = lua_gettop(L);
     const char* signature = NULL;
     switch (lua_type(L, index)){
@@ -139,10 +144,13 @@ static int AppendVariant(
             break;
         case LUA_TTABLE:
             {
+                int metatable;
+
                 lua_getmetatable(L, index);
-                int metatable = lua_gettop(L);
-                // note run metatable variant type before data since get data
-                // may replace the value at index
+                metatable = lua_gettop(L);
+                /* Note run metatable variant type before data since get data
+                 * may replace the value at index.
+                 */
                 signature = GetMetatableVariantType(L, index, metatable);
                 GetMetatableVariantData(L, index, metatable);
                 if (!signature)
@@ -154,7 +162,6 @@ static int AppendVariant(
         return Error(L, "Can not convert argument to dbus variant");
     }
 
-    adbus_BufVariant v;
     adbus_buf_beginvariant(b, &v, signature, -1);
 
     if (adbuslua_to_argument(L, index, b))
@@ -162,8 +169,9 @@ static int AppendVariant(
 
     adbus_buf_endvariant(b, &v);
 
-    // signature may point to string on stack, so only clean up the stack
-    // once we are done using the sig
+    /* Signature may point to string on stack, so only clean up the stack
+     * once we are done using the sig.
+     */
     lua_settop(L, top);
 
     return 0;
@@ -177,13 +185,14 @@ static int AppendArray(
         int                 index,
         adbus_Buffer*       b)
 {
+    int i, n;
     adbus_BufArray a;
     adbus_buf_beginarray(b, &a);
 
-    int n = (int) lua_objlen(L, index);
-    for (int i = 1; i <= n; ++i) {
-        lua_rawgeti(L, index, i);
+    n = (int) lua_objlen(L, index);
+    for (i = 1; i <= n; ++i) {
         int val = lua_gettop(L);
+        lua_rawgeti(L, index, i);
 
         adbus_buf_arrayentry(b, &a);
         if (adbuslua_to_argument(L, val, b))
@@ -223,7 +232,7 @@ static int AppendMap(
 
         adbus_buf_enddictentry(b);
 
-        lua_pop(L, 1); // pop the value, leaving the key
+        lua_pop(L, 1); /* pop the value, leaving the key */
         assert(lua_gettop(L) == key);
     }
 
@@ -239,7 +248,7 @@ static const char kNumberArg[] = "Expected number argument";
 static const char kStringArg[] = "Expected string argument";
 
 #ifdef _MSC_VER
-# pragma warning(disable:4244) // conversion from 'lua_Number' to *
+# pragma warning(disable:4244) /* conversion from 'lua_Number' to * */
 #endif
 
 int adbuslua_to_argument(
@@ -247,12 +256,14 @@ int adbuslua_to_argument(
         int                 index,
         adbus_Buffer*      buffer)
 {
+    size_t size;
+    const char *str, *sig;
+
     if (index < 0)
         index += lua_gettop(L) + 1;
 
-    size_t size;
-    const char* str;
-    const char* sig = adbus_buf_signext(buffer, NULL);
+    sig = adbus_buf_signext(buffer, NULL);
+
     switch(*sig){
         case ADBUS_BOOLEAN:
             if (lua_type(L, index) != LUA_TBOOLEAN)
@@ -368,6 +379,22 @@ int adbuslua_to_message(
         int                     index,
         adbus_MsgFactory*       msg)
 {
+    adbus_MessageType type;
+    adbus_Bool noreply = 0;
+    adbus_Bool noautostart = 0;
+    int64_t serial = -1;
+    int64_t reply = -1;
+    const char* path = NULL;
+    const char* iface = NULL;
+    const char* mbr = NULL;
+    const char* errname = NULL;
+    const char* dest = NULL;
+    const char* sig = NULL;
+    int pathsz, ifacesz, mbrsz, errsz, destsz, sigsz;
+    uint8_t flags = 0;
+    adbus_Buffer* b;
+    int argnum;
+
     adbus_msg_reset(msg);
     if (adbusluaI_check_fields_numbers(L, index, kMessageFields)) {
         return Error(L,
@@ -377,8 +404,7 @@ int adbuslua_to_message(
                 "and 'signature'.");
     }
 
-    // Type
-    adbus_MessageType type;
+    /* Type */
     lua_getfield(L, index, "type");
     if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "method_call") == 0) {
         type = ADBUS_MSG_METHOD;
@@ -397,18 +423,7 @@ int adbuslua_to_message(
     lua_pop(L, 1);
 
 
-    // Unpack fields
-    adbus_Bool noreply = 0;
-    adbus_Bool noautostart = 0;
-    int64_t serial = -1;
-    int64_t reply = -1;
-    const char* path = NULL;
-    const char* iface = NULL;
-    const char* mbr = NULL;
-    const char* errname = NULL;
-    const char* dest = NULL;
-    const char* sig = NULL;
-    int pathsz, ifacesz, mbrsz, errsz, destsz, sigsz;
+    /* Unpack fields */
     if (    adbusluaI_boolField(L, index, "no_reply", &noreply)
         ||  adbusluaI_boolField(L, index, "no_autostart", &noautostart)
         ||  adbusluaI_intField(L, index, "serial", &serial)
@@ -423,7 +438,6 @@ int adbuslua_to_message(
         return -1;
     }
 
-    uint8_t flags = 0;
     if (noreply)
         flags |= ADBUS_MSG_NO_REPLY;
     if (noautostart)
@@ -446,18 +460,20 @@ int adbuslua_to_message(
         adbus_msg_setdestination(msg, dest, destsz);
 
 
-    adbus_Buffer* b = adbus_msg_argbuffer(msg);
+    b = adbus_msg_argbuffer(msg);
 
-    // Arguments
-    int argnum = (int) lua_objlen(L, index);
+    /* Arguments */
+    argnum = (int) lua_objlen(L, index);
     if (argnum > 0) {
+        int i;
+
         if (!sig)
             return Error(L, "Missing 'signature' field - expected a string");
 
         adbus_buf_appendsig(b, sig, sigsz);
-        for (int i = 1; i <= argnum; ++i) {
-            lua_rawgeti(L, index, i);
+        for (i = 1; i <= argnum; ++i) {
             int arg = lua_gettop(L);
+            lua_rawgeti(L, index, i);
             UNUSED(arg);
 
             if (adbuslua_to_argument(L, -1, b))
@@ -512,32 +528,37 @@ int adbuslua_to_message_unpacked(
         int                 sigsz,
         adbus_MsgFactory*   msg)
 {
+    adbus_Buffer* b;
+    int i;
+
     adbus_msg_reset(msg);
 
-    // Note begin-end is an inclusive range
+    /* Note begin-end is an inclusive range */
 
-    // No arguments to marshall
+    /* No arguments to marshall */
     if (end < begin)
         return 0;
 
-    // A nil followed by a string is an error message with the string being
-    // the error name, if there is an argument following that, it is the error
-    // message
+    /* A nil followed by a string is an error message with the string being
+     * the error name, if there is an argument following that, it is the error
+     * message.
+     */
     if (begin + 1 <= end && lua_isnil(L, begin) && lua_isstring(L, begin + 1)) {
-        adbus_msg_settype(msg, ADBUS_MSG_ERROR);
         size_t sz;
         const char* name = lua_tolstring(L, begin + 1, &sz);
+        adbus_msg_settype(msg, ADBUS_MSG_ERROR);
         adbus_msg_seterror(msg, name, (int) sz);
         begin += 2;
     }
 
-    adbus_Buffer* b = adbus_msg_argbuffer(msg);
+    b = adbus_msg_argbuffer(msg);
     if (sig) {
         adbus_buf_appendsig(b, sig, sigsz);
     }
-    for (int i = begin; i <= end; i++) {
-        if (adbuslua_to_argument(L, i, b))
+    for (i = begin; i <= end; i++) {
+        if (adbuslua_to_argument(L, i, b)) {
             return -1;
+        }
     }
 
     return 0;
@@ -551,16 +572,19 @@ int adbuslua_to_message_unpacked(
 
 static int PushNextField(lua_State* L, adbus_Iterator* i);
 
-// Structs are seen from lua indentically to an array of variants, ie they are
-// just expanded into an array
+/* Structs are seen from lua indentically to an array of variants, ie they are
+ * just expanded into an array.
+ */
 static int PushStruct(lua_State* L, adbus_Iterator* i)
 {
+    int table, arg;
+
     if (adbus_iter_beginstruct(i))
         return -1;
 
     lua_newtable(L);
-    int table = lua_gettop(L);
-    int arg = 1;
+    table = lua_gettop(L);
+    arg = 1;
     while (*i->sig != ADBUS_STRUCT_END) {
         if (PushNextField(L, i))
             return -1;
@@ -577,8 +601,9 @@ static int PushStruct(lua_State* L, adbus_Iterator* i)
 
 /* ------------------------------------------------------------------------- */
 
-// Since lua is dynamically typed it does need to know that a particular
-// argument was originally a variant
+/* Since lua is dynamically typed it does need to know that a particular
+ * argument was originally a variant.
+ */
 static int PushVariant(lua_State* L, adbus_Iterator* i)
 {
     adbus_IterVariant v;
@@ -594,16 +619,18 @@ static int PushVariant(lua_State* L, adbus_Iterator* i)
 
 /* ------------------------------------------------------------------------- */
 
-// Arrays are pushed as standard lua arrays using 1 based indexes.
+/* Arrays are pushed as standard lua arrays using 1 based indexes. */
 static int PushArray(lua_State* L, adbus_Iterator* i)
 {
+    int table, arg;
     adbus_IterArray a;
+
     if (adbus_iter_beginarray(i, &a))
         return -1;
 
     lua_newtable(L);
-    int table = lua_gettop(L);
-    int arg = 1;
+    table = lua_gettop(L);
+    arg = 1;
     while (adbus_iter_inarray(i, &a)) {
         if (PushNextField(L, i))
             return -1;
@@ -622,21 +649,23 @@ static int PushArray(lua_State* L, adbus_Iterator* i)
 
 static int PushMap(lua_State* L, adbus_Iterator* i)
 {
+    int table;
     adbus_IterArray a;
+
     if (adbus_iter_beginarray(i, &a))
         return -1;
 
     lua_newtable(L);
-    int table = lua_gettop(L);
+    table = lua_gettop(L);
     while (adbus_iter_inarray(i, &a)) {
         if (adbus_iter_begindictentry(i))
             return -1;
 
-        // key
+        /* key */
         if (PushNextField(L, i))
             return -1;
 
-        // value
+        /* value */
         if (PushNextField(L, i))
             return -1;
 
@@ -655,13 +684,14 @@ static int PushMap(lua_State* L, adbus_Iterator* i)
 
 /* ------------------------------------------------------------------------- */
 
-// Note depending on the type of lua_Number, some or all of the numeric dbus
-// types may lose data on the conversion - for now there is no decent way
-// around this
-// Also all of the string types (string, object path, signature) all convert
-// to a lua string since there is no reasonable reason for them to be
-// different types (this could be changed to fancy types that overload
-// __tostring, but I don't really see the point of that)
+/* Note depending on the type of lua_Number, some or all of the numeric dbus
+ * types may lose data on the conversion - for now there is no decent way
+ * around this
+ * Also all of the string types (string, object path, signature) all convert
+ * to a lua string since there is no reasonable reason for them to be
+ * different types (this could be changed to fancy types that overload
+ * __tostring, but I don't really see the point of that)
+ */
 static int PushNextField(lua_State* L, adbus_Iterator* i)
 {
     adbus_Bool      b;
@@ -791,8 +821,11 @@ static int PushMessage(
         lua_State*              L,
         const adbus_Message*    msg)
 {
+    int table, arg;
+    adbus_Iterator i;
+
     lua_newtable(L);
-    int table = lua_gettop(L);
+    table = lua_gettop(L);
 
     if (msg->type == ADBUS_MSG_METHOD) {
         lua_pushstring(L, "method_call");
@@ -823,9 +856,8 @@ static int PushMessage(
     SetStringField(L, table, "error", msg->error, msg->errorSize);
     SetStringField(L, table, "signature", msg->signature, msg->signatureSize);
 
-    adbus_Iterator i;
     adbus_iter_args(&i, msg);
-    int arg = 1;
+    arg = 1;
     while (i.sig && *i.sig) {
         if (PushNextField(L, &i))
             return -1;

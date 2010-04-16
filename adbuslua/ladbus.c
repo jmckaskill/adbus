@@ -49,7 +49,8 @@ char* adbusluaI_strndup(const char* str, size_t len)
 
 static adbus_Bool IsValidKey(const char* valid[], const char* key)
 {
-    for (int i = 0; valid[i] != NULL; ++i) {
+    int i;
+    for (i = 0; valid[i] != NULL; ++i) {
         if (strcmp(valid[i], key) == 0)
             return 1;
     }
@@ -69,7 +70,7 @@ int adbusluaI_check_fields_numbers(lua_State* L, int table, const char* valid[])
             return -1;
         }
 
-        lua_pop(L, 1); // pop value - leave key
+        lua_pop(L, 1); /* pop value - leave key */
     }
     return 0;
 }
@@ -162,7 +163,7 @@ static int SetLogLevel(lua_State* L)
 static void Setup(lua_State* L, int module, const char* name)
 {
     lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index"); //metatable.__index = metatable
+    lua_setfield(L, -2, "__index"); /* metatable.__index = metatable */
     lua_setfield(L, module, name);
 }
 
@@ -175,6 +176,8 @@ static const luaL_Reg reg[] = {
 
 int luaopen_adbuslua_core(lua_State* L)
 {
+    int module;
+
 #ifdef _WIN32
     WSADATA wsadata;
     int err = WSAStartup(MAKEWORD(2,2), &wsadata);
@@ -183,7 +186,7 @@ int luaopen_adbuslua_core(lua_State* L)
 #endif
     lua_newtable(L);
     luaL_register(L, "adbuslua_core", reg);
-    int module = lua_gettop(L);
+    module = lua_gettop(L);
 
     adbusluaI_reg_connection(L);    Setup(L, module, "connection");
     adbusluaI_reg_interface(L);     Setup(L, module, "interface");

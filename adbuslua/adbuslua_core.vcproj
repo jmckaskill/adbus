@@ -48,7 +48,6 @@
 				WarningLevel="4"
 				WarnAsError="true"
 				DebugInformationFormat="4"
-				CompileAs="2"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -225,6 +224,10 @@
 		</File>
 		<File
 			RelativePath="..\include\lua\adbus\test.lua"
+			>
+		</File>
+		<File
+			RelativePath=".\Tupfile"
 			>
 		</File>
 	</Files>

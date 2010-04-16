@@ -382,6 +382,7 @@ static void ProxiedAddMatch(void* u)
 
 static void FreeProxiedAddMatch(void* u)
 {
+    size_t i;
     struct Object* o    = (struct Object*) u;
     adbus_Match* m      = &o->u.match;
 
@@ -392,7 +393,7 @@ static void FreeProxiedAddMatch(void* u)
     free((char*) m->member);
     free((char*) m->error);
 
-    for (size_t i = 0; i < m->argumentsSize; i++) {
+    for (i = 0; i < m->argumentsSize; i++) {
         free((char*) m->arguments[i].value);
     }
     free(m->arguments);
@@ -462,10 +463,12 @@ static int AddMatch(lua_State* L)
     lua_pop(L, 1);
 
     if (m->argumentsSize > 0) {
+        int i;
+
         m->arguments = (adbus_Argument*) malloc(sizeof(adbus_Argument) * m->argumentsSize);
         adbus_arg_init(m->arguments, m->argumentsSize);
 
-        for (int i = 0; i < (int) m->argumentsSize; i++) {
+        for (i = 0; i < (int) m->argumentsSize; i++) {
             lua_rawgeti(L, 3, i + 1);
             if (lua_isstring(L, -1)) {
                 size_t sz;
@@ -491,6 +494,8 @@ static int AddMatch(lua_State* L)
     m->puser                = o->puser;
 
     if (adbus_conn_shouldproxy(o->c)) {
+        size_t i;
+
         /* Dup the data in the match reg - freed in FreeProxiedAddMatch */
         m->sender = adbusluaI_strndup(m->sender, m->senderSize);
         m->destination = adbusluaI_strndup(m->destination, m->destinationSize);
@@ -499,7 +504,7 @@ static int AddMatch(lua_State* L)
         m->member = adbusluaI_strndup(m->member, m->memberSize);
         m->error = adbusluaI_strndup(m->error, m->errorSize);
 
-        for (size_t i = 0; i < m->argumentsSize; i++) {
+        for (i = 0; i < m->argumentsSize; i++) {
             m->arguments[i].value = adbusluaI_strndup(m->arguments[i].value, m->arguments[i].size);
         }
 
