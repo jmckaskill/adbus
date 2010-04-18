@@ -24,6 +24,7 @@
  */
 
 #include "server.h"
+#include <dmem/string.h>
 #include <stdio.h>
 
 #if !defined _WIN32
@@ -43,17 +44,112 @@
 
 /* -------------------------------------------------------------------------- */
 
-Server* Server_New(adbus_Socket sock)
+#ifdef _WIN32
+static void SetAutoAddress(Server* s, adbus_Socket sock)
 {
-    Server* s   = NEW(Server);
+    d_String addr;
+    void* view;
+    struct sockaddr_in sa;
+    int sz = sizeof(sa);
+
+    ZERO(addr);
+
+    if (getsockname(sock, (struct sockaddr*) &sa, &sz))
+        return;
+
+    s->autoHandle = CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            NULL,
+            PAGE_READWRITE,
+            0,
+            256,
+            L"Local\\DBUS_SESSION_BUS_ADDRESS");
+
+    if (s->autoHandle == INVALID_HANDLE_VALUE)
+        return;
+
+    ds_set_f(&addr, "tcp:host=localhost,port=%d", (int) ntohs(sa.sin_port));
+    view = MapViewOfFile(s->autoHandle, FILE_MAP_WRITE, 0, 0, ds_size(&addr) + 1);
+
+    if (view) {
+        CopyMemory(view, ds_cstr(&addr), ds_size(&addr) + 1);
+    }
+
+    UnmapViewOfFile(view);
+    ds_free(&addr);
+}
+
+static void UnsetAutoAddress(Server* s)
+{
+    void* view;
+    if (s->autoHandle == INVALID_HANDLE_VALUE)
+        return;
+
+    view = MapViewOfFile(s->autoHandle, FILE_MAP_WRITE, 0, 0, 1);
+
+    if (view) {
+        CopyMemory(view, "\0", 1);
+    }
+
+    UnmapViewOfFile(view);
+
+    CloseHandle(s->autoHandle);
+}
+
+
+#else
+static void SetAutoAddress(Server* s, adbus_Socket sock)
+{
+    (void) s;
+    (void) sock;
+}
+
+static void UnsetAutoAddress(Server* s)
+{
+    (void) s;
+}
+
+#endif
+
+/* -------------------------------------------------------------------------- */
+
+Server* Server_New(adbus_BusType type, adbus_Interface* iface)
+{
+    Server* s = NULL;
+    char addr[255];
+    adbus_Socket sock;
+
+    if (adbus_bind_address(type, addr, sizeof(addr)))
+        return NULL;
+
+    if (strcmp(addr, "autostart:") == 0) {
+        sock = adbus_sock_bind_s("tcp:host=localhost,port=0", -1);
+    } else {
+        sock = adbus_sock_bind_s(addr, -1);
+    }
+
+    if (sock == ADBUS_SOCK_INVALID)
+        return NULL;
+
+    s           = NEW(Server);
     s->sock     = sock;
-    s->bus      = adbus_serv_new(adbus_iface_new("org.freedesktop.DBus", -1));
+    s->bus      = adbus_serv_new(iface);
     s->reg      = MT_Current_AddServerSocket(sock, &Server_OnConnect, s);
+
+#ifdef _WIN32
+    s->autoHandle = INVALID_HANDLE_VALUE;
+#endif
+
+    listen(sock, SOMAXCONN);
 
 #if !defined _WIN32
     fcntl(sock, F_SETFD, FD_CLOEXEC);
     fcntl(sock, F_SETFL, O_NONBLOCK);
 #endif
+
+    if (strcmp(addr, "autostart:") == 0) {
+        SetAutoAddress(s, sock);
+    }
 
     return s;
 }
@@ -68,6 +164,7 @@ void Server_Free(struct Server* s)
             Remote_Free(r);
         }
         MT_Current_Remove(s->reg);
+        UnsetAutoAddress(s);
         adbus_serv_free(s->bus);
         closesocket(s->sock);
         free(s);

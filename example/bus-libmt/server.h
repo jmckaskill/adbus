@@ -40,9 +40,12 @@ struct Server
     adbus_Socket            sock;
     adbus_Server*           bus;
     d_IList(Remote)         remotes;
+#ifdef _WIN32
+    HANDLE                  autoHandle;
+#endif
 };
 
-Server* Server_New(adbus_Socket sock);
+Server* Server_New(adbus_BusType type, adbus_Interface* iface);
 void    Server_Free(Server* s);
 void    Server_OnConnect(void* u);
 

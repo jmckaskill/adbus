@@ -47,11 +47,9 @@ int main()
     loop = MT_Loop_New();
     MT_SetCurrent(loop);
 
-    sock = adbus_sock_bind(ADBUS_DEFAULT_BUS);
-    if (sock == ADBUS_SOCK_INVALID)
+    server = Server_New(ADBUS_DEFAULT_BUS, adbus_iface_new("org.freedesktop.DBus", -1));
+    if (!server)
         abort();
-
-    server = Server_New(sock);
     if (listen(sock, SOMAXCONN))
         abort();
 
