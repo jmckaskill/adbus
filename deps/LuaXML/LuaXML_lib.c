@@ -130,6 +130,8 @@ const char* Tokenizer_next(Tokenizer* tok) {
 	const char* ESC_str = "\033";
 	const char* OPEN_str = "\034";
 	const char* CLOSE_str = "\035";
+	int quotMode=0;
+	int tokenComplete = 0;
 
 	
 	if(tok->m_token) {
@@ -138,8 +140,6 @@ const char* Tokenizer_next(Tokenizer* tok) {
 		tok->m_token_size=tok->m_token_capacity = 0;
 	}
 	
-	int quotMode=0;
-	int tokenComplete = 0;
 	while(tok->m_next_size || (tok->i < tok->s_size)) {
 
 		if(tok->m_next_size) {
@@ -245,10 +245,12 @@ static char** sv_code=0;
 
 static void Xml_pushDecode(lua_State* L, const char* s, size_t s_size) {
 	size_t start=0, pos;
-	if(!s_size) s_size=strlen(s);
 	luaL_Buffer b;
+  const char* found;
+	size_t i;
+	if(!s_size) s_size=strlen(s);
 	luaL_buffinit(L, &b);
-	const char* found = strstr(s, "&#");
+	found = strstr(s, "&#");
 	if(!found) pos = s_size;
 	else pos = found-s;
 	while(found&&(pos+5<s_size)&&(*(found+5)==';')&&isdigit(*(unsigned char*)(found+2))&&isdigit(*(unsigned char*)(found+3))&&isdigit(*(unsigned char*)(found+4)) ) {
@@ -261,7 +263,6 @@ static void Xml_pushDecode(lua_State* L, const char* s, size_t s_size) {
 	}
 	if(pos>start) luaL_addlstring(&b,s+start, pos-start);
 	luaL_pushresult(&b);
-	size_t i;
 	for(i=sv_code_size-1; i<sv_code_size; i-=2) {
 		luaL_gsub(L, lua_tostring(L,-1), sv_code[i], sv_code[i-1]);
 		lua_remove(L,-2);
@@ -271,6 +272,9 @@ static void Xml_pushDecode(lua_State* L, const char* s, size_t s_size) {
 int Xml_eval(lua_State *L) {
 	char* str = 0;
 	size_t str_size=0;
+  Tokenizer* tok;
+	const char* token=0;
+	int firstStatement = 1;
 	if(lua_isuserdata(L,1)) str = (char*)lua_touserdata(L,1);
 	else {
 		const char * sTmp = luaL_checklstring(L,1,&str_size);
@@ -278,10 +282,8 @@ int Xml_eval(lua_State *L) {
 		memcpy(str, sTmp, str_size);
 		str[str_size]=0;
 	}
-	Tokenizer* tok = Tokenizer_new(str, str_size ? str_size : strlen(str));
+	tok = Tokenizer_new(str, str_size ? str_size : strlen(str));
 	lua_settop(L,0);
-	const char* token=0;
-	int firstStatement = 1;
 	while((token=Tokenizer_next(tok))!=0) if(token[0]==OPN) { // new tag found
 		if(lua_gettop(L)) {
 			int newIndex=(int)lua_objlen(L,-1)+1;
@@ -346,14 +348,16 @@ int Xml_eval(lua_State *L) {
 }
 
 int Xml_load (lua_State *L) {
+  size_t sz;
+  char* buffer;
 	const char * filename = luaL_checkstring(L,1);
 	FILE * file=fopen(filename,"r");
 	if(!file) return luaL_error(L,"LuaXml ERROR: \"%s\" file error or file not found!",filename);
 
 	fseek (file , 0 , SEEK_END);
-	size_t sz = ftell (file);
+	sz = ftell (file);
 	rewind (file);
-	char* buffer = (char*)malloc(sz+1);
+	buffer = (char*)malloc(sz+1);
 	fread (buffer,1,sz,file);
 	fclose(file);
 	buffer[sz]=0;
@@ -382,17 +386,18 @@ int Xml_registerCode(lua_State *L) {
 }
 
 int Xml_encode(lua_State *L) {
+	char buf[8];
+	size_t i;
+	size_t start, pos;
+	luaL_Buffer b;
+  const char* s;
 	if(lua_gettop(L)!=1) return 0;
 	luaL_checkstring(L,-1);
-	size_t i;
 	for(i=0; i<sv_code_size; i+=2) {
 		luaL_gsub(L, lua_tostring(L,-1), sv_code[i], sv_code[i+1]);
 		lua_remove(L,-2);
 	}
-	char buf[8];
-	const char* s=lua_tostring(L,1);
-	size_t start, pos;
-	luaL_Buffer b;
+	s=lua_tostring(L,1);
 	luaL_buffinit(L, &b);
 	for(start=pos=0; s[pos]!=0; ++pos) if(s[pos]<0) {
 		if(pos>start) luaL_addlstring(&b,s+start, pos-start);
