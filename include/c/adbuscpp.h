@@ -128,6 +128,13 @@ namespace adbus
         adbus_buf_endarray(b, &a);
     }
 
+    template<class T1, class T2>
+    inline void operator>>(const std::pair<T1,T2>& p, Buffer& b)
+    {
+        p.first >> b;
+        p.second >> b;
+    }
+
 
 
 
@@ -514,8 +521,7 @@ namespace adbus
             try {
                 T t = (o->*mf)();
 
-                Buffer b;
-                b.b = d->getprop;
+                Buffer b(d->getprop);
                 t >> b;
             } catch (Error& e) {
                 adbus_error(d, e.name(), -1, e.message(), -1);
@@ -650,9 +656,9 @@ namespace adbus
             return detail::PropertyMember<O, T>(mbr);
         }
 
-        adbus_Member* property(const std::string& name) {return adbus_iface_property(m_I, name.c_str(), (int) name.size());}
-        adbus_Member* signal(const std::string& name) {return adbus_iface_signal(m_I, name.c_str(), (int) name.size());}
-        adbus_Member* method(const std::string& name) {return adbus_iface_method(m_I, name.c_str(), (int) name.size());}
+        const adbus_Member* property(const std::string& name) {return adbus_iface_property(m_I, name.c_str(), (int) name.size());}
+        const adbus_Member* signal(const std::string& name) {return adbus_iface_signal(m_I, name.c_str(), (int) name.size());}
+        const adbus_Member* method(const std::string& name) {return adbus_iface_method(m_I, name.c_str(), (int) name.size());}
 
         const adbus_Interface* interface() const {return m_I;}
         adbus_Interface* interface() {return m_I;}
@@ -740,6 +746,10 @@ namespace adbus
     class Connection
     {
     public:
+        Connection()
+        :   m_C(NULL)
+        {}
+
         Connection(const adbus_ConnVTable* vtable, void* obj)
         :   m_C(adbus_conn_new(vtable, obj)) 
         { adbus_conn_ref(m_C); }
@@ -762,10 +772,10 @@ namespace adbus
 
         Connection& operator=(const Connection& c)
         {
-			if (c.m_C)
-	            adbus_conn_ref(c.m_C);
-			if (m_C)
-	            adbus_conn_deref(m_C);
+            if (c.m_C)
+  	            adbus_conn_ref(c.m_C);
+            if (m_C)
+  	            adbus_conn_deref(m_C);
             m_C = c.m_C;
             return *this;
         }
@@ -787,7 +797,7 @@ namespace adbus
         int step()
         { return adbus_conn_continue(m_C); }
 
-        int dispatch(adbus_Message* msg)
+        int dispatch(const adbus_Message* msg)
         { return adbus_conn_dispatch(m_C, msg); }
 
         void connectToBus()
@@ -796,13 +806,13 @@ namespace adbus
         void connectToBus(adbus_Callback callback, void* data)
         { adbus_conn_connect(m_C, callback, data); }
 
-		int waitForConnected(int timeoutms = -1)
-		{
-			uintptr_t handle;
-			return adbus_conn_block(m_C, ADBUS_WAIT_FOR_CONNECTED, &handle, timeoutms);
-		}
+    		int waitForConnected(int timeoutms = -1)
+    		{
+      			uintptr_t handle;
+      			return adbus_conn_block(m_C, ADBUS_WAIT_FOR_CONNECTED, &handle, timeoutms);
+    		}
 
-		bool isValid() const {return m_C != NULL;}
+    		bool isValid() const {return m_C != NULL;}
 
         std::string uniqueName()
         {
@@ -825,7 +835,7 @@ namespace adbus
 
         template<class O>
         void bind(const Interface<O>& i, O* object) const
-        { bind(i, object, *((State*) object)); }
+        { bind(i, object, ((State*) object)->state()); }
 
         template<class O>
         void bind(const Interface<O>& i, O* object, adbus_State* state) const
@@ -1031,6 +1041,9 @@ namespace adbus
             init(connection, service, path);
             adbus_proxy_setinterface(m_Proxy, interface, -1);
         }
+
+        void signal(adbus_Match* m, const char* signal)
+        { adbus_proxy_signal(m_Proxy, m, signal, -1); }
 
         template <class T>
         Call setProperty(const char* property, const T& arg)

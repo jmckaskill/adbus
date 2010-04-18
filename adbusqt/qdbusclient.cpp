@@ -92,7 +92,7 @@ QDBusClient::QDBusClient()
 
     /* We hold a ref on the connection, so the connection will not be deleted
      * until the thread/app shuts down. This greatly simplifies the shutdown
-     * logic as we are guarenteed to run adbus_conn_close on the correct
+     * logic as we are guaranteed to run adbus_conn_close on the correct
      * thread.
      */
     connect(QThread::currentThread(), SIGNAL(finished()), this, SLOT(close()));
@@ -444,7 +444,7 @@ bool QDBusClient::connectToServer(adbus_BusType type, bool connectToBus /* = tru
 {
     char buf[255];
     if (adbus_connect_address(type, buf, sizeof(buf))) {
-		return false;
+        return false;
     }
 
     return connectToServer(buf, connectToBus);
@@ -455,7 +455,7 @@ bool QDBusClient::connectToServer(adbus_BusType type, bool connectToBus /* = tru
 bool QDBusClient::connectToServer(const char* envstr, bool connectToBus)
 {
     disconnect();
-	m_ConnectToBus = connectToBus;
+    m_ConnectToBus = connectToBus;
 
     QString s = QString::fromAscii(envstr);
     QStringList l1 = s.split(':');

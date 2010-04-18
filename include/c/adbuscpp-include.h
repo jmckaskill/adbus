@@ -158,8 +158,7 @@
                 R r = (o->*mf)( ARGS );
 
                 if (d->ret) {
-                    Buffer b;
-                    b.b = adbus_msg_argbuffer(d->ret);
+                    Buffer b(adbus_msg_argbuffer(d->ret));
 
                     std::string type = adbus_type_string((R*) NULL);
                     adbus_buf_appendsig(b.b, type.c_str(), (int) type.size());
@@ -295,7 +294,7 @@
             m.NUM(setCallback) <CLASS_NAMES_TC MF, O> (function, object);
             adbus_proxy_signal(m_Proxy, &m, signal, -1);
         }
-        
+
         TEMPLATE_CLASS_DECLS
         Call method(const char* method CONST_REF_ARGS_LC)
         {
@@ -323,7 +322,7 @@
     {
         ADBUSCPP_NOT_COPYABLE(NUM(Signal));
     public:
-        NUM(Signal)(adbus_Member* mbr) : m_Signal(adbus_sig_new(mbr))
+        NUM(Signal)(const adbus_Member* mbr) : m_Signal(adbus_sig_new(mbr))
         {}
 
         ~NUM(Signal)() 

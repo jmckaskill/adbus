@@ -51,28 +51,29 @@
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+#   define MT_EXTERN_C extern "C"
+#else
+#   define MT_EXTERN_C extern
 #endif
 
 #if defined MT_SHARED_LIBRARY
 #   ifdef _MSC_VER
 #       if defined MT_LIBRARY
-#           define MT_API extern __declspec(dllexport)
+#           define MT_API MT_EXTERN_C __declspec(dllexport)
 #       else
-#           define MT_API extern __declspec(dllimport)
+#           define MT_API MT_EXTERN_C __declspec(dllimport)
 #       endif
 #   elif defined(__GNUC__) && ((__GNUC__*100 + __GNUC_MINOR__) >= 302) && defined(__ELF__)
-#       define MT_API extern __attribute__((visibility("default")))
+#       define MT_API MT_EXTERN_C __attribute__((visibility("default")))
 #   else
-#       define MT_API extern
+#       define MT_API MT_EXTERN_C
 #   endif
 #else
-#   define MT_API extern
+#   define MT_API MT_EXTERN_C
 #endif
 
 typedef struct MT_MainLoop          MT_MainLoop;
 typedef struct MT_LoopRegistration  MT_LoopRegistration;
-typedef struct MT_Lock              MT_Lock;
 typedef struct MT_Message           MT_Message;
 typedef struct MT_Freelist          MT_Freelist;
 typedef struct MT_Header            MT_Header;
@@ -467,13 +468,11 @@ MT_API int MT_ToBrokenDownTime(MT_Time t, struct tm* tm); /* Returns non zero on
 
 MT_API MT_Time MT_CurrentTime();
 
+/* These return ISO 8601 strings eg "2010-02-16" and "2010-02-16 22:00:08.067890Z" */
 MT_API char* MT_NewDateString(MT_Time t);
 MT_API char* MT_NewDateTimeString(MT_Time t);
 MT_API void  MT_FreeDateString(char* str);
 
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
 
 
 
@@ -545,6 +544,25 @@ namespace MT
         MT_MainLoop* m;
     };
 
+    
+
+    class LoopRegistration
+    {
+        MT_NOT_COPYABLE(LoopRegistration);
+    public:
+        LoopRegistration() : m(NULL) {}
+        ~LoopRegistration() {if (m) MT_Current_Remove(m);}
+
+        void RegisterHandle(MT_Handle h, MT_Callback cb, void* user)
+        { m = MT_Current_AddHandle(h, cb, user); }
+
+        void Unregister()
+        { MT_Current_Remove(m); m = NULL; }
+
+    private:
+        MT_LoopRegistration* m;
+    };
+
 
     class Mutex
     {
@@ -587,16 +605,15 @@ namespace MT
         Lock* m_Lock;
     };
 
-    struct MT_DateString
+    struct DateString
     {
-      MT_DateString(char* str) : m_Str(str) {}
-      ~MT_DateString(){MT_FreeDateString(m_Str);}
+      DateString(char* str) : m_Str(str) {}
+      ~DateString(){MT_FreeDateString(m_Str);}
       char* m_Str;
     };
 
-    /* These return ISO 8601 strings eg "2010-02-16" and "2010-02-16 22:00:08.067890Z" */
-#   define MT_LogDateString(t) MT_DateString(MT_NewDateString(t)).m_Str
-#   define MT_LogDateTimeString(t) MT_DateString(MT_NewDateTimeString(t)).m_Str
+#   define MT_LogDateString(t) MT::DateString(MT_NewDateString(t)).m_Str
+#   define MT_LogDateTimeString(t) MT::DateString(MT_NewDateTimeString(t)).m_Str
 
 }
 #endif

@@ -196,6 +196,9 @@ static void LocalId(d_String* id)
     DWORD n;
     PSID psid;
     LPTSTR stringsid;
+#ifdef UNICODE
+    size_t sidlen, i;
+#endif
 
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &process_token))
         goto failed;
@@ -219,9 +222,10 @@ static void LocalId(d_String* id)
         goto failed;
 
 #ifdef UNICODE
-    size_t sidlen = wcslen(stringsid);
-    for (size_t i = 0; i < sidlen; ++i)
+    sidlen = wcslen(stringsid);
+    for (i = 0; i < sidlen; ++i) {
         ds_cat_char(id, (char) stringsid[i]);
+    }
 #else
     ds_cat(id, stringsid);
 #endif
@@ -229,8 +233,9 @@ static void LocalId(d_String* id)
     LocalFree(stringsid);
 
 failed:
-    if (process_token != NULL)
+    if (process_token != NULL) {
         CloseHandle(process_token);
+    }
 }
 
 #else
